@@ -1,0 +1,17 @@
+[package]
+name = "popsicle-core"
+description = "Core library for Popsicle: spec-driven development orchestration engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
+toml = { workspace = true }

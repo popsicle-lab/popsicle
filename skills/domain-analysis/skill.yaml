@@ -1,0 +1,47 @@
+name: domain-analysis
+description: Domain boundary analysis and model definition
+version: "0.1.0"
+
+inputs: []
+
+artifacts:
+  - type: domain-model
+    template: templates/domain-model.md
+    file_pattern: "{slug}.domain-model.md"
+
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: review
+          action: submit
+    review:
+      transitions:
+        - to: approved
+          action: approve
+        - to: draft
+          action: revise
+    approved:
+      final: true
+
+prompts:
+  draft: |
+    Analyze the domain boundaries of the system. Identify:
+    1. Core domain entities and their relationships
+    2. Bounded contexts and their boundaries
+    3. Domain events and commands
+    4. Aggregate roots
+
+    Output a structured domain model document following the provided template.
+  review: |
+    Review the domain model for completeness and correctness:
+    - Are all bounded contexts properly identified?
+    - Are entity relationships accurate?
+    - Are there missing domain events?
+    - Is the ubiquitous language consistent?
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

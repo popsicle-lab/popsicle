@@ -1,0 +1,18 @@
+[package]
+name = "popsicle-cli"
+description = "CLI for Popsicle: spec-driven development orchestration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "popsicle"
+path = "src/main.rs"
+
+[dependencies]
+popsicle-core = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
