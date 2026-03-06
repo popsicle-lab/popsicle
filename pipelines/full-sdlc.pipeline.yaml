@@ -1,0 +1,29 @@
+name: full-sdlc
+description: Full software development lifecycle — from domain analysis to implementation
+
+stages:
+  - name: domain
+    skill: domain-analysis
+    description: Domain boundary analysis and model definition
+
+  - name: product
+    skill: product-prd
+    description: Product requirements document
+    depends_on: [domain]
+
+  - name: tech-design
+    skills:
+      - tech-rfc
+      - tech-adr
+    description: Technical design — RFC and architecture decisions
+    depends_on: [product]
+
+  - name: test-design
+    skill: test-spec
+    description: Test specification and planning
+    depends_on: [tech-design]
+
+  - name: implementation
+    skill: implementation
+    description: Code implementation
+    depends_on: [tech-design, test-design]
