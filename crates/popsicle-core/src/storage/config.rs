@@ -15,17 +15,9 @@ pub struct ProjectConfig {
     pub agent: AgentSection,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProjectSection {
     pub default_pipeline: Option<String>,
-}
-
-impl Default for ProjectSection {
-    fn default() -> Self {
-        Self {
-            default_pipeline: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

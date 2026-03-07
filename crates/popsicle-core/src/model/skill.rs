@@ -88,7 +88,7 @@ impl SkillDef {
     /// Load a Skill definition from a skill.yaml file.
     pub fn load(path: &std::path::Path) -> crate::error::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        let mut skill: SkillDef = serde_yaml::from_str(&content).map_err(|e| {
+        let mut skill: SkillDef = serde_yaml_ng::from_str(&content).map_err(|e| {
             crate::error::PopsicleError::InvalidSkillDef(format!("{}: {}", path.display(), e))
         })?;
         let dir = path
@@ -190,7 +190,7 @@ prompts:
 
     #[test]
     fn test_parse_skill_yaml() {
-        let skill: SkillDef = serde_yaml::from_str(sample_skill_yaml()).unwrap();
+        let skill: SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
         assert_eq!(skill.name, "product-prd");
         assert_eq!(skill.inputs.len(), 1);
         assert_eq!(skill.artifacts[0].artifact_type, "prd");
@@ -201,7 +201,7 @@ prompts:
 
     #[test]
     fn test_transitions() {
-        let skill: SkillDef = serde_yaml::from_str(sample_skill_yaml()).unwrap();
+        let skill: SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
         assert_eq!(skill.try_transition("draft", "submit").unwrap(), "discussion");
         assert_eq!(skill.try_transition("discussion", "approve").unwrap(), "approved");
         assert_eq!(skill.try_transition("discussion", "revise").unwrap(), "draft");
@@ -210,7 +210,7 @@ prompts:
 
     #[test]
     fn test_available_actions() {
-        let skill: SkillDef = serde_yaml::from_str(sample_skill_yaml()).unwrap();
+        let skill: SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
         let actions = skill.available_actions("discussion");
         assert_eq!(actions.len(), 2);
         assert!(skill.available_actions("approved").is_empty());

@@ -44,7 +44,7 @@ impl PipelineDef {
     /// Load from a YAML file.
     pub fn load(path: &std::path::Path) -> crate::error::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        let def: PipelineDef = serde_yaml::from_str(&content)?;
+        let def: PipelineDef = serde_yaml_ng::from_str(&content)?;
         Ok(def)
     }
 
@@ -173,7 +173,7 @@ stages:
 
     #[test]
     fn test_parse_pipeline() {
-        let def: PipelineDef = serde_yaml::from_str(sample_pipeline_yaml()).unwrap();
+        let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
         assert_eq!(def.name, "full-sdlc");
         assert_eq!(def.stages.len(), 3);
         assert_eq!(def.stages[0].skill_names(), vec!["domain-analysis"]);
@@ -182,7 +182,7 @@ stages:
 
     #[test]
     fn test_pipeline_run_initial_states() {
-        let def: PipelineDef = serde_yaml::from_str(sample_pipeline_yaml()).unwrap();
+        let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
         let run = PipelineRun::new(&def, "Test Feature");
         assert_eq!(run.stage_states["domain"], StageState::Ready);
         assert_eq!(run.stage_states["product"], StageState::Blocked);
@@ -191,7 +191,7 @@ stages:
 
     #[test]
     fn test_refresh_states() {
-        let def: PipelineDef = serde_yaml::from_str(sample_pipeline_yaml()).unwrap();
+        let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
         let mut run = PipelineRun::new(&def, "Test Feature");
 
         run.stage_states.insert("domain".to_string(), StageState::Completed);

@@ -30,7 +30,7 @@ pub enum PopsicleError {
     Io(#[from] std::io::Error),
 
     #[error("YAML parse error: {0}")]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_yaml_ng::Error),
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),

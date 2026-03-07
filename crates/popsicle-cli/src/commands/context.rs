@@ -1,8 +1,6 @@
 use std::env;
 
-use anyhow::Context;
-use popsicle_core::model::PipelineDef;
-use popsicle_core::registry::PipelineLoader;
+use popsicle_core::helpers;
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -54,10 +52,10 @@ pub fn execute(args: ContextArgs, format: &OutputFormat) -> anyhow::Result<()> {
             println!();
 
             for stage in &pipeline_def.stages {
-                if let Some(ref filter) = args.stage {
-                    if &stage.name != filter {
-                        continue;
-                    }
+                if let Some(ref filter) = args.stage
+                    && &stage.name != filter
+                {
+                    continue;
                 }
 
                 let state = run.stage_states.get(&stage.name);
@@ -91,10 +89,10 @@ pub fn execute(args: ContextArgs, format: &OutputFormat) -> anyhow::Result<()> {
             let mut stages_json = Vec::new();
 
             for stage in &pipeline_def.stages {
-                if let Some(ref filter) = args.stage {
-                    if &stage.name != filter {
-                        continue;
-                    }
+                if let Some(ref filter) = args.stage
+                    && &stage.name != filter
+                {
+                    continue;
                 }
 
                 let state = run.stage_states.get(&stage.name);
@@ -140,17 +138,7 @@ pub fn execute(args: ContextArgs, format: &OutputFormat) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn find_pipeline(name: &str) -> anyhow::Result<PipelineDef> {
+fn find_pipeline(name: &str) -> anyhow::Result<popsicle_core::model::PipelineDef> {
     let cwd = env::current_dir()?;
-    let mut all = Vec::new();
-
-    for dir in [cwd.join("pipelines"), cwd.join(".popsicle").join("pipelines")] {
-        if dir.is_dir() {
-            all.extend(PipelineLoader::load_dir(&dir).context("Loading pipelines")?);
-        }
-    }
-
-    all.into_iter()
-        .find(|p| p.name == name)
-        .ok_or_else(|| anyhow::anyhow!("Pipeline template not found: {}", name))
+    helpers::find_pipeline(&cwd, name).map_err(|e| anyhow::anyhow!("{}", e))
 }

@@ -30,9 +30,10 @@ pub struct InitArgs {
 }
 
 pub fn execute(args: InitArgs, format: &OutputFormat) -> anyhow::Result<()> {
-    let project_root = args
-        .path
-        .unwrap_or_else(|| env::current_dir().expect("Cannot determine current directory"));
+    let project_root = match args.path {
+        Some(p) => p,
+        None => env::current_dir().context("Cannot determine current directory")?,
+    };
 
     let layout = ProjectLayout::new(&project_root);
     layout
@@ -45,7 +46,7 @@ pub fn execute(args: InitArgs, format: &OutputFormat) -> anyhow::Result<()> {
         .agent
         .iter()
         .filter_map(|s| {
-            AgentTarget::from_str(s).or_else(|| {
+            AgentTarget::parse(s).or_else(|| {
                 eprintln!(
                     "Warning: unknown agent '{}', skipping. Available: claude, cursor, codex",
                     s

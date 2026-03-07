@@ -356,3 +356,165 @@ pub struct PipelineRunRow {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::{CommitLink, ReviewStatus};
+    use crate::model::{PipelineDef, StageDef};
+    use std::path::PathBuf;
+
+    fn make_doc(id: &str, skill: &str, run_id: &str) -> Document {
+        Document {
+            id: id.to_string(),
+            doc_type: "test".to_string(),
+            title: format!("Doc {}", id),
+            status: "draft".to_string(),
+            skill_name: skill.to_string(),
+            pipeline_run_id: run_id.to_string(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: Some(chrono::Utc::now()),
+            updated_at: Some(chrono::Utc::now()),
+            body: "test body".to_string(),
+            file_path: PathBuf::from("test.md"),
+        }
+    }
+
+    fn make_pipeline_def() -> PipelineDef {
+        PipelineDef {
+            name: "test-pipeline".to_string(),
+            description: "Test".to_string(),
+            stages: vec![StageDef {
+                name: "stage-1".to_string(),
+                skills: vec![],
+                skill: Some("domain-analysis".to_string()),
+                description: "First".to_string(),
+                depends_on: vec![],
+            }],
+        }
+    }
+
+    #[test]
+    fn test_document_upsert_and_query() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let doc = make_doc("d1", "product-prd", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        let results = db.query_documents(None, None, None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "d1");
+        assert_eq!(results[0].skill_name, "product-prd");
+    }
+
+    #[test]
+    fn test_document_query_filters() {
+        let db = IndexDb::open_in_memory().unwrap();
+        db.upsert_document(&make_doc("d1", "prd", "run-1")).unwrap();
+        db.upsert_document(&make_doc("d2", "adr", "run-1")).unwrap();
+        db.upsert_document(&make_doc("d3", "prd", "run-2")).unwrap();
+
+        let by_skill = db.query_documents(Some("prd"), None, None).unwrap();
+        assert_eq!(by_skill.len(), 2);
+
+        let by_run = db.query_documents(None, None, Some("run-1")).unwrap();
+        assert_eq!(by_run.len(), 2);
+
+        let by_both = db.query_documents(Some("prd"), None, Some("run-1")).unwrap();
+        assert_eq!(by_both.len(), 1);
+    }
+
+    #[test]
+    fn test_document_upsert_updates_status() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let mut doc = make_doc("d1", "prd", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        doc.status = "approved".to_string();
+        db.upsert_document(&doc).unwrap();
+
+        let results = db.query_documents(None, None, None).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, "approved");
+    }
+
+    #[test]
+    fn test_pipeline_run_roundtrip() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let def = make_pipeline_def();
+        let run = PipelineRun::new(&def, "Feature X");
+
+        db.upsert_pipeline_run(&run).unwrap();
+        let loaded = db.get_pipeline_run(&run.id).unwrap().unwrap();
+
+        assert_eq!(loaded.id, run.id);
+        assert_eq!(loaded.pipeline_name, "test-pipeline");
+        assert_eq!(loaded.title, "Feature X");
+        assert_eq!(loaded.stage_states["stage-1"], StageState::Ready);
+    }
+
+    #[test]
+    fn test_pipeline_run_not_found() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let result = db.get_pipeline_run("nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_list_pipeline_runs() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let def = make_pipeline_def();
+
+        let run1 = PipelineRun::new(&def, "Run 1");
+        let run2 = PipelineRun::new(&def, "Run 2");
+        db.upsert_pipeline_run(&run1).unwrap();
+        db.upsert_pipeline_run(&run2).unwrap();
+
+        let runs = db.list_pipeline_runs().unwrap();
+        assert_eq!(runs.len(), 2);
+    }
+
+    #[test]
+    fn test_commit_link_upsert_and_query() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let link = CommitLink {
+            sha: "abc123".to_string(),
+            doc_id: Some("d1".to_string()),
+            pipeline_run_id: "run-1".to_string(),
+            stage: Some("stage-1".to_string()),
+            skill: Some("prd".to_string()),
+            review_status: ReviewStatus::Pending,
+            review_summary: None,
+            linked_at: chrono::Utc::now().to_rfc3339(),
+        };
+        db.upsert_commit_link(&link).unwrap();
+
+        let links = db.query_commit_links(Some("run-1"), None, None).unwrap();
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].sha, "abc123");
+        assert_eq!(links[0].review_status, ReviewStatus::Pending);
+    }
+
+    #[test]
+    fn test_update_commit_review() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let link = CommitLink {
+            sha: "abc123".to_string(),
+            doc_id: None,
+            pipeline_run_id: "run-1".to_string(),
+            stage: None,
+            skill: None,
+            review_status: ReviewStatus::Pending,
+            review_summary: None,
+            linked_at: chrono::Utc::now().to_rfc3339(),
+        };
+        db.upsert_commit_link(&link).unwrap();
+
+        db.update_commit_review("abc123", "run-1", ReviewStatus::Passed, Some("LGTM"))
+            .unwrap();
+
+        let links = db.query_commit_links(Some("run-1"), None, None).unwrap();
+        assert_eq!(links[0].review_status, ReviewStatus::Passed);
+        assert_eq!(links[0].review_summary.as_deref(), Some("LGTM"));
+    }
+}
