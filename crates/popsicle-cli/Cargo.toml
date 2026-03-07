@@ -23,6 +23,9 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 tauri = { version = "2", features = [], optional = true }
 tauri-plugin-shell = { version = "2", optional = true }
+notify = { version = "7", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
 notify = { version = "7", features = ["macos_fsevent"], optional = true }
 
 [build-dependencies]

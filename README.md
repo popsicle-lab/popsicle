@@ -14,12 +14,80 @@ It organizes the full software development lifecycle through composable **Skills
 - **Advisor** — Recommends the next step (CLI command + AI prompt) based on current pipeline and document state
 - **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, git status, and commit-document associations
 
+## Installation
+
+### Download from GitHub Releases
+
+Pre-built binaries (CLI + Desktop UI) are available for macOS, Linux, and Windows:
+
+> **[Latest Release](https://github.com/curtiseng/popsicle/releases/latest)**
+
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | `popsicle-v*-aarch64-apple-darwin.tar.gz` |
+| macOS (Intel) | `popsicle-v*-x86_64-apple-darwin.tar.gz` |
+| Linux (x86_64) | `popsicle-v*-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows (x86_64) | `popsicle-v*-x86_64-pc-windows-msvc.zip` |
+
+### Add to PATH
+
+**macOS / Linux:**
+
+```bash
+# Extract and install to /usr/local/bin (requires sudo)
+tar xzf popsicle-v*-*.tar.gz
+sudo mv popsicle /usr/local/bin/
+
+# Or install to user-local directory (no sudo)
+mkdir -p ~/.local/bin
+mv popsicle ~/.local/bin/
+# Add to your shell profile if not already in PATH:
+# For zsh (~/.zshrc):
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+# For bash (~/.bashrc):
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+
+**Windows (PowerShell):**
+
+```powershell
+# Extract the zip, then add the directory to PATH
+Expand-Archive popsicle-v*-x86_64-pc-windows-msvc.zip -DestinationPath C:\popsicle
+# Add to user PATH permanently
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\popsicle", "User")
+# Reload in current session
+$env:Path += ";C:\popsicle"
+```
+
+### Shell Completions
+
+```bash
+# Zsh
+mkdir -p ~/.zfunc
+popsicle completions zsh > ~/.zfunc/_popsicle
+# Add to ~/.zshrc: fpath=(~/.zfunc $fpath) && autoload -Uz compinit && compinit
+
+# Bash
+popsicle completions bash | sudo tee /etc/bash_completion.d/popsicle > /dev/null
+
+# Fish
+popsicle completions fish > ~/.config/fish/completions/popsicle.fish
+```
+
+### Build from Source
+
+```bash
+# CLI only
+cargo build -p popsicle-cli --release
+
+# CLI + Desktop UI (requires Node.js)
+cd ui && npm install && npm run build && cd ..
+cargo build -p popsicle-cli --features ui --release
+```
+
 ## Quick Start
 
 ```bash
-# Build
-cargo build
-
 # Initialize a project (default: Claude Code agent)
 popsicle init
 
@@ -205,6 +273,12 @@ your-project/
 
 ## Desktop UI
 
+The CLI and Desktop UI are bundled into a single `popsicle` binary (when built with `--features ui`). Launch the graphical interface with:
+
+```bash
+popsicle ui
+```
+
 The Tauri desktop app provides read-only visualization:
 
 - **Dashboard** — Pipeline run overview, Git status bar, document statistics, quick actions with copyable commands
@@ -213,12 +287,10 @@ The Tauri desktop app provides read-only visualization:
 - **Git Tracking** — Branch/HEAD status, tracked commits with review status, commit-document-stage associations
 - **Skills Registry** — Browse all skills with workflow diagrams and input dependencies
 
-```bash
-# Development (hot-reload)
-cd ui && npm install && npm run tauri dev
+For frontend hot-reload development, use the standalone Tauri app:
 
-# Production build
-cd ui && npm run tauri build
+```bash
+cd ui && npm install && npm run tauri dev
 ```
 
 ## License
