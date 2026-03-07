@@ -18,6 +18,7 @@ pub struct NextStep {
     pub cli_command: String,
     pub prompt: Option<String>,
     pub blocked_by: Vec<String>,
+    pub requires_approval: bool,
 }
 
 impl Advisor {
@@ -74,6 +75,7 @@ impl Advisor {
                                 ),
                                 prompt,
                                 blocked_by: vec![],
+                                requires_approval: false,
                             });
                         }
                     }
@@ -115,6 +117,7 @@ impl Advisor {
                             cli_command: String::new(),
                             prompt: None,
                             blocked_by: missing.clone(),
+                            requires_approval: false,
                         });
                     }
                 }
@@ -172,6 +175,7 @@ impl Advisor {
                         ),
                         prompt,
                         blocked_by: vec![],
+                        requires_approval: transition.requires_approval,
                     });
                 }
             }
@@ -331,5 +335,74 @@ prompts:
         assert!(Advisor::has_actionable_steps(
             &pipeline, &run, &registry, &docs
         ));
+    }
+
+    fn sample_skill_with_approval() -> &'static str {
+        r#"
+name: domain-analysis
+description: Domain boundary analysis
+version: "0.1.0"
+artifacts:
+  - type: domain-model
+    template: templates/domain.md
+    file_pattern: "{slug}.domain.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: review
+          action: submit
+    review:
+      transitions:
+        - to: approved
+          action: approve
+          requires_approval: true
+        - to: draft
+          action: revise
+    approved:
+      final: true
+prompts:
+  draft: "Analyze the domain..."
+"#
+    }
+
+    #[test]
+    fn test_requires_approval_propagated_to_next_step() {
+        let mut registry = SkillRegistry::new();
+        let skill: crate::model::SkillDef =
+            serde_yaml_ng::from_str(sample_skill_with_approval()).unwrap();
+        registry.register(skill);
+
+        let pipeline = PipelineDef {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            stages: vec![StageDef {
+                name: "domain".to_string(),
+                skills: vec![],
+                skill: Some("domain-analysis".to_string()),
+                description: "Domain".to_string(),
+                depends_on: vec![],
+            }],
+        };
+        let run = PipelineRun::new(&pipeline, "Test");
+        let docs = vec![DocumentRow {
+            id: "d1".to_string(),
+            doc_type: "domain-model".to_string(),
+            title: "Domain Doc".to_string(),
+            status: "review".to_string(),
+            skill_name: "domain-analysis".to_string(),
+            pipeline_run_id: run.id.clone(),
+            file_path: "test.md".to_string(),
+            created_at: None,
+            updated_at: None,
+        }];
+
+        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
+        let approve_step = steps.iter().find(|s| s.action == "approve").unwrap();
+        assert!(approve_step.requires_approval);
+
+        let revise_step = steps.iter().find(|s| s.action == "revise").unwrap();
+        assert!(!revise_step.requires_approval);
     }
 }

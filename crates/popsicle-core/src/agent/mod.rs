@@ -7,7 +7,6 @@ use crate::model::SkillDef;
 pub enum AgentTarget {
     Claude,
     Cursor,
-    Codex,
 }
 
 impl AgentTarget {
@@ -15,7 +14,6 @@ impl AgentTarget {
         match s.to_lowercase().as_str() {
             "claude" => Some(Self::Claude),
             "cursor" => Some(Self::Cursor),
-            "codex" | "openai" => Some(Self::Codex),
             _ => None,
         }
     }
@@ -24,7 +22,6 @@ impl AgentTarget {
         match self {
             Self::Claude => "claude",
             Self::Cursor => "cursor",
-            Self::Codex => "codex",
         }
     }
 }
@@ -53,9 +50,6 @@ impl AgentInstaller {
                 }
                 AgentTarget::Cursor => {
                     installed.extend(install_cursor(project_root, skills, &overview)?);
-                }
-                AgentTarget::Codex => {
-                    installed.extend(install_codex(project_root, skills, &overview)?);
                 }
             }
         }
@@ -90,7 +84,8 @@ fn build_skill_command(skill: &SkillDef) -> String {
     for (state, sd) in &skill.workflow.states {
         for t in &sd.transitions {
             let guard = t.guard.as_ref().map(|g| format!(" (guard: `{}`)", g)).unwrap_or_default();
-            s.push_str(&format!("  - `{}` → `{}` via `{}`{}\n", state, t.to, t.action, guard));
+            let approval = if t.requires_approval { " **⚠ requires human approval**" } else { "" };
+            s.push_str(&format!("  - `{}` → `{}` via `{}`{}{}\n", state, t.to, t.action, guard, approval));
         }
     }
 
@@ -127,14 +122,25 @@ fn build_skill_command(skill: &SkillDef) -> String {
         .collect();
     for (state, sd) in &non_final_states {
         for t in &sd.transitions {
-            s.push_str(&format!(
-                "# From '{}': {}\n",
-                state, t.action
-            ));
-            s.push_str(&format!(
-                "popsicle doc transition <doc-id> {}\n",
-                t.action
-            ));
+            if t.requires_approval {
+                s.push_str(&format!(
+                    "# From '{}': {} (⚠ requires human approval — do NOT run this automatically)\n",
+                    state, t.action
+                ));
+                s.push_str(&format!(
+                    "popsicle doc transition <doc-id> {} --confirm\n",
+                    t.action
+                ));
+            } else {
+                s.push_str(&format!(
+                    "# From '{}': {}\n",
+                    state, t.action
+                ));
+                s.push_str(&format!(
+                    "popsicle doc transition <doc-id> {}\n",
+                    t.action
+                ));
+            }
         }
     }
     s.push_str("```\n");
@@ -175,6 +181,7 @@ popsicle pipeline next --format json
 2. Guards enforce upstream document approval before downstream work proceeds
 3. Fill document sections with real content — template placeholders are rejected
 4. Link commits to documents with `popsicle git link`
+5. Transitions marked `requires_approval` need human confirmation — STOP and ask the user to review, then let them run the command with `--confirm`
 "#,
     );
 
@@ -207,22 +214,22 @@ fn install_claude(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
     let instructions = format!("# Popsicle — Claude Code Instructions\n\n{}\n", overview);
     std::fs::write(claude_dir.join("CLAUDE.md"), instructions)?;
 
-    let commands_dir = claude_dir.join("commands");
-    std::fs::create_dir_all(&commands_dir)?;
-
     let mut installed = vec![".claude/CLAUDE.md".to_string()];
 
-    // Generate a command file per skill
+    let skills_dir = claude_dir.join("skills");
     for skill in skills {
-        let content = build_skill_command(skill);
-        let filename = format!("{}.md", skill.name);
-        std::fs::write(commands_dir.join(&filename), &content)?;
-        installed.push(format!(".claude/commands/{}", filename));
+        let skill_dir = skills_dir.join(format!("popsicle-{}", skill.name));
+        std::fs::create_dir_all(&skill_dir)?;
+
+        let content = build_agent_skill(skill);
+        std::fs::write(skill_dir.join("SKILL.md"), &content)?;
+        installed.push(format!(".claude/skills/popsicle-{}/SKILL.md", skill.name));
     }
 
-    // Meta commands
-    std::fs::write(commands_dir.join("next.md"), SLASH_CMD_NEXT)?;
-    installed.push(".claude/commands/next.md".to_string());
+    let next_dir = skills_dir.join("popsicle-next");
+    std::fs::create_dir_all(&next_dir)?;
+    std::fs::write(next_dir.join("SKILL.md"), SKILL_NEXT)?;
+    installed.push(".claude/skills/popsicle-next/SKILL.md".to_string());
 
     Ok(installed)
 }
@@ -237,43 +244,46 @@ fn install_cursor(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
     );
     std::fs::write(rules_dir.join("popsicle.mdc"), rules)?;
 
-    let agents_dir = root.join(".cursor").join("agents");
-    std::fs::create_dir_all(&agents_dir)?;
+    let mut installed = vec![".cursor/rules/popsicle.mdc".into()];
 
-    // Build agent file with all skill commands embedded
-    let mut agent = String::from(
-        "---\nname: popsicle\ndescription: Popsicle spec-driven development assistant\n---\n\n",
-    );
-    agent.push_str(overview);
-        agent.push('\n');
-
+    let skills_dir = root.join(".cursor").join("skills");
     for skill in skills {
-        agent.push_str(&format!("\n---\n\n# Skill: {}\n\n", skill.name));
-        agent.push_str(&build_skill_command(skill));
-    }
-    std::fs::write(agents_dir.join("popsicle.md"), agent)?;
+        let skill_dir = skills_dir.join(format!("popsicle-{}", skill.name));
+        std::fs::create_dir_all(&skill_dir)?;
 
-    Ok(vec![
-        ".cursor/rules/popsicle.mdc".into(),
-        ".cursor/agents/popsicle.md".into(),
-    ])
+        let content = build_agent_skill(skill);
+        std::fs::write(skill_dir.join("SKILL.md"), &content)?;
+        installed.push(format!(".cursor/skills/popsicle-{}/SKILL.md", skill.name));
+    }
+
+    Ok(installed)
 }
 
-fn install_codex(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<Vec<String>> {
-    let mut content = format!("# Popsicle — Agent Instructions (Codex)\n\n{}\n", overview);
-    for skill in skills {
-        content.push_str(&format!("\n---\n\n# Skill: {}\n\n", skill.name));
-        content.push_str(&build_skill_command(skill));
-    }
-    std::fs::write(root.join("AGENTS.md"), content)?;
-    Ok(vec!["AGENTS.md".into()])
+/// Build a SKILL.md file following the Agent Skills open standard.
+/// Used by both Claude Code (.claude/skills/) and Cursor (.cursor/skills/).
+fn build_agent_skill(skill: &SkillDef) -> String {
+    let mut s = String::new();
+
+    s.push_str(&format!(
+        "---\nname: popsicle-{}\ndescription: {}\n---\n\n",
+        skill.name, skill.description
+    ));
+
+    s.push_str(&build_skill_command(skill));
+
+    s
 }
 
-const SLASH_CMD_NEXT: &str = r#"Check what to do next in the Popsicle pipeline and follow the recommended action.
+const SKILL_NEXT: &str = r#"---
+name: popsicle-next
+description: Check what to do next in the Popsicle pipeline. Use when starting work, after completing a step, or when unsure what to do next.
+---
+
+Check what to do next in the Popsicle pipeline and follow the recommended action.
 
 ```bash
 popsicle pipeline next --format json
 ```
 
-Then execute the suggested CLI command. If a skill-specific command exists (e.g., `/domain-analysis`), use it for detailed guidance.
+Then execute the suggested CLI command. If a step has `requires_approval: true`, STOP and ask the user to review before proceeding.
 "#;

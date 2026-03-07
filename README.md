@@ -92,7 +92,7 @@ cargo build -p popsicle-cli --features ui --release
 popsicle init
 
 # Initialize for multiple agents
-popsicle init --agent claude,cursor,codex
+popsicle init --agent claude,cursor
 
 # Install git post-commit hook for automatic tracking
 popsicle git init
@@ -114,9 +114,8 @@ Use `--agent` to select targets (default: `claude`).
 
 | Agent | Flag | Generated Files |
 |-------|------|-----------------|
-| Claude Code | `--agent claude` | `.claude/CLAUDE.md`, `.claude/commands/popsicle-*.md` |
-| Cursor | `--agent cursor` | `.cursor/rules/popsicle.mdc`, `.cursor/agents/popsicle.md` |
-| Codex (OpenAI) | `--agent codex` | `AGENTS.md` |
+| Claude Code | `--agent claude` | `.claude/CLAUDE.md`, `.claude/skills/popsicle-*/SKILL.md` |
+| Cursor | `--agent cursor` | `.cursor/rules/popsicle.mdc`, `.cursor/skills/popsicle-*/SKILL.md` |
 
 Examples:
 
@@ -127,8 +126,8 @@ popsicle init
 # Cursor only
 popsicle init --agent cursor
 
-# All three agents
-popsicle init --agent claude,cursor,codex
+# Both agents
+popsicle init --agent claude,cursor
 
 # Skip agent files entirely
 popsicle init --no-agent-files
@@ -248,7 +247,7 @@ Developer ──→                               ↑
 - **Pipeline orchestrates** — DAG-based stage dependencies with automatic state propagation
 - **Guards enforce discipline** — Upstream approval and content completeness checked before transitions
 - **Git-aware** — Post-commit hooks auto-track commits; link commits to documents, stages, and skills
-- **Multi-agent** — Native support for Claude Code, Cursor, and Codex with auto-generated instruction files
+- **Multi-agent** — Native support for Claude Code and Cursor with auto-generated skills following the Agent Skills open standard
 - **Hybrid storage** — Documents as Markdown files (Git-friendly), metadata and state indexed in SQLite
 - **Extensible** — Custom skills (`skill create`), pipelines (`pipeline create`), hooks for lifecycle events
 
@@ -263,12 +262,11 @@ your-project/
 │   ├── popsicle.db               # SQLite index
 │   └── config.toml               # Project configuration
 ├── .claude/                      # Claude Code (--agent claude)
-│   ├── CLAUDE.md                 # Instructions + full skill catalog
-│   └── commands/                 # Slash commands
-├── .cursor/                      # Cursor (--agent cursor)
-│   ├── rules/popsicle.mdc        # Always-apply rules + skill catalog
-│   └── agents/popsicle.md        # Popsicle sub-agent
-└── AGENTS.md                     # Codex (--agent codex)
+│   ├── CLAUDE.md                 # Instructions + skill catalog
+│   └── skills/popsicle-*/        # Per-skill SKILL.md files
+└── .cursor/                      # Cursor (--agent cursor)
+    ├── rules/popsicle.mdc        # Always-apply rules + skill catalog
+    └── skills/popsicle-*/        # Per-skill SKILL.md files
 ```
 
 ## Desktop UI

@@ -21,6 +21,7 @@ workflow:
         - to: approved
           action: approve
           guard: "has_sections:Bounded Contexts,Entity Relationships"
+          requires_approval: true
         - to: draft
           action: revise
     approved:

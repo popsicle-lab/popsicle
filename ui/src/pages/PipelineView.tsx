@@ -273,6 +273,12 @@ function NextStepCard({ step }: { step: NextStepInfo }) {
         <span className="text-xs text-[var(--text-secondary)]">
           ({step.action})
         </span>
+        {step.requires_approval && (
+          <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+            <ShieldAlert size={10} />
+            Approval
+          </span>
+        )}
       </div>
       <p className="text-sm text-[var(--text-secondary)] mb-2">
         {step.description}

@@ -16,7 +16,7 @@ pub struct InitArgs {
     path: Option<PathBuf>,
 
     /// Target AI agents to install instructions for (comma-separated)
-    /// Options: claude, cursor, codex. Default: claude
+    /// Options: claude, cursor. Default: claude
     #[arg(short, long, value_delimiter = ',', default_value = "claude")]
     agent: Vec<String>,
 
@@ -42,13 +42,16 @@ pub fn execute(args: InitArgs, format: &OutputFormat) -> anyhow::Result<()> {
 
     IndexDb::open(&layout.db_path()).context("Failed to create database")?;
 
+    ensure_gitignore(&project_root)?;
+    ensure_cursorignore(&project_root)?;
+
     let targets: Vec<AgentTarget> = args
         .agent
         .iter()
         .filter_map(|s| {
             AgentTarget::parse(s).or_else(|| {
                 eprintln!(
-                    "Warning: unknown agent '{}', skipping. Available: claude, cursor, codex",
+                    "Warning: unknown agent '{}', skipping. Available: claude, cursor",
                     s
                 );
                 None
@@ -146,6 +149,57 @@ targets = [{}]
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
+    }
+
+    Ok(())
+}
+
+/// Append `.popsicle/` to `.gitignore` if not already present.
+/// Claude Code respects `.gitignore`, so this prevents it from indexing popsicle internals.
+fn ensure_gitignore(project_root: &PathBuf) -> anyhow::Result<()> {
+    let gitignore = project_root.join(".gitignore");
+    let entry = ".popsicle/";
+
+    if gitignore.exists() {
+        let content = std::fs::read_to_string(&gitignore)?;
+        if content.lines().any(|l| l.trim() == entry) {
+            return Ok(());
+        }
+        let mut appended = content;
+        if !appended.ends_with('\n') {
+            appended.push('\n');
+        }
+        appended.push_str(&format!("\n# Popsicle project data\n{}\n", entry));
+        std::fs::write(&gitignore, appended)?;
+    } else {
+        std::fs::write(&gitignore, format!("# Popsicle project data\n{}\n", entry))?;
+    }
+
+    Ok(())
+}
+
+/// Create `.cursorignore` with `.popsicle/` if not already present.
+/// Prevents Cursor from indexing popsicle internals into AI context.
+fn ensure_cursorignore(project_root: &PathBuf) -> anyhow::Result<()> {
+    let cursorignore = project_root.join(".cursorignore");
+    let entry = ".popsicle/";
+
+    if cursorignore.exists() {
+        let content = std::fs::read_to_string(&cursorignore)?;
+        if content.lines().any(|l| l.trim() == entry) {
+            return Ok(());
+        }
+        let mut appended = content;
+        if !appended.ends_with('\n') {
+            appended.push('\n');
+        }
+        appended.push_str(&format!("{}\n", entry));
+        std::fs::write(&cursorignore, appended)?;
+    } else {
+        std::fs::write(
+            &cursorignore,
+            format!("# Popsicle internals (read by CLI, not by AI)\n{}\n", entry),
+        )?;
     }
 
     Ok(())

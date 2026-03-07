@@ -36,7 +36,7 @@ skill.yaml  ──→  ## Workflow (auto-generated: states, transitions, guards)
 guide.md    ──→  ## Writing Guide (your content, injected as-is)
 ```
 
-For example, `popsicle init --agent claude` generates `.claude/commands/domain-analysis.md`:
+For example, `popsicle init --agent claude` generates `.claude/skills/popsicle-domain-analysis/SKILL.md`:
 
 ```markdown
 Perform the "domain-analysis" step in the Popsicle pipeline.
@@ -394,10 +394,10 @@ stages:
 ### Step 6: Regenerate Agent instructions
 
 ```bash
-popsicle init --agent claude,cursor,codex
+popsicle init --agent claude,cursor
 ```
 
-This regenerates all Agent command files, now including the new `security-review` skill with its workflow, CLI commands, and your writing guide.
+This regenerates all Agent skill files, now including the new `security-review` skill with its workflow, CLI commands, and your writing guide.
 
 ## Design Principle
 

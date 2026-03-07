@@ -24,6 +24,7 @@ workflow:
       transitions:
         - to: code-gen
           action: approve
+          requires_approval: true
         - to: spec-gen
           action: revise
     code-gen:

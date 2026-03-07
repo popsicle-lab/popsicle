@@ -561,9 +561,14 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
             if !actionable.is_empty() {
                 println!("=== Next Steps ===\n");
                 for (i, step) in actionable.iter().enumerate() {
-                    println!("{}. [{}] {} → {}", i + 1, step.stage, step.skill, step.action);
+                    let approval_tag = if step.requires_approval { " ⚠ REQUIRES APPROVAL" } else { "" };
+                    println!("{}. [{}] {} → {}{}", i + 1, step.stage, step.skill, step.action, approval_tag);
                     println!("   {}", step.description);
-                    println!("   $ {}", step.cli_command);
+                    if step.requires_approval {
+                        println!("   $ {} --confirm", step.cli_command);
+                    } else {
+                        println!("   $ {}", step.cli_command);
+                    }
                     if let Some(prompt) = &step.prompt {
                         let preview: String = prompt.chars().take(100).collect();
                         println!("   AI Prompt: {}...", preview.trim());

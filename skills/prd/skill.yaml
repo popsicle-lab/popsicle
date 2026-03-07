@@ -27,6 +27,7 @@ workflow:
         - to: approved
           action: approve
           guard: "has_sections:Executive Summary,Problem Statement,User Stories & Acceptance Criteria"
+          requires_approval: true
         - to: gathering
           action: refine
     approved:

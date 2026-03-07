@@ -78,6 +78,7 @@ export interface NextStepInfo {
   cli_command: string;
   prompt: string | null;
   blocked_by: string[];
+  requires_approval: boolean;
 }
 
 export function useRefresh(callback: () => void) {

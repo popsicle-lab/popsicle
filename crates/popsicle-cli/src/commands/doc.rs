@@ -46,6 +46,9 @@ pub enum DocCommand {
         id: String,
         /// Action name (e.g., submit, approve, revise)
         action: String,
+        /// Confirm human approval (required for transitions with requires_approval)
+        #[arg(long, default_value_t = false)]
+        confirm: bool,
     },
 }
 
@@ -58,7 +61,11 @@ pub fn execute(cmd: DocCommand, format: &OutputFormat) -> anyhow::Result<()> {
             run,
         } => list_docs(skill.as_deref(), status.as_deref(), run.as_deref(), format),
         DocCommand::Show { id } => show_doc(&id, format),
-        DocCommand::Transition { id, action } => transition_doc(&id, &action, format),
+        DocCommand::Transition {
+            id,
+            action,
+            confirm,
+        } => transition_doc(&id, &action, confirm, format),
     }
 }
 
@@ -334,7 +341,7 @@ fn sync_pipeline_stage(
     Ok(new_state.map(|s| format!("Stage '{}' → {}", stage.name, s)))
 }
 
-fn transition_doc(id: &str, action: &str, format: &OutputFormat) -> anyhow::Result<()> {
+fn transition_doc(id: &str, action: &str, confirmed: bool, format: &OutputFormat) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let registry = load_registry()?;
     let db = IndexDb::open(&layout.db_path())?;
@@ -354,12 +361,18 @@ fn transition_doc(id: &str, action: &str, format: &OutputFormat) -> anyhow::Resu
         .get(&doc.skill_name)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // Check guard condition before allowing transition
     let transition = skill
         .available_actions(&doc.status)
         .into_iter()
         .find(|t| t.action == action)
         .ok_or_else(|| anyhow::anyhow!("Action '{}' not available from state '{}'", action, doc.status))?;
+
+    if transition.requires_approval && !confirmed {
+        anyhow::bail!(
+            "Action '{}' on '{}' requires human approval. Review the document and re-run with --confirm:\n  popsicle doc transition {} {} --confirm",
+            action, doc.title, id, action
+        );
+    }
 
     if let Some(ref guard_expr) = transition.guard {
         let all_docs = db

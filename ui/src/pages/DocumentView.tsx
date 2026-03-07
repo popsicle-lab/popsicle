@@ -7,6 +7,8 @@ import {
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import {
   FileText,
   Tag,
@@ -49,8 +51,10 @@ export function DocumentView({ docId }: Props) {
       {/* Document Body */}
       <div className="flex-1 min-w-0">
         <h2 className="text-2xl font-bold mb-4">{doc.title}</h2>
-        <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] p-6 prose prose-invert max-w-none">
-          <Markdown>{doc.body || "*No content yet*"}</Markdown>
+        <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] p-6 prose prose-invert max-w-none prose-pre:my-3 prose-headings:border-b prose-headings:border-[var(--border)] prose-headings:pb-2 prose-h1:text-xl prose-h2:text-lg prose-h3:text-base">
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            {doc.body || "*No content yet*"}
+          </Markdown>
         </div>
       </div>
 

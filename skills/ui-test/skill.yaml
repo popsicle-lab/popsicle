@@ -24,6 +24,7 @@ workflow:
       transitions:
         - to: generating
           action: approve
+          requires_approval: true
         - to: proposal
           action: revise
     generating:

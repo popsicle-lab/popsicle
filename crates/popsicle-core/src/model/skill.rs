@@ -74,6 +74,8 @@ pub struct TransitionDef {
     pub to: String,
     pub action: String,
     pub guard: Option<String>,
+    #[serde(default)]
+    pub requires_approval: bool,
 }
 
 /// Extension points: hooks triggered at various lifecycle events.
@@ -214,5 +216,49 @@ prompts:
         let actions = skill.available_actions("discussion");
         assert_eq!(actions.len(), 2);
         assert!(skill.available_actions("approved").is_empty());
+    }
+
+    #[test]
+    fn test_requires_approval_defaults_to_false() {
+        let skill: SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
+        let actions = skill.available_actions("discussion");
+        for t in &actions {
+            assert!(!t.requires_approval);
+        }
+    }
+
+    #[test]
+    fn test_requires_approval_parsed_from_yaml() {
+        let yaml = r#"
+name: test-skill
+description: Test
+version: "0.1.0"
+artifacts:
+  - type: doc
+    template: templates/doc.md
+    file_pattern: "{slug}.doc.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: review
+          action: submit
+    review:
+      transitions:
+        - to: approved
+          action: approve
+          requires_approval: true
+        - to: draft
+          action: revise
+    approved:
+      final: true
+"#;
+        let skill: SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
+        let actions = skill.available_actions("review");
+        let approve = actions.iter().find(|t| t.action == "approve").unwrap();
+        assert!(approve.requires_approval);
+        let revise = actions.iter().find(|t| t.action == "revise").unwrap();
+        assert!(!revise.requires_approval);
     }
 }

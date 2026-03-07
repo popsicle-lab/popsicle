@@ -23,6 +23,7 @@ workflow:
       transitions:
         - to: concluded
           action: conclude
+          requires_approval: true
         - to: setup
           action: restart
     concluded:

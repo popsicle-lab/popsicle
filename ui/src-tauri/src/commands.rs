@@ -79,6 +79,7 @@ pub fn list_skills(state: State<AppState>) -> Result<Vec<SkillInfo>, String> {
                         .map(|t| TransitionInfo {
                             to: t.to.clone(),
                             action: t.action.clone(),
+                            requires_approval: t.requires_approval,
                         })
                         .collect(),
                 })
@@ -281,6 +282,7 @@ pub fn get_next_steps(
             cli_command: s.cli_command.clone(),
             prompt: s.prompt.clone(),
             blocked_by: s.blocked_by.clone(),
+            requires_approval: s.requires_approval,
         })
         .collect())
 }

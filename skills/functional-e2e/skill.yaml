@@ -27,6 +27,7 @@ workflow:
       transitions:
         - to: approved
           action: approve
+          requires_approval: true
         - to: analysis
           action: revise
     approved:

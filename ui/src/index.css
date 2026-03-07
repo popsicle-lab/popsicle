@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --bg-primary: #0f172a;
@@ -12,6 +13,136 @@
   --accent-red: #f87171;
   --accent-purple: #a78bfa;
   --border: #475569;
+}
+
+.prose {
+  --tw-prose-body: var(--text-primary);
+  --tw-prose-headings: #f8fafc;
+  --tw-prose-links: var(--accent);
+  --tw-prose-bold: #f8fafc;
+  --tw-prose-code: var(--accent);
+  --tw-prose-pre-bg: var(--bg-primary);
+  --tw-prose-pre-code: var(--text-primary);
+  --tw-prose-quotes: var(--text-secondary);
+  --tw-prose-quote-borders: var(--accent);
+  --tw-prose-counters: var(--text-secondary);
+  --tw-prose-bullets: var(--text-secondary);
+  --tw-prose-hr: var(--border);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: rgba(71, 85, 105, 0.5);
+}
+
+.prose code:not(pre code) {
+  background: var(--bg-tertiary);
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.prose code:not(pre code)::before,
+.prose code:not(pre code)::after {
+  content: none;
+}
+
+.prose pre {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.prose blockquote {
+  border-left-width: 3px;
+  font-style: normal;
+}
+
+.prose table {
+  border-collapse: collapse;
+}
+
+.prose th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+}
+
+.prose th,
+.prose td {
+  padding: 0.5rem 0.75rem;
+}
+
+.prose img {
+  border-radius: 0.5rem;
+}
+
+.prose a {
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.prose a:hover {
+  text-decoration: underline;
+}
+
+.prose hr {
+  border-color: var(--border);
+}
+
+/* highlight.js atom-one-dark theme (trimmed) */
+.hljs {
+  color: #abb2bf;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: #c678dd;
+}
+.hljs-function .hljs-keyword {
+  color: #c678dd;
+}
+.hljs-string,
+.hljs-title.function_,
+.hljs-title.class_ {
+  color: #e5c07b;
+}
+.hljs-attr,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+  color: #98c379;
+}
+.hljs-string {
+  color: #98c379;
+}
+.hljs-title,
+.hljs-type {
+  color: #e5c07b;
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+  color: #5c6370;
+}
+.hljs-number {
+  color: #d19a66;
+}
+.hljs-built_in {
+  color: #e6c07b;
+}
+.hljs-variable,
+.hljs-template-variable {
+  color: #e06c75;
+}
+.hljs-params {
+  color: #abb2bf;
+}
+.hljs-property {
+  color: #56b6c2;
+}
+.hljs-subst {
+  color: #e06c75;
 }
 
 body {

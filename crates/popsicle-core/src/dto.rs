@@ -35,6 +35,7 @@ pub struct WorkflowStateInfo {
 pub struct TransitionInfo {
     pub to: String,
     pub action: String,
+    pub requires_approval: bool,
 }
 
 #[derive(Serialize)]
@@ -114,6 +115,7 @@ pub struct NextStepInfo {
     pub cli_command: String,
     pub prompt: Option<String>,
     pub blocked_by: Vec<String>,
+    pub requires_approval: bool,
 }
 
 #[derive(Serialize)]
