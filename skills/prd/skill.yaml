@@ -1,0 +1,38 @@
+name: prd
+description: Interactive PRD generation with quality scoring and iterative refinement
+version: "0.1.0"
+
+inputs:
+  - from_skill: product-debate
+    artifact_type: product-debate-record
+    required: false
+  - from_skill: domain-analysis
+    artifact_type: domain-model
+    required: false
+
+artifacts:
+  - type: prd
+    template: templates/prd.md
+    file_pattern: "{slug}.prd.md"
+
+workflow:
+  initial: gathering
+  states:
+    gathering:
+      transitions:
+        - to: scoring
+          action: assess
+    scoring:
+      transitions:
+        - to: approved
+          action: approve
+          guard: "has_sections:Executive Summary,Problem Statement,User Stories & Acceptance Criteria"
+        - to: gathering
+          action: refine
+    approved:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

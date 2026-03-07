@@ -63,6 +63,24 @@ jobs:
         working-directory: ui
         run: npm run build
 
+      - name: Generate Windows icon
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import struct
+          png_path = r'crates/popsicle-cli/icons/icon.png'
+          ico_path = r'crates/popsicle-cli/icons/icon.ico'
+          with open(png_path, 'rb') as f:
+              png_data = f.read()
+          width = struct.unpack('>I', png_data[16:20])[0]
+          height = struct.unpack('>I', png_data[20:24])[0]
+          header = struct.pack('<HHH', 0, 1, 1)
+          w = width if width < 256 else 0
+          h = height if height < 256 else 0
+          entry = struct.pack('<BBBBHHII', w, h, 0, 0, 1, 32, len(png_data), 22)
+          with open(ico_path, 'wb') as f:
+              f.write(header + entry + png_data)
+
       - name: Build binary
         run: cargo build -p popsicle-cli --features ui --release --target ${{ matrix.target }}
 

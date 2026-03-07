@@ -1,0 +1,37 @@
+name: test-report
+description: Test report parsing, bug registration, and coverage tracking
+version: "0.1.0"
+
+inputs:
+  - from_skill: bug-tracker
+    artifact_type: bug-report
+    required: false
+  - from_skill: priority-test-gate
+    artifact_type: test-gate-report
+    required: false
+
+artifacts:
+  - type: test-summary
+    template: templates/test-summary.md
+    file_pattern: "{slug}.test-summary.md"
+
+workflow:
+  initial: collecting
+  states:
+    collecting:
+      transitions:
+        - to: analyzed
+          action: analyze
+    analyzed:
+      transitions:
+        - to: finalized
+          action: finalize
+        - to: collecting
+          action: recollect
+    finalized:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

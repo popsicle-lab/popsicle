@@ -1,0 +1,35 @@
+name: priority-test-gate
+description: Auto-discover features, classify P0/P1/P2, generate unit tests for P0
+version: "0.1.0"
+
+inputs:
+  - from_skill: adr
+    artifact_type: adr
+    required: true
+
+artifacts:
+  - type: test-gate-report
+    template: templates/test-gate-report.md
+    file_pattern: "{slug}.test-gate.md"
+
+workflow:
+  initial: discovery
+  states:
+    discovery:
+      transitions:
+        - to: generating
+          action: confirm
+          guard: "upstream_approved"
+    generating:
+      transitions:
+        - to: completed
+          action: complete
+        - to: discovery
+          action: rediscover
+    completed:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

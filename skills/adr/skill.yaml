@@ -1,0 +1,43 @@
+name: adr
+description: Architecture Decision Record creation and management
+version: "0.1.0"
+
+inputs:
+  - from_skill: arch-debate
+    artifact_type: arch-debate-record
+    required: false
+  - from_skill: prd
+    artifact_type: prd
+    required: true
+
+artifacts:
+  - type: adr
+    template: templates/adr.md
+    file_pattern: "{slug}.adr.md"
+
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: proposed
+          action: submit
+          guard: "upstream_approved"
+    proposed:
+      transitions:
+        - to: accepted
+          action: accept
+          guard: "has_sections:Context,Decision,Consequences"
+        - to: draft
+          action: revise
+        - to: superseded
+          action: supersede
+    accepted:
+      final: true
+    superseded:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

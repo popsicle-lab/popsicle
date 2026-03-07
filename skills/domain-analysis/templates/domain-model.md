@@ -4,7 +4,7 @@ Brief description of the domain and its scope.
 
 ## Bounded Contexts
 
-### Context 1: [Name]
+### Context: [Name]
 
 **Responsibility**: ...
 
@@ -14,15 +14,14 @@ Brief description of the domain and its scope.
 
 **Domain Events**:
 - Event X occurred
-- Event Y occurred
 
 ## Entity Relationships
 
-Describe the relationships between core entities.
+Describe relationships between core entities.
 
 ## Aggregate Roots
 
-List and describe the aggregate roots.
+List and describe aggregate roots.
 
 ## Ubiquitous Language
 
@@ -33,4 +32,3 @@ List and describe the aggregate roots.
 ## Open Questions
 
 - [ ] Question 1
-- [ ] Question 2

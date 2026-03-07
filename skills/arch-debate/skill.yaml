@@ -1,0 +1,35 @@
+name: arch-debate
+description: Multi-persona architecture debate simulator for technical decisions
+version: "0.1.0"
+
+inputs:
+  - from_skill: prd
+    artifact_type: prd
+    required: true
+
+artifacts:
+  - type: arch-debate-record
+    template: templates/debate-record.md
+    file_pattern: "{slug}.arch-debate.md"
+
+workflow:
+  initial: setup
+  states:
+    setup:
+      transitions:
+        - to: debating
+          action: start
+          guard: "upstream_approved"
+    debating:
+      transitions:
+        - to: concluded
+          action: conclude
+        - to: setup
+          action: restart
+    concluded:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null
