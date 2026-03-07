@@ -1,0 +1,34 @@
+name: product-debate
+description: Multi-persona product debate simulator for exploring options before PRD
+version: "0.1.0"
+
+inputs:
+  - from_skill: domain-analysis
+    artifact_type: domain-model
+    required: false
+
+artifacts:
+  - type: product-debate-record
+    template: templates/debate-record.md
+    file_pattern: "{slug}.product-debate.md"
+
+workflow:
+  initial: setup
+  states:
+    setup:
+      transitions:
+        - to: debating
+          action: start
+    debating:
+      transitions:
+        - to: concluded
+          action: conclude
+        - to: setup
+          action: restart
+    concluded:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

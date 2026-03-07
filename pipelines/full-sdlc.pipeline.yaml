@@ -1,29 +1,47 @@
 name: full-sdlc
-description: Full software development lifecycle — from domain analysis to implementation
+description: Full software development lifecycle — domain analysis through testing and quality
 
 stages:
   - name: domain
     skill: domain-analysis
     description: Domain boundary analysis and model definition
 
-  - name: product
-    skill: product-prd
-    description: Product requirements document
+  - name: product-debate
+    skill: product-debate
+    description: Multi-persona product debate to explore options
     depends_on: [domain]
 
-  - name: tech-design
-    skills:
-      - tech-rfc
-      - tech-adr
-    description: Technical design — RFC and architecture decisions
+  - name: product
+    skill: prd
+    description: Product requirements document with quality scoring
+    depends_on: [product-debate]
+
+  - name: arch-debate
+    skill: arch-debate
+    description: Multi-persona architecture debate for technical decisions
     depends_on: [product]
 
-  - name: test-design
-    skill: test-spec
-    description: Test specification and planning
-    depends_on: [tech-design]
+  - name: architecture
+    skill: adr
+    description: Architecture Decision Record
+    depends_on: [arch-debate]
 
-  - name: implementation
-    skill: implementation
-    description: Code implementation
-    depends_on: [tech-design, test-design]
+  - name: test-planning
+    skills:
+      - priority-test-gate
+      - api-test-gen
+      - functional-e2e
+    description: Test specification and generation (parallel)
+    depends_on: [architecture]
+
+  - name: ui-testing
+    skill: ui-test
+    description: UI test specification and Playwright test generation
+    depends_on: [product]
+
+  - name: quality
+    skills:
+      - bug-tracker
+      - test-report
+    description: Bug tracking and test report analysis
+    depends_on: [test-planning, ui-testing]

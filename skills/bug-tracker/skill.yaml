@@ -1,0 +1,43 @@
+name: bug-tracker
+description: Test-driven bug tracking with dedup, recording, and reporting
+version: "0.1.0"
+
+inputs:
+  - from_skill: priority-test-gate
+    artifact_type: test-gate-report
+    required: false
+  - from_skill: api-test-gen
+    artifact_type: api-test-spec
+    required: false
+  - from_skill: ui-test
+    artifact_type: ui-test-spec
+    required: false
+  - from_skill: functional-e2e
+    artifact_type: e2e-test-spec
+    required: false
+
+artifacts:
+  - type: bug-report
+    template: templates/bug-report.md
+    file_pattern: "{slug}.bug-report.md"
+
+workflow:
+  initial: collecting
+  states:
+    collecting:
+      transitions:
+        - to: triaged
+          action: triage
+    triaged:
+      transitions:
+        - to: closed
+          action: close
+        - to: collecting
+          action: reopen
+    closed:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

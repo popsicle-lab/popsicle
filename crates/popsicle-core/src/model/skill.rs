@@ -23,6 +23,9 @@ pub struct SkillDef {
 
     #[serde(skip)]
     pub source_dir: PathBuf,
+    /// Writing guide loaded from guide.md (not part of skill.yaml).
+    #[serde(skip)]
+    pub guide: Option<String>,
 }
 
 fn default_version() -> String {
@@ -88,10 +91,17 @@ impl SkillDef {
         let mut skill: SkillDef = serde_yaml::from_str(&content).map_err(|e| {
             crate::error::PopsicleError::InvalidSkillDef(format!("{}: {}", path.display(), e))
         })?;
-        skill.source_dir = path
+        let dir = path
             .parent()
             .unwrap_or(std::path::Path::new("."))
             .to_path_buf();
+
+        let guide_path = dir.join("guide.md");
+        if guide_path.exists() {
+            skill.guide = std::fs::read_to_string(&guide_path).ok();
+        }
+
+        skill.source_dir = dir;
         Ok(skill)
     }
 

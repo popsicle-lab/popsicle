@@ -1,0 +1,38 @@
+name: functional-e2e
+description: Functional end-to-end test spec generation with six-perspective analysis
+version: "0.1.0"
+
+inputs:
+  - from_skill: prd
+    artifact_type: prd
+    required: true
+  - from_skill: adr
+    artifact_type: adr
+    required: false
+
+artifacts:
+  - type: e2e-test-spec
+    template: templates/e2e-test-spec.md
+    file_pattern: "{slug}.e2e-spec.md"
+
+workflow:
+  initial: analysis
+  states:
+    analysis:
+      transitions:
+        - to: review
+          action: submit
+          guard: "upstream_approved"
+    review:
+      transitions:
+        - to: approved
+          action: approve
+        - to: analysis
+          action: revise
+    approved:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

@@ -1,0 +1,39 @@
+name: api-test-gen
+description: Spec-driven API integration test generation (gRPC/HTTP)
+version: "0.1.0"
+
+inputs:
+  - from_skill: adr
+    artifact_type: adr
+    required: true
+
+artifacts:
+  - type: api-test-spec
+    template: templates/api-test-spec.md
+    file_pattern: "{slug}.api-test-spec.md"
+
+workflow:
+  initial: spec-gen
+  states:
+    spec-gen:
+      transitions:
+        - to: review
+          action: submit
+          guard: "upstream_approved"
+    review:
+      transitions:
+        - to: code-gen
+          action: approve
+        - to: spec-gen
+          action: revise
+    code-gen:
+      transitions:
+        - to: completed
+          action: complete
+    completed:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null
