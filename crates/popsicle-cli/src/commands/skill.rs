@@ -63,10 +63,10 @@ fn load_registry(extra_dir: Option<PathBuf>) -> anyhow::Result<SkillRegistry> {
                 .and_then(|p| p.parent())
                 .and_then(|p| p.parent())
                 .map(|p| p.join("skills"));
-            if let Some(dir) = dev_skills {
-                if dir.is_dir() {
-                    let _ = SkillLoader::load_dir(&dir, &mut registry);
-                }
+            if let Some(dir) = dev_skills
+                && dir.is_dir()
+            {
+                let _ = SkillLoader::load_dir(&dir, &mut registry);
             }
         }
     }
@@ -104,7 +104,7 @@ fn list_skills(skills_dir: Option<PathBuf>, format: &OutputFormat) -> anyhow::Re
                 println!("No skills found.");
                 return Ok(());
             }
-            println!("{:<25} {:<12} {}", "NAME", "VERSION", "DESCRIPTION");
+            println!("{:<25} {:<12} DESCRIPTION", "NAME", "VERSION");
             println!("{}", "-".repeat(70));
             for skill in &skills {
                 println!(

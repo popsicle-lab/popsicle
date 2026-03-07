@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
+use popsicle_core::dto::*;
 use popsicle_core::engine::Advisor;
 use popsicle_core::git::GitTracker;
-use popsicle_core::model::PipelineDef;
-use popsicle_core::registry::{PipelineLoader, SkillLoader, SkillRegistry};
+use popsicle_core::helpers;
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
-use serde::Serialize;
 use tauri::State;
 
 use crate::AppState;
@@ -16,39 +15,6 @@ fn get_dir(state: &State<AppState>) -> Result<PathBuf, String> {
         .as_ref()
         .map(PathBuf::from)
         .ok_or_else(|| "No project directory set".to_string())
-}
-
-fn load_registry(project_dir: &PathBuf) -> Result<SkillRegistry, String> {
-    let mut registry = SkillRegistry::new();
-    let skills_dir = project_dir.join("skills");
-    if skills_dir.is_dir() {
-        SkillLoader::load_dir(&skills_dir, &mut registry).map_err(|e| e.to_string())?;
-    }
-    let local_skills = project_dir.join(".popsicle").join("skills");
-    if local_skills.is_dir() {
-        SkillLoader::load_dir(&local_skills, &mut registry).map_err(|e| e.to_string())?;
-    }
-    Ok(registry)
-}
-
-fn load_pipelines(project_dir: &PathBuf) -> Result<Vec<PipelineDef>, String> {
-    let mut all = Vec::new();
-    for dir in [
-        project_dir.join("pipelines"),
-        project_dir.join(".popsicle").join("pipelines"),
-    ] {
-        if dir.is_dir() {
-            all.extend(PipelineLoader::load_dir(&dir).map_err(|e| e.to_string())?);
-        }
-    }
-    Ok(all)
-}
-
-fn find_pipeline(project_dir: &PathBuf, name: &str) -> Result<PipelineDef, String> {
-    load_pipelines(project_dir)?
-        .into_iter()
-        .find(|p| p.name == name)
-        .ok_or_else(|| format!("Pipeline not found: {}", name))
 }
 
 #[tauri::command]
@@ -81,7 +47,7 @@ pub fn get_project_status(state: State<AppState>) -> Result<ProjectInfo, String>
 #[tauri::command]
 pub fn list_skills(state: State<AppState>) -> Result<Vec<SkillInfo>, String> {
     let dir = get_dir(&state)?;
-    let registry = load_registry(&dir)?;
+    let registry = helpers::load_registry(&dir).map_err(|e| e.to_string())?;
     Ok(registry
         .list()
         .iter()
@@ -124,7 +90,7 @@ pub fn list_skills(state: State<AppState>) -> Result<Vec<SkillInfo>, String> {
 #[tauri::command]
 pub fn list_pipelines(state: State<AppState>) -> Result<Vec<PipelineInfo>, String> {
     let dir = get_dir(&state)?;
-    let pipelines = load_pipelines(&dir)?;
+    let pipelines = helpers::load_pipelines(&dir).map_err(|e| e.to_string())?;
     Ok(pipelines
         .iter()
         .map(|p| PipelineInfo {
@@ -176,7 +142,7 @@ pub fn get_pipeline_status(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Run not found: {}", run_id))?;
 
-    let pipeline_def = find_pipeline(&dir, &run.pipeline_name)?;
+    let pipeline_def = helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
     let docs = db
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
@@ -292,14 +258,14 @@ pub fn get_next_steps(
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-    let registry = load_registry(&dir)?;
+    let registry = helpers::load_registry(&dir).map_err(|e| e.to_string())?;
 
     let run = db
         .get_pipeline_run(&run_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Run not found: {}", run_id))?;
 
-    let pipeline_def = find_pipeline(&dir, &run.pipeline_name)?;
+    let pipeline_def = helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
     let docs = db
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
@@ -326,7 +292,7 @@ pub fn get_prompt(
     state: State<AppState>,
 ) -> Result<PromptInfo, String> {
     let dir = get_dir(&state)?;
-    let registry = load_registry(&dir)?;
+    let registry = helpers::load_registry(&dir).map_err(|e| e.to_string())?;
     let skill = registry.get(&skill_name).map_err(|e| e.to_string())?;
     let ws = workflow_state.as_deref().unwrap_or(&skill.workflow.initial);
     let prompt = skill.prompts.get(ws).cloned();
@@ -339,140 +305,6 @@ pub fn get_prompt(
     })
 }
 
-// Serializable DTOs for the frontend
-
-#[derive(Serialize)]
-pub struct ProjectInfo {
-    pub path: String,
-    pub initialized: bool,
-}
-
-#[derive(Serialize)]
-pub struct SkillInfo {
-    pub name: String,
-    pub description: String,
-    pub version: String,
-    pub artifact_types: Vec<String>,
-    pub workflow_initial: String,
-    pub inputs: Vec<SkillInputInfo>,
-    pub workflow_states: Vec<WorkflowStateInfo>,
-}
-
-#[derive(Serialize)]
-pub struct SkillInputInfo {
-    pub from_skill: String,
-    pub artifact_type: String,
-    pub required: bool,
-}
-
-#[derive(Serialize)]
-pub struct WorkflowStateInfo {
-    pub name: String,
-    pub is_final: bool,
-    pub transitions: Vec<TransitionInfo>,
-}
-
-#[derive(Serialize)]
-pub struct TransitionInfo {
-    pub to: String,
-    pub action: String,
-}
-
-#[derive(Serialize)]
-pub struct PipelineInfo {
-    pub name: String,
-    pub description: String,
-    pub stages: Vec<StageInfo>,
-}
-
-#[derive(Serialize)]
-pub struct StageInfo {
-    pub name: String,
-    pub skills: Vec<String>,
-    pub description: String,
-    pub depends_on: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct PipelineRunInfo {
-    pub id: String,
-    pub pipeline_name: String,
-    pub title: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Serialize)]
-pub struct PipelineStatusFull {
-    pub id: String,
-    pub pipeline_name: String,
-    pub title: String,
-    pub stages: Vec<StageStatusInfo>,
-}
-
-#[derive(Serialize)]
-pub struct StageStatusInfo {
-    pub name: String,
-    pub state: String,
-    pub skills: Vec<String>,
-    pub description: String,
-    pub depends_on: Vec<String>,
-    pub documents: Vec<DocInfo>,
-}
-
-#[derive(Clone, Serialize)]
-pub struct DocInfo {
-    pub id: String,
-    pub doc_type: String,
-    pub title: String,
-    pub status: String,
-    pub skill_name: String,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct DocFull {
-    pub id: String,
-    pub doc_type: String,
-    pub title: String,
-    pub status: String,
-    pub skill_name: String,
-    pub pipeline_run_id: String,
-    pub tags: Vec<String>,
-    pub body: String,
-    pub file_path: String,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct NextStepInfo {
-    pub stage: String,
-    pub skill: String,
-    pub action: String,
-    pub description: String,
-    pub cli_command: String,
-    pub prompt: Option<String>,
-    pub blocked_by: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct VerifyResult {
-    pub run_id: String,
-    pub verified: bool,
-    pub issues: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct PromptInfo {
-    pub skill: String,
-    pub state: String,
-    pub prompt: Option<String>,
-    pub available_states: Vec<String>,
-}
-
-// --- Pipeline verify ---
 
 #[tauri::command]
 pub fn verify_pipeline_run(
@@ -482,14 +314,14 @@ pub fn verify_pipeline_run(
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-    let registry = load_registry(&dir)?;
+    let registry = helpers::load_registry(&dir).map_err(|e| e.to_string())?;
 
     let run = db
         .get_pipeline_run(&run_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Run not found: {}", run_id))?;
 
-    let pipeline_def = find_pipeline(&dir, &run.pipeline_name)?;
+    let pipeline_def = helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
     let docs = db
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
@@ -518,13 +350,13 @@ pub fn verify_pipeline_run(
                 issues.push(format!("No documents for skill '{}'", skill_name));
             }
             for d in &skill_docs {
-                if let Ok(skill) = registry.get(&d.skill_name) {
-                    if !skill.is_final_state(&d.status) {
-                        issues.push(format!(
-                            "'{}' is '{}', not final",
-                            d.title, d.status
-                        ));
-                    }
+                if let Ok(skill) = registry.get(&d.skill_name)
+                    && !skill.is_final_state(&d.status)
+                {
+                    issues.push(format!(
+                        "'{}' is '{}', not final",
+                        d.title, d.status
+                    ));
                 }
             }
         }
@@ -545,8 +377,6 @@ pub fn get_project_config(state: State<AppState>) -> Result<serde_json::Value, S
         popsicle_core::storage::ProjectConfig::load(&layout.config_path()).map_err(|e| e.to_string())?;
     serde_json::to_value(&config).map_err(|e| e.to_string())
 }
-
-// --- Git integration commands ---
 
 #[tauri::command]
 pub fn get_git_status(state: State<AppState>) -> Result<GitStatusInfo, String> {
@@ -585,8 +415,8 @@ pub fn get_git_status(state: State<AppState>) -> Result<GitStatusInfo, String> {
         pipeline_run_id: run_id,
         total_commits: total,
         pending_review: pending,
-        passed: passed,
-        failed: failed,
+        passed,
+        failed,
     })
 }
 
@@ -636,30 +466,3 @@ pub fn get_commit_links(
     Ok(result)
 }
 
-#[derive(Serialize)]
-pub struct GitStatusInfo {
-    pub branch: String,
-    pub head: String,
-    pub uncommitted_changes: bool,
-    pub pipeline_run_id: Option<String>,
-    pub total_commits: usize,
-    pub pending_review: usize,
-    pub passed: usize,
-    pub failed: usize,
-}
-
-#[derive(Serialize)]
-pub struct CommitLinkInfo {
-    pub sha: String,
-    pub short_sha: String,
-    pub message: String,
-    pub author: String,
-    pub timestamp: String,
-    pub doc_id: Option<String>,
-    pub pipeline_run_id: String,
-    pub stage: Option<String>,
-    pub skill: Option<String>,
-    pub review_status: String,
-    pub review_summary: Option<String>,
-    pub linked_at: String,
-}

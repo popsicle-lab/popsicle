@@ -16,7 +16,7 @@ repository = "https://github.com/popsicle"
 popsicle-core = { path = "crates/popsicle-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
+serde_yaml_ng = "0.10"
 thiserror = "2"
 anyhow = "1"
 uuid = { version = "1", features = ["v4"] }

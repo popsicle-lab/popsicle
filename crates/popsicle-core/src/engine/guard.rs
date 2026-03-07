@@ -72,13 +72,13 @@ fn check_upstream_approved(
         }
 
         for ud in &upstream_docs {
-            if let Ok(upstream_skill) = registry.get(&ud.skill_name) {
-                if !upstream_skill.is_final_state(&ud.status) {
-                    not_final.push(format!(
-                        "{} '{}' is '{}', not final",
-                        ud.skill_name, ud.title, ud.status
-                    ));
-                }
+            if let Ok(upstream_skill) = registry.get(&ud.skill_name)
+                && !upstream_skill.is_final_state(&ud.status)
+            {
+                not_final.push(format!(
+                    "{} '{}' is '{}', not final",
+                    ud.skill_name, ud.title, ud.status
+                ));
             }
         }
     }
@@ -236,7 +236,7 @@ mod tests {
             skill_name: "product-prd".into(),
             pipeline_run_id: "r1".into(),
             tags: vec![],
-            metadata: serde_yaml::Value::Null,
+            metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
             body: "## Background\n\nWe need caching for performance.\n\n## Goals\n\n- Reduce latency to under 200ms\n".into(),
@@ -257,7 +257,7 @@ mod tests {
             skill_name: "product-prd".into(),
             pipeline_run_id: "r1".into(),
             tags: vec![],
-            metadata: serde_yaml::Value::Null,
+            metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
             body: "## Background\n\nSome content.\n".into(),
@@ -279,7 +279,7 @@ mod tests {
             skill_name: "product-prd".into(),
             pipeline_run_id: "r1".into(),
             tags: vec![],
-            metadata: serde_yaml::Value::Null,
+            metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
             body: "## Background\n\nDescribe the business context.\n\n## Goals\n\n- Reduce latency\n".into(),

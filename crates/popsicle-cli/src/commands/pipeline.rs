@@ -1,9 +1,8 @@
 use std::env;
 
-use anyhow::Context;
 use popsicle_core::engine::Advisor;
+use popsicle_core::helpers;
 use popsicle_core::model::{PipelineDef, PipelineRun, StageState};
-use popsicle_core::registry::{PipelineLoader, SkillLoader, SkillRegistry};
 use popsicle_core::storage::{IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -85,24 +84,7 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
 
 fn load_pipelines() -> anyhow::Result<Vec<PipelineDef>> {
     let cwd = env::current_dir()?;
-    let mut all = Vec::new();
-
-    let workspace_pipelines = cwd.join("pipelines");
-    if workspace_pipelines.is_dir() {
-        all.extend(
-            PipelineLoader::load_dir(&workspace_pipelines)
-                .context("Loading pipeline templates")?,
-        );
-    }
-
-    let local_pipelines = cwd.join(".popsicle").join("pipelines");
-    if local_pipelines.is_dir() {
-        all.extend(
-            PipelineLoader::load_dir(&local_pipelines).context("Loading local pipelines")?,
-        );
-    }
-
-    Ok(all)
+    helpers::load_pipelines(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
@@ -130,10 +112,10 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
                 issues.push(format!("No documents for skill '{}'", skill_name));
             }
             for d in &skill_docs {
-                if let Ok(skill) = registry.get(&d.skill_name) {
-                    if !skill.is_final_state(&d.status) {
-                        issues.push(format!("Document '{}' is '{}', not final", d.title, d.status));
-                    }
+                if let Ok(skill) = registry.get(&d.skill_name)
+                    && !skill.is_final_state(&d.status)
+                {
+                    issues.push(format!("Document '{}' is '{}', not final", d.title, d.status));
                 }
             }
         }
@@ -354,37 +336,18 @@ stages:
 }
 
 fn find_pipeline(name: &str) -> anyhow::Result<PipelineDef> {
-    let pipelines = load_pipelines()?;
-    pipelines
-        .into_iter()
-        .find(|p| p.name == name)
-        .ok_or_else(|| anyhow::anyhow!("Pipeline template not found: {}", name))
+    let cwd = env::current_dir()?;
+    helpers::find_pipeline(&cwd, name).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-fn load_registry() -> anyhow::Result<SkillRegistry> {
-    let mut registry = SkillRegistry::new();
+fn load_registry() -> anyhow::Result<popsicle_core::registry::SkillRegistry> {
     let cwd = env::current_dir()?;
-
-    let workspace_skills = cwd.join("skills");
-    if workspace_skills.is_dir() {
-        SkillLoader::load_dir(&workspace_skills, &mut registry)?;
-    }
-
-    let local_skills = cwd.join(".popsicle").join("skills");
-    if local_skills.is_dir() {
-        SkillLoader::load_dir(&local_skills, &mut registry)?;
-    }
-
-    Ok(registry)
+    helpers::load_registry(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 fn project_layout() -> anyhow::Result<ProjectLayout> {
     let cwd = env::current_dir()?;
-    let layout = ProjectLayout::new(&cwd);
-    layout
-        .ensure_initialized()
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    Ok(layout)
+    helpers::project_layout(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 fn get_run(db: &IndexDb, run_id: Option<&str>) -> anyhow::Result<PipelineRun> {
@@ -414,7 +377,7 @@ fn list_pipelines(format: &OutputFormat) -> anyhow::Result<()> {
                 println!("No pipeline templates found.");
                 return Ok(());
             }
-            println!("{:<25} {:<6} {}", "NAME", "STAGES", "DESCRIPTION");
+            println!("{:<25} {:<6} DESCRIPTION", "NAME", "STAGES");
             println!("{}", "-".repeat(70));
             for p in &pipelines {
                 println!("{:<25} {:<6} {}", p.name, p.stages.len(), p.description);
@@ -467,7 +430,8 @@ fn run_pipeline(pipeline_name: &str, title: &str, format: &OutputFormat) -> anyh
             println!("  Title: {}", title);
             println!("  Stages:");
             for stage in &pipeline_def.stages {
-                let state = run.stage_states.get(&stage.name).unwrap();
+                let state = run.stage_states.get(&stage.name)
+                    .ok_or_else(|| anyhow::anyhow!("Missing state for stage '{}'", stage.name))?;
                 println!(
                     "    {:<20} {:<12} [{}]",
                     stage.name,
@@ -507,7 +471,7 @@ fn show_status(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()
             println!("Pipeline: {}", run.pipeline_name);
             println!("Created: {}", run.created_at.format("%Y-%m-%d %H:%M"));
             println!();
-            println!("{:<20} {:<14} {}", "STAGE", "STATUS", "SKILLS / DOCUMENTS");
+            println!("{:<20} {:<14} SKILLS / DOCUMENTS", "STAGE", "STATUS");
             println!("{}", "-".repeat(75));
 
             for stage in &pipeline_def.stages {

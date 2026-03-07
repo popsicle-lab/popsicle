@@ -16,7 +16,7 @@ pub struct Document {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub metadata: serde_yaml::Value,
+    pub metadata: serde_yaml_ng::Value,
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -50,7 +50,7 @@ impl Document {
             skill_name: skill_name.into(),
             pipeline_run_id: pipeline_run_id.into(),
             tags: Vec::new(),
-            metadata: serde_yaml::Value::Null,
+            metadata: serde_yaml_ng::Value::Null,
             created_at: Some(now),
             updated_at: Some(now),
             body: String::new(),
@@ -60,14 +60,14 @@ impl Document {
 
     /// Serialize to file content: YAML frontmatter + Markdown body.
     pub fn to_file_content(&self) -> crate::error::Result<String> {
-        let frontmatter = serde_yaml::to_string(self)?;
+        let frontmatter = serde_yaml_ng::to_string(self)?;
         Ok(format!("---\n{}---\n\n{}", frontmatter, self.body))
     }
 
     /// Parse from raw file content (YAML frontmatter + Markdown body).
     pub fn from_file_content(content: &str, file_path: PathBuf) -> crate::error::Result<Self> {
         let raw = parse_frontmatter(content)?;
-        let mut doc: Document = serde_yaml::from_str(&raw.frontmatter)?;
+        let mut doc: Document = serde_yaml_ng::from_str(&raw.frontmatter)?;
         doc.body = raw.body;
         doc.file_path = file_path;
         Ok(doc)

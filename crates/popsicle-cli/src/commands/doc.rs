@@ -3,8 +3,9 @@ use std::env;
 use anyhow::Context;
 use popsicle_core::engine::guard;
 use popsicle_core::engine::hooks::{self, HookContext, HookEvent};
+use popsicle_core::helpers;
 use popsicle_core::model::{Document, PipelineDef, StageState};
-use popsicle_core::registry::{PipelineLoader, SkillLoader, SkillRegistry};
+use popsicle_core::registry::SkillRegistry;
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -63,28 +64,12 @@ pub fn execute(cmd: DocCommand, format: &OutputFormat) -> anyhow::Result<()> {
 
 fn project_layout() -> anyhow::Result<ProjectLayout> {
     let cwd = env::current_dir()?;
-    let layout = ProjectLayout::new(&cwd);
-    layout
-        .ensure_initialized()
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    Ok(layout)
+    helpers::project_layout(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-fn load_registry() -> anyhow::Result<SkillRegistry> {
-    let mut registry = SkillRegistry::new();
+fn load_registry() -> anyhow::Result<popsicle_core::registry::SkillRegistry> {
     let cwd = env::current_dir()?;
-
-    let workspace_skills = cwd.join("skills");
-    if workspace_skills.is_dir() {
-        SkillLoader::load_dir(&workspace_skills, &mut registry)?;
-    }
-
-    let local_skills = cwd.join(".popsicle").join("skills");
-    if local_skills.is_dir() {
-        SkillLoader::load_dir(&local_skills, &mut registry)?;
-    }
-
-    Ok(registry)
+    helpers::load_registry(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 fn create_doc(
@@ -189,8 +174,8 @@ fn list_docs(
                 return Ok(());
             }
             println!(
-                "{:<38} {:<15} {:<15} {:<12} {}",
-                "ID", "TYPE", "SKILL", "STATUS", "TITLE"
+                "{:<38} {:<15} {:<15} {:<12} TITLE",
+                "ID", "TYPE", "SKILL", "STATUS"
             );
             println!("{}", "-".repeat(95));
             for doc in &docs {
@@ -261,15 +246,11 @@ fn show_doc(id: &str, format: &OutputFormat) -> anyhow::Result<()> {
 
 fn find_pipeline(name: &str) -> anyhow::Result<Option<PipelineDef>> {
     let cwd = env::current_dir()?;
-    let mut all = Vec::new();
-
-    for dir in [cwd.join("pipelines"), cwd.join(".popsicle").join("pipelines")] {
-        if dir.is_dir() {
-            all.extend(PipelineLoader::load_dir(&dir)?);
-        }
+    match helpers::find_pipeline(&cwd, name) {
+        Ok(p) => Ok(Some(p)),
+        Err(popsicle_core::error::PopsicleError::Storage(_)) => Ok(None),
+        Err(e) => Err(anyhow::anyhow!("{}", e)),
     }
-
-    Ok(all.into_iter().find(|p| p.name == name))
 }
 
 /// After a document reaches a final state, check if the Pipeline Stage

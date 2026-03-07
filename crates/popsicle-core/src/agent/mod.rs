@@ -11,7 +11,7 @@ pub enum AgentTarget {
 }
 
 impl AgentTarget {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "claude" => Some(Self::Claude),
             "cursor" => Some(Self::Cursor),
@@ -143,7 +143,7 @@ fn build_skill_command(skill: &SkillDef) -> String {
     if let Some(ref guide) = skill.guide {
         s.push_str("\n## Writing Guide\n\n");
         s.push_str(guide.trim());
-        s.push_str("\n");
+        s.push('\n');
     }
 
     s
@@ -245,7 +245,8 @@ fn install_cursor(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
         "---\nname: popsicle\ndescription: Popsicle spec-driven development assistant\n---\n\n",
     );
     agent.push_str(overview);
-    agent.push('\n');
+        agent.push('\n');
+
     for skill in skills {
         agent.push_str(&format!("\n---\n\n# Skill: {}\n\n", skill.name));
         agent.push_str(&build_skill_command(skill));

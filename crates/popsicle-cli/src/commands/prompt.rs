@@ -1,6 +1,7 @@
 use std::env;
 
-use popsicle_core::registry::{SkillLoader, SkillRegistry};
+use popsicle_core::helpers;
+use popsicle_core::registry::SkillRegistry;
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -145,21 +146,9 @@ fn build_input_context(
     }
 }
 
-fn load_registry() -> anyhow::Result<SkillRegistry> {
-    let mut registry = SkillRegistry::new();
+fn load_registry() -> anyhow::Result<popsicle_core::registry::SkillRegistry> {
     let cwd = env::current_dir()?;
-
-    let workspace_skills = cwd.join("skills");
-    if workspace_skills.is_dir() {
-        SkillLoader::load_dir(&workspace_skills, &mut registry)?;
-    }
-
-    let local_skills = cwd.join(".popsicle").join("skills");
-    if local_skills.is_dir() {
-        SkillLoader::load_dir(&local_skills, &mut registry)?;
-    }
-
-    Ok(registry)
+    helpers::load_registry(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 /// Replace template variables in prompt text.

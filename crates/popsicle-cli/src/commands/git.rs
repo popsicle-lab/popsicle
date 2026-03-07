@@ -259,8 +259,8 @@ fn show_log(
     match format {
         OutputFormat::Text => {
             println!(
-                "{:<10} {:<12} {:<10} {:<10} {}",
-                "SHA", "REVIEW", "STAGE", "SKILL", "MESSAGE"
+                "{:<10} {:<12} {:<10} {:<10} MESSAGE",
+                "SHA", "REVIEW", "STAGE", "SKILL"
             );
             println!("{}", "-".repeat(80));
 

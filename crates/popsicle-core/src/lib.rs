@@ -1,7 +1,9 @@
 pub mod agent;
+pub mod dto;
 pub mod engine;
 pub mod error;
 pub mod git;
+pub mod helpers;
 pub mod model;
 pub mod registry;
 pub mod scaffold;
