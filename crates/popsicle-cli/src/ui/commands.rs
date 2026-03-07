@@ -8,7 +8,7 @@ use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
 use serde::Serialize;
 use tauri::State;
 
-use crate::AppState;
+use super::AppState;
 
 fn get_dir(state: &State<AppState>) -> Result<PathBuf, String> {
     let guard = state.project_dir.lock().map_err(|e| e.to_string())?;
@@ -339,7 +339,165 @@ pub fn get_prompt(
     })
 }
 
-// Serializable DTOs for the frontend
+#[tauri::command]
+pub fn verify_pipeline_run(
+    run_id: String,
+    state: State<AppState>,
+) -> Result<VerifyResult, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+    let registry = load_registry(&dir)?;
+
+    let run = db
+        .get_pipeline_run(&run_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Run not found: {}", run_id))?;
+
+    let pipeline_def = find_pipeline(&dir, &run.pipeline_name)?;
+    let docs = db
+        .query_documents(None, None, Some(&run_id))
+        .map_err(|e| e.to_string())?;
+
+    let mut issues = Vec::new();
+
+    for stage in &pipeline_def.stages {
+        let stage_state = run.stage_states.get(&stage.name);
+        if !matches!(
+            stage_state,
+            Some(popsicle_core::model::StageState::Completed)
+                | Some(popsicle_core::model::StageState::Skipped)
+        ) {
+            issues.push(format!(
+                "Stage '{}' is {}",
+                stage.name,
+                stage_state
+                    .map(|s| s.to_string())
+                    .unwrap_or("unknown".into())
+            ));
+        }
+
+        for skill_name in stage.skill_names() {
+            let skill_docs: Vec<_> = docs.iter().filter(|d| d.skill_name == skill_name).collect();
+            if skill_docs.is_empty() {
+                issues.push(format!("No documents for skill '{}'", skill_name));
+            }
+            for d in &skill_docs {
+                if let Ok(skill) = registry.get(&d.skill_name) {
+                    if !skill.is_final_state(&d.status) {
+                        issues.push(format!(
+                            "'{}' is '{}', not final",
+                            d.title, d.status
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(VerifyResult {
+        run_id,
+        verified: issues.is_empty(),
+        issues,
+    })
+}
+
+#[tauri::command]
+pub fn get_project_config(state: State<AppState>) -> Result<serde_json::Value, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let config =
+        popsicle_core::storage::ProjectConfig::load(&layout.config_path()).map_err(|e| e.to_string())?;
+    serde_json::to_value(&config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_git_status(state: State<AppState>) -> Result<GitStatusInfo, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let branch = GitTracker::current_branch(&dir).unwrap_or_else(|_| "unknown".into());
+    let has_changes = GitTracker::has_uncommitted_changes(&dir).unwrap_or(false);
+    let head = GitTracker::head_sha(&dir)
+        .map(|s| s[..8.min(s.len())].to_string())
+        .unwrap_or_else(|_| "unknown".into());
+
+    let run_id = db
+        .list_pipeline_runs()
+        .ok()
+        .and_then(|runs| runs.first().map(|r| r.id.clone()));
+
+    let (total, pending, passed, failed) = if let Some(ref rid) = run_id {
+        let links = db
+            .query_commit_links(Some(rid), None, None)
+            .unwrap_or_default();
+        let t = links.len();
+        let p = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Pending).count();
+        let pa = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Passed).count();
+        let f = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Failed).count();
+        (t, p, pa, f)
+    } else {
+        (0, 0, 0, 0)
+    };
+
+    Ok(GitStatusInfo {
+        branch,
+        head,
+        uncommitted_changes: has_changes,
+        pipeline_run_id: run_id,
+        total_commits: total,
+        pending_review: pending,
+        passed,
+        failed,
+    })
+}
+
+#[tauri::command]
+pub fn get_commit_links(
+    run_id: Option<String>,
+    doc_id: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<CommitLinkInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let rid = match run_id {
+        Some(r) => Some(r),
+        None => db
+            .list_pipeline_runs()
+            .ok()
+            .and_then(|runs| runs.first().map(|r| r.id.clone())),
+    };
+
+    let links = db
+        .query_commit_links(rid.as_deref(), doc_id.as_deref(), None)
+        .map_err(|e| e.to_string())?;
+
+    let result: Vec<CommitLinkInfo> = links
+        .iter()
+        .map(|l| {
+            let commit = GitTracker::commit_info(&dir, &l.sha).ok();
+            CommitLinkInfo {
+                sha: l.sha.clone(),
+                short_sha: commit.as_ref().map(|c| c.short_sha.clone()).unwrap_or_else(|| l.sha[..8.min(l.sha.len())].to_string()),
+                message: commit.as_ref().map(|c| c.message.clone()).unwrap_or_default(),
+                author: commit.as_ref().map(|c| c.author.clone()).unwrap_or_default(),
+                timestamp: commit.as_ref().map(|c| c.timestamp.clone()).unwrap_or_default(),
+                doc_id: l.doc_id.clone(),
+                pipeline_run_id: l.pipeline_run_id.clone(),
+                stage: l.stage.clone(),
+                skill: l.skill.clone(),
+                review_status: l.review_status.to_string(),
+                review_summary: l.review_summary.clone(),
+                linked_at: l.linked_at.clone(),
+            }
+        })
+        .collect();
+
+    Ok(result)
+}
 
 #[derive(Serialize)]
 pub struct ProjectInfo {
@@ -470,170 +628,6 @@ pub struct PromptInfo {
     pub state: String,
     pub prompt: Option<String>,
     pub available_states: Vec<String>,
-}
-
-// --- Pipeline verify ---
-
-#[tauri::command]
-pub fn verify_pipeline_run(
-    run_id: String,
-    state: State<AppState>,
-) -> Result<VerifyResult, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-    let registry = load_registry(&dir)?;
-
-    let run = db
-        .get_pipeline_run(&run_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Run not found: {}", run_id))?;
-
-    let pipeline_def = find_pipeline(&dir, &run.pipeline_name)?;
-    let docs = db
-        .query_documents(None, None, Some(&run_id))
-        .map_err(|e| e.to_string())?;
-
-    let mut issues = Vec::new();
-
-    for stage in &pipeline_def.stages {
-        let stage_state = run.stage_states.get(&stage.name);
-        if !matches!(
-            stage_state,
-            Some(popsicle_core::model::StageState::Completed)
-                | Some(popsicle_core::model::StageState::Skipped)
-        ) {
-            issues.push(format!(
-                "Stage '{}' is {}",
-                stage.name,
-                stage_state
-                    .map(|s| s.to_string())
-                    .unwrap_or("unknown".into())
-            ));
-        }
-
-        for skill_name in stage.skill_names() {
-            let skill_docs: Vec<_> = docs.iter().filter(|d| d.skill_name == skill_name).collect();
-            if skill_docs.is_empty() {
-                issues.push(format!("No documents for skill '{}'", skill_name));
-            }
-            for d in &skill_docs {
-                if let Ok(skill) = registry.get(&d.skill_name) {
-                    if !skill.is_final_state(&d.status) {
-                        issues.push(format!(
-                            "'{}' is '{}', not final",
-                            d.title, d.status
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(VerifyResult {
-        run_id,
-        verified: issues.is_empty(),
-        issues,
-    })
-}
-
-#[tauri::command]
-pub fn get_project_config(state: State<AppState>) -> Result<serde_json::Value, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let config =
-        popsicle_core::storage::ProjectConfig::load(&layout.config_path()).map_err(|e| e.to_string())?;
-    serde_json::to_value(&config).map_err(|e| e.to_string())
-}
-
-// --- Git integration commands ---
-
-#[tauri::command]
-pub fn get_git_status(state: State<AppState>) -> Result<GitStatusInfo, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let branch = GitTracker::current_branch(&dir).unwrap_or_else(|_| "unknown".into());
-    let has_changes = GitTracker::has_uncommitted_changes(&dir).unwrap_or(false);
-    let head = GitTracker::head_sha(&dir)
-        .map(|s| s[..8.min(s.len())].to_string())
-        .unwrap_or_else(|_| "unknown".into());
-
-    let run_id = db
-        .list_pipeline_runs()
-        .ok()
-        .and_then(|runs| runs.first().map(|r| r.id.clone()));
-
-    let (total, pending, passed, failed) = if let Some(ref rid) = run_id {
-        let links = db
-            .query_commit_links(Some(rid), None, None)
-            .unwrap_or_default();
-        let t = links.len();
-        let p = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Pending).count();
-        let pa = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Passed).count();
-        let f = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Failed).count();
-        (t, p, pa, f)
-    } else {
-        (0, 0, 0, 0)
-    };
-
-    Ok(GitStatusInfo {
-        branch,
-        head,
-        uncommitted_changes: has_changes,
-        pipeline_run_id: run_id,
-        total_commits: total,
-        pending_review: pending,
-        passed: passed,
-        failed: failed,
-    })
-}
-
-#[tauri::command]
-pub fn get_commit_links(
-    run_id: Option<String>,
-    doc_id: Option<String>,
-    state: State<AppState>,
-) -> Result<Vec<CommitLinkInfo>, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let rid = match run_id {
-        Some(r) => Some(r),
-        None => db
-            .list_pipeline_runs()
-            .ok()
-            .and_then(|runs| runs.first().map(|r| r.id.clone())),
-    };
-
-    let links = db
-        .query_commit_links(rid.as_deref(), doc_id.as_deref(), None)
-        .map_err(|e| e.to_string())?;
-
-    let result: Vec<CommitLinkInfo> = links
-        .iter()
-        .map(|l| {
-            let commit = GitTracker::commit_info(&dir, &l.sha).ok();
-            CommitLinkInfo {
-                sha: l.sha.clone(),
-                short_sha: commit.as_ref().map(|c| c.short_sha.clone()).unwrap_or_else(|| l.sha[..8.min(l.sha.len())].to_string()),
-                message: commit.as_ref().map(|c| c.message.clone()).unwrap_or_default(),
-                author: commit.as_ref().map(|c| c.author.clone()).unwrap_or_default(),
-                timestamp: commit.as_ref().map(|c| c.timestamp.clone()).unwrap_or_default(),
-                doc_id: l.doc_id.clone(),
-                pipeline_run_id: l.pipeline_run_id.clone(),
-                stage: l.stage.clone(),
-                skill: l.skill.clone(),
-                review_status: l.review_status.to_string(),
-                review_summary: l.review_summary.clone(),
-                linked_at: l.linked_at.clone(),
-            }
-        })
-        .collect();
-
-    Ok(result)
 }
 
 #[derive(Serialize)]

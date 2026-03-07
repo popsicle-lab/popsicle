@@ -1,4 +1,6 @@
 mod commands;
+#[cfg(feature = "ui")]
+mod ui;
 
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
@@ -27,10 +29,18 @@ pub enum OutputFormat {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    if let commands::Command::Completions { shell } = &cli.command {
-        let mut cmd = Cli::command();
-        generate(*shell, &mut cmd, "popsicle", &mut std::io::stdout());
-        return Ok(());
+    match &cli.command {
+        commands::Command::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(*shell, &mut cmd, "popsicle", &mut std::io::stdout());
+            return Ok(());
+        }
+        #[cfg(feature = "ui")]
+        commands::Command::Ui => {
+            ui::run();
+            return Ok(());
+        }
+        _ => {}
     }
 
     commands::execute(cli.command, &cli.format)

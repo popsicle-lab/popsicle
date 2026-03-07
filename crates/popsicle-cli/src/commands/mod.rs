@@ -48,6 +48,10 @@ pub enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
+
+    /// Launch the graphical UI
+    #[cfg(feature = "ui")]
+    Ui,
 }
 
 pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
@@ -61,5 +65,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Context(args) => context::execute(args, format),
         Command::Prompt(args) => prompt::execute(args, format),
         Command::Completions { .. } => Ok(()),
+        #[cfg(feature = "ui")]
+        Command::Ui => unreachable!(),
     }
 }

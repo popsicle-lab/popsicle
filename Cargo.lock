@@ -2539,8 +2539,13 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "notify",
  "popsicle-core",
+ "serde",
  "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-shell",
 ]
 
 [[package]]

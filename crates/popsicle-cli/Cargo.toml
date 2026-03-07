@@ -9,10 +9,21 @@ license.workspace = true
 name = "popsicle"
 path = "src/main.rs"
 
+[features]
+default = []
+ui = ["dep:tauri", "dep:tauri-plugin-shell", "dep:notify", "dep:serde", "dep:tauri-build"]
+
 [dependencies]
 popsicle-core = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
+serde = { workspace = true, optional = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
+notify = { version = "7", features = ["macos_fsevent"], optional = true }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }

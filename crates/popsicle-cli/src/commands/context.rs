@@ -144,9 +144,10 @@ fn find_pipeline(name: &str) -> anyhow::Result<PipelineDef> {
     let cwd = env::current_dir()?;
     let mut all = Vec::new();
 
-    let workspace_pipelines = cwd.join("pipelines");
-    if workspace_pipelines.is_dir() {
-        all.extend(PipelineLoader::load_dir(&workspace_pipelines).context("Loading pipelines")?);
+    for dir in [cwd.join("pipelines"), cwd.join(".popsicle").join("pipelines")] {
+        if dir.is_dir() {
+            all.extend(PipelineLoader::load_dir(&dir).context("Loading pipelines")?);
+        }
     }
 
     all.into_iter()
