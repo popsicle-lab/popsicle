@@ -145,6 +145,73 @@ product-debate（本 skill）
 
 新项目首次使用时，可参照已有配置创建这两个文件，为项目的产品线定制合适的角色阵容。
 
+## 讨论持久化协议
+
+辩论过程通过 `popsicle discussion` 命令持久化，确保多角色讨论不丢失。
+
+### 辩论开始时
+
+```bash
+# 创建讨论会话
+popsicle discussion create --skill product-debate --topic "<讨论主题>" --run <run-id> --confidence <1-5>
+
+# 注册参与角色
+popsicle discussion role <discussion-id> --role-id pm --name "产品经理" --perspective "用户价值与优先级" --source builtin
+popsicle discussion role <discussion-id> --role-id uxr --name "用户体验研究员" --perspective "用户行为与体验" --source builtin
+# ... 其他参与角色
+```
+
+### 每次角色发言后
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role <role-id> --role-name "<显示名>" \
+  --phase "Phase 1: 用户需求与问题定义" \
+  --type role-statement \
+  --content "<发言内容>"
+```
+
+### 用户输入后
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role user --role-name "User" \
+  --phase "Phase 1: 用户需求与问题定义" \
+  --type user-input \
+  --content "<用户输入>"
+```
+
+### 暂停点
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role system --role-name "System" \
+  --phase "Phase 1: 用户需求与问题定义" \
+  --type pause-point \
+  --content "请分享您对这个问题的看法？"
+```
+
+### 阶段小结
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role system --role-name "System" \
+  --phase "Phase 1: 用户需求与问题定义" \
+  --type phase-summary \
+  --content "共识: ...\n分歧: ..."
+```
+
+### 辩论结束时
+
+```bash
+# 结束讨论并自动导出 Markdown
+popsicle discussion conclude <discussion-id>
+```
+
+这将自动在 `.popsicle/artifacts/<run-id>/` 目录下生成 `<slug>.product-debate.discussion.md` 文件，完整记录讨论过程。
+
+**最低要求**：至少在每个 Phase 的暂停点和阶段小结时调用 `discussion message`，确保关键决策节点被记录。
+
 ## 参考资源
 
 ### Reference 文件

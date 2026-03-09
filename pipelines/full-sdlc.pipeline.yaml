@@ -1,15 +1,10 @@
 name: full-sdlc
-description: Full software development lifecycle — domain analysis through testing and quality
+description: Full software development lifecycle — product debate through testing and quality
 
 stages:
-  - name: domain
-    skill: domain-analysis
-    description: Domain boundary analysis and model definition
-
   - name: product-debate
     skill: product-debate
     description: Multi-persona product debate to explore options
-    depends_on: [domain]
 
   - name: product
     skill: prd

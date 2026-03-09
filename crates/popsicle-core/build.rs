@@ -37,17 +37,26 @@ fn main() {
         writeln!(out, "        path: {:?},", dest).unwrap();
         writeln!(out, "        content: include_str!({:?}),", abs_src).unwrap();
         writeln!(out, "    }},").unwrap();
+        println!("cargo:rerun-if-changed={}", abs_src);
     }
     writeln!(out, "];").unwrap();
 
-    println!(
-        "cargo:rerun-if-changed={}",
-        workspace_root.join("skills").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        workspace_root.join("pipelines").display()
-    );
+    // Also watch the directories themselves for new/deleted files
+    rerun_if_dir_changed(&workspace_root.join("skills"));
+    rerun_if_dir_changed(&workspace_root.join("pipelines"));
+}
+
+fn rerun_if_dir_changed(dir: &Path) {
+    println!("cargo:rerun-if-changed={}", dir.display());
+    let Ok(read) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in read {
+        let Ok(entry) = entry else { continue };
+        if entry.path().is_dir() {
+            rerun_if_dir_changed(&entry.path());
+        }
+    }
 }
 
 /// Recursively collect files under `scan_root`, mapping them to `dest_prefix/relative_path`.
