@@ -24,10 +24,7 @@ pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
         .get(&args.skill)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let state = args
-        .state
-        .as_deref()
-        .unwrap_or(&skill.workflow.initial);
+    let state = args.state.as_deref().unwrap_or(&skill.workflow.initial);
 
     let raw_prompt = skill.prompts.get(state).cloned().unwrap_or_default();
 
@@ -40,7 +37,11 @@ pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
     };
 
     let full_prompt = if let Some(ref ctx) = input_context {
-        format!("{}\n\n---\n\n## Input Context (from upstream skills)\n\n{}", base_prompt.trim(), ctx)
+        format!(
+            "{}\n\n---\n\n## Input Context (from upstream skills)\n\n{}",
+            base_prompt.trim(),
+            ctx
+        )
     } else {
         base_prompt.clone()
     };
@@ -134,7 +135,10 @@ fn build_input_context(
 
             context_parts.push(format!(
                 "### {} — {} [{}]\n\n{}\n",
-                input.artifact_type, doc_row.title, doc_row.status, body.trim()
+                input.artifact_type,
+                doc_row.title,
+                doc_row.status,
+                body.trim()
             ));
         }
     }
@@ -153,12 +157,7 @@ fn load_registry() -> anyhow::Result<popsicle_core::registry::SkillRegistry> {
 
 /// Replace template variables in prompt text.
 /// Supported: {skill}, {state}, {run_id}, {date}, {branch}
-fn expand_prompt_vars(
-    prompt: &str,
-    skill: &str,
-    state: &str,
-    run_id: Option<&str>,
-) -> String {
+fn expand_prompt_vars(prompt: &str, skill: &str, state: &str, run_id: Option<&str>) -> String {
     let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let branch = std::process::Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])

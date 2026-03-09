@@ -69,7 +69,10 @@ fn build_skill_command(skill: &SkillDef) -> String {
 
     // Workflow section (auto-generated)
     s.push_str("## Workflow\n\n");
-    s.push_str(&format!("- **Initial state**: `{}`\n", skill.workflow.initial));
+    s.push_str(&format!(
+        "- **Initial state**: `{}`\n",
+        skill.workflow.initial
+    ));
     let finals: Vec<&str> = skill
         .workflow
         .states
@@ -78,14 +81,28 @@ fn build_skill_command(skill: &SkillDef) -> String {
         .map(|(n, _)| n.as_str())
         .collect();
     if !finals.is_empty() {
-        s.push_str(&format!("- **Final state(s)**: `{}`\n", finals.join("`, `")));
+        s.push_str(&format!(
+            "- **Final state(s)**: `{}`\n",
+            finals.join("`, `")
+        ));
     }
     s.push_str("- **Transitions**:\n");
     for (state, sd) in &skill.workflow.states {
         for t in &sd.transitions {
-            let guard = t.guard.as_ref().map(|g| format!(" (guard: `{}`)", g)).unwrap_or_default();
-            let approval = if t.requires_approval { " **⚠ requires human approval**" } else { "" };
-            s.push_str(&format!("  - `{}` → `{}` via `{}`{}{}\n", state, t.to, t.action, guard, approval));
+            let guard = t
+                .guard
+                .as_ref()
+                .map(|g| format!(" (guard: `{}`)", g))
+                .unwrap_or_default();
+            let approval = if t.requires_approval {
+                " **⚠ requires human approval**"
+            } else {
+                ""
+            };
+            s.push_str(&format!(
+                "  - `{}` → `{}` via `{}`{}{}\n",
+                state, t.to, t.action, guard, approval
+            ));
         }
     }
 
@@ -96,7 +113,11 @@ fn build_skill_command(skill: &SkillDef) -> String {
                 "- `{}` from skill `{}` ({})\n",
                 input.artifact_type,
                 input.from_skill,
-                if input.required { "required" } else { "optional" }
+                if input.required {
+                    "required"
+                } else {
+                    "optional"
+                }
             ));
         }
     }
@@ -132,14 +153,8 @@ fn build_skill_command(skill: &SkillDef) -> String {
                     t.action
                 ));
             } else {
-                s.push_str(&format!(
-                    "# From '{}': {}\n",
-                    state, t.action
-                ));
-                s.push_str(&format!(
-                    "popsicle doc transition <doc-id> {}\n",
-                    t.action
-                ));
+                s.push_str(&format!("# From '{}': {}\n", state, t.action));
+                s.push_str(&format!("popsicle doc transition <doc-id> {}\n", t.action));
             }
         }
     }
@@ -190,16 +205,28 @@ popsicle pipeline next --format json
         s.push_str("| Skill | Artifact | Inputs | States |\n");
         s.push_str("|-------|----------|--------|--------|\n");
         for skill in skills {
-            let artifact = skill.artifacts.first().map(|a| a.artifact_type.as_str()).unwrap_or("-");
+            let artifact = skill
+                .artifacts
+                .first()
+                .map(|a| a.artifact_type.as_str())
+                .unwrap_or("-");
             let inputs = if skill.inputs.is_empty() {
                 "none".to_string()
             } else {
-                skill.inputs.iter().map(|i| i.from_skill.as_str()).collect::<Vec<_>>().join(", ")
+                skill
+                    .inputs
+                    .iter()
+                    .map(|i| i.from_skill.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             };
             let states: Vec<&str> = skill.workflow.states.keys().map(|k| k.as_str()).collect();
             s.push_str(&format!(
                 "| `{}` | {} | {} | {} |\n",
-                skill.name, artifact, inputs, states.join(" → ")
+                skill.name,
+                artifact,
+                inputs,
+                states.join(" → ")
             ));
         }
     }

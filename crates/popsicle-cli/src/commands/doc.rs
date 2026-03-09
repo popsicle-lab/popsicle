@@ -55,11 +55,9 @@ pub enum DocCommand {
 pub fn execute(cmd: DocCommand, format: &OutputFormat) -> anyhow::Result<()> {
     match cmd {
         DocCommand::Create { skill, title, run } => create_doc(&skill, &title, &run, format),
-        DocCommand::List {
-            skill,
-            status,
-            run,
-        } => list_docs(skill.as_deref(), status.as_deref(), run.as_deref(), format),
+        DocCommand::List { skill, status, run } => {
+            list_docs(skill.as_deref(), status.as_deref(), run.as_deref(), format)
+        }
         DocCommand::Show { id } => show_doc(&id, format),
         DocCommand::Transition {
             id,
@@ -100,12 +98,7 @@ fn create_doc(
         .trim_matches('-')
         .to_string();
 
-    let mut doc = Document::new(
-        &artifact.artifact_type,
-        title,
-        skill_name,
-        run_id,
-    );
+    let mut doc = Document::new(&artifact.artifact_type, title, skill_name, run_id);
     doc.status = skill.workflow.initial.clone();
 
     // Try to load template body
@@ -135,7 +128,11 @@ fn create_doc(
             println!("  Status: {}", doc.status);
             println!("  File: {}", file_path.display());
             if let Some(ref result) = hook_result {
-                println!("  Hook [{}]: {}", result.event, if result.success { "ok" } else { "failed" });
+                println!(
+                    "  Hook [{}]: {}",
+                    result.event,
+                    if result.success { "ok" } else { "failed" }
+                );
                 if !result.stdout.trim().is_empty() {
                     println!("    {}", result.stdout.trim());
                 }
@@ -341,7 +338,12 @@ fn sync_pipeline_stage(
     Ok(new_state.map(|s| format!("Stage '{}' → {}", stage.name, s)))
 }
 
-fn transition_doc(id: &str, action: &str, confirmed: bool, format: &OutputFormat) -> anyhow::Result<()> {
+fn transition_doc(
+    id: &str,
+    action: &str,
+    confirmed: bool,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let registry = load_registry()?;
     let db = IndexDb::open(&layout.db_path())?;
@@ -365,12 +367,21 @@ fn transition_doc(id: &str, action: &str, confirmed: bool, format: &OutputFormat
         .available_actions(&doc.status)
         .into_iter()
         .find(|t| t.action == action)
-        .ok_or_else(|| anyhow::anyhow!("Action '{}' not available from state '{}'", action, doc.status))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Action '{}' not available from state '{}'",
+                action,
+                doc.status
+            )
+        })?;
 
     if transition.requires_approval && !confirmed {
         anyhow::bail!(
             "Action '{}' on '{}' requires human approval. Review the document and re-run with --confirm:\n  popsicle doc transition {} {} --confirm",
-            action, doc.title, id, action
+            action,
+            doc.title,
+            id,
+            action
         );
     }
 
@@ -424,7 +435,11 @@ fn transition_doc(id: &str, action: &str, confirmed: bool, format: &OutputFormat
                 println!("  {}", stage_msg);
             }
             if let Some(ref result) = hook_result {
-                println!("  Hook [{}]: {}", result.event, if result.success { "ok" } else { "failed" });
+                println!(
+                    "  Hook [{}]: {}",
+                    result.event,
+                    if result.success { "ok" } else { "failed" }
+                );
                 if !result.stdout.trim().is_empty() {
                     println!("    {}", result.stdout.trim());
                 }

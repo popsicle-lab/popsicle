@@ -193,9 +193,7 @@ fn is_template_placeholder(content: &str) -> bool {
             if l.is_empty() || l.starts_with('#') {
                 return false;
             }
-            !placeholder_patterns
-                .iter()
-                .any(|p| l.contains(p))
+            !placeholder_patterns.iter().any(|p| l.contains(p))
         })
         .collect();
 
@@ -212,7 +210,9 @@ mod tests {
         assert!(is_template_placeholder("..."));
         assert!(is_template_placeholder("Describe the purpose"));
         assert!(is_template_placeholder("[Name]"));
-        assert!(!is_template_placeholder("We use Redis for caching with a 5-minute TTL."));
+        assert!(!is_template_placeholder(
+            "We use Redis for caching with a 5-minute TTL."
+        ));
         assert!(!is_template_placeholder(
             "The system handles user authentication via JWT tokens."
         ));
@@ -282,7 +282,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            body: "## Background\n\nDescribe the business context.\n\n## Goals\n\n- Reduce latency\n".into(),
+            body:
+                "## Background\n\nDescribe the business context.\n\n## Goals\n\n- Reduce latency\n"
+                    .into(),
             file_path: std::path::PathBuf::new(),
         };
 

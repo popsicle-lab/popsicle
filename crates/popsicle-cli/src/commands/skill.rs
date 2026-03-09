@@ -82,13 +82,11 @@ fn load_registry(extra_dir: Option<PathBuf>) -> anyhow::Result<SkillRegistry> {
     // Load project-local custom skills from .popsicle/skills/
     let local_skills = cwd.join(".popsicle").join("skills");
     if local_skills.is_dir() {
-        SkillLoader::load_dir(&local_skills, &mut registry)
-            .context("Loading project skills")?;
+        SkillLoader::load_dir(&local_skills, &mut registry).context("Loading project skills")?;
     }
 
     if let Some(dir) = extra_dir {
-        SkillLoader::load_dir(&dir, &mut registry)
-            .context("Loading extra skills directory")?;
+        SkillLoader::load_dir(&dir, &mut registry).context("Loading extra skills directory")?;
     }
 
     Ok(registry)
@@ -134,7 +132,11 @@ fn list_skills(skills_dir: Option<PathBuf>, format: &OutputFormat) -> anyhow::Re
     Ok(())
 }
 
-fn show_skill(name: &str, skills_dir: Option<PathBuf>, format: &OutputFormat) -> anyhow::Result<()> {
+fn show_skill(
+    name: &str,
+    skills_dir: Option<PathBuf>,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
     let registry = load_registry(skills_dir)?;
     let skill = registry.get(name).map_err(|e| anyhow::anyhow!("{}", e))?;
 

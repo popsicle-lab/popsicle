@@ -55,7 +55,11 @@ pub fn list_skills(state: State<AppState>) -> Result<Vec<SkillInfo>, String> {
             name: s.name.clone(),
             description: s.description.clone(),
             version: s.version.clone(),
-            artifact_types: s.artifacts.iter().map(|a| a.artifact_type.clone()).collect(),
+            artifact_types: s
+                .artifacts
+                .iter()
+                .map(|a| a.artifact_type.clone())
+                .collect(),
             workflow_initial: s.workflow.initial.clone(),
             inputs: s
                 .inputs
@@ -143,7 +147,8 @@ pub fn get_pipeline_status(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Run not found: {}", run_id))?;
 
-    let pipeline_def = helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
+    let pipeline_def =
+        helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
     let docs = db
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
@@ -200,11 +205,7 @@ pub fn list_documents(
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
     let docs = db
-        .query_documents(
-            skill.as_deref(),
-            status.as_deref(),
-            run_id.as_deref(),
-        )
+        .query_documents(skill.as_deref(), status.as_deref(), run_id.as_deref())
         .map_err(|e| e.to_string())?;
     Ok(docs
         .iter()
@@ -233,8 +234,8 @@ pub fn get_document(doc_id: String, state: State<AppState>) -> Result<DocFull, S
         .find(|d| d.id == doc_id)
         .ok_or_else(|| format!("Document not found: {}", doc_id))?;
 
-    let doc =
-        FileStorage::read_document(std::path::Path::new(&doc_row.file_path)).map_err(|e| e.to_string())?;
+    let doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+        .map_err(|e| e.to_string())?;
 
     Ok(DocFull {
         id: doc.id,
@@ -252,10 +253,7 @@ pub fn get_document(doc_id: String, state: State<AppState>) -> Result<DocFull, S
 }
 
 #[tauri::command]
-pub fn get_next_steps(
-    run_id: String,
-    state: State<AppState>,
-) -> Result<Vec<NextStepInfo>, String> {
+pub fn get_next_steps(run_id: String, state: State<AppState>) -> Result<Vec<NextStepInfo>, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
@@ -266,7 +264,8 @@ pub fn get_next_steps(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Run not found: {}", run_id))?;
 
-    let pipeline_def = helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
+    let pipeline_def =
+        helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
     let docs = db
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
@@ -308,10 +307,7 @@ pub fn get_prompt(
 }
 
 #[tauri::command]
-pub fn verify_pipeline_run(
-    run_id: String,
-    state: State<AppState>,
-) -> Result<VerifyResult, String> {
+pub fn verify_pipeline_run(run_id: String, state: State<AppState>) -> Result<VerifyResult, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
@@ -322,7 +318,8 @@ pub fn verify_pipeline_run(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Run not found: {}", run_id))?;
 
-    let pipeline_def = helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
+    let pipeline_def =
+        helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
     let docs = db
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
@@ -354,10 +351,7 @@ pub fn verify_pipeline_run(
                 if let Ok(skill) = registry.get(&d.skill_name)
                     && !skill.is_final_state(&d.status)
                 {
-                    issues.push(format!(
-                        "'{}' is '{}', not final",
-                        d.title, d.status
-                    ));
+                    issues.push(format!("'{}' is '{}', not final", d.title, d.status));
                 }
             }
         }
@@ -374,8 +368,8 @@ pub fn verify_pipeline_run(
 pub fn get_project_config(state: State<AppState>) -> Result<serde_json::Value, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
-    let config =
-        popsicle_core::storage::ProjectConfig::load(&layout.config_path()).map_err(|e| e.to_string())?;
+    let config = popsicle_core::storage::ProjectConfig::load(&layout.config_path())
+        .map_err(|e| e.to_string())?;
     serde_json::to_value(&config).map_err(|e| e.to_string())
 }
 
@@ -401,9 +395,18 @@ pub fn get_git_status(state: State<AppState>) -> Result<GitStatusInfo, String> {
             .query_commit_links(Some(rid), None, None)
             .unwrap_or_default();
         let t = links.len();
-        let p = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Pending).count();
-        let pa = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Passed).count();
-        let f = links.iter().filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Failed).count();
+        let p = links
+            .iter()
+            .filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Pending)
+            .count();
+        let pa = links
+            .iter()
+            .filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Passed)
+            .count();
+        let f = links
+            .iter()
+            .filter(|l| l.review_status == popsicle_core::git::ReviewStatus::Failed)
+            .count();
         (t, p, pa, f)
     } else {
         (0, 0, 0, 0)
@@ -449,10 +452,22 @@ pub fn get_commit_links(
             let commit = GitTracker::commit_info(&dir, &l.sha).ok();
             CommitLinkInfo {
                 sha: l.sha.clone(),
-                short_sha: commit.as_ref().map(|c| c.short_sha.clone()).unwrap_or_else(|| l.sha[..8.min(l.sha.len())].to_string()),
-                message: commit.as_ref().map(|c| c.message.clone()).unwrap_or_default(),
-                author: commit.as_ref().map(|c| c.author.clone()).unwrap_or_default(),
-                timestamp: commit.as_ref().map(|c| c.timestamp.clone()).unwrap_or_default(),
+                short_sha: commit
+                    .as_ref()
+                    .map(|c| c.short_sha.clone())
+                    .unwrap_or_else(|| l.sha[..8.min(l.sha.len())].to_string()),
+                message: commit
+                    .as_ref()
+                    .map(|c| c.message.clone())
+                    .unwrap_or_default(),
+                author: commit
+                    .as_ref()
+                    .map(|c| c.author.clone())
+                    .unwrap_or_default(),
+                timestamp: commit
+                    .as_ref()
+                    .map(|c| c.timestamp.clone())
+                    .unwrap_or_default(),
                 doc_id: l.doc_id.clone(),
                 pipeline_run_id: l.pipeline_run_id.clone(),
                 stage: l.stage.clone(),
@@ -559,4 +574,3 @@ pub fn get_discussion(
         concluded_at: disc.concluded_at.map(|t| t.to_rfc3339()),
     })
 }
-

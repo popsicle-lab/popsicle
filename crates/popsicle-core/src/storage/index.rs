@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
 
 use crate::error::Result;
@@ -160,7 +160,10 @@ impl IndexDb {
             param_values.push(Box::new(s.to_string()));
         }
         if let Some(r) = run_id {
-            sql.push_str(&format!(" AND pipeline_run_id = ?{}", param_values.len() + 1));
+            sql.push_str(&format!(
+                " AND pipeline_run_id = ?{}",
+                param_values.len() + 1
+            ));
             param_values.push(Box::new(r.to_string()));
         }
 
@@ -317,7 +320,10 @@ impl IndexDb {
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(r) = run_id {
-            sql.push_str(&format!(" AND pipeline_run_id = ?{}", param_values.len() + 1));
+            sql.push_str(&format!(
+                " AND pipeline_run_id = ?{}",
+                param_values.len() + 1
+            ));
             param_values.push(Box::new(r.to_string()));
         }
         if let Some(d) = doc_id {
@@ -438,7 +444,10 @@ impl IndexDb {
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(r) = run_id {
-            sql.push_str(&format!(" AND pipeline_run_id = ?{}", param_values.len() + 1));
+            sql.push_str(&format!(
+                " AND pipeline_run_id = ?{}",
+                param_values.len() + 1
+            ));
             param_values.push(Box::new(r.to_string()));
         }
         if let Some(s) = skill {
@@ -722,7 +731,9 @@ mod tests {
         let by_run = db.query_documents(None, None, Some("run-1")).unwrap();
         assert_eq!(by_run.len(), 2);
 
-        let by_both = db.query_documents(Some("prd"), None, Some("run-1")).unwrap();
+        let by_both = db
+            .query_documents(Some("prd"), None, Some("run-1"))
+            .unwrap();
         assert_eq!(by_both.len(), 1);
     }
 

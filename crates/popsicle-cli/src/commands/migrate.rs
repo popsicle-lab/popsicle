@@ -35,11 +35,9 @@ pub fn execute(args: MigrateArgs, format: &OutputFormat) -> anyhow::Result<()> {
             let runs = db
                 .list_pipeline_runs()
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
-            runs.first()
-                .map(|r| r.id.clone())
-                .ok_or_else(|| {
-                    anyhow::anyhow!("No pipeline runs found. Start one with `popsicle pipeline run`.")
-                })?
+            runs.first().map(|r| r.id.clone()).ok_or_else(|| {
+                anyhow::anyhow!("No pipeline runs found. Start one with `popsicle pipeline run`.")
+            })?
         }
     };
 
@@ -101,14 +99,13 @@ fn import_file(
 ) -> anyhow::Result<Option<String>> {
     let content = std::fs::read_to_string(file_path)?;
 
-    let title = extract_title(&content)
-        .unwrap_or_else(|| {
-            file_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("untitled")
-                .to_string()
-        });
+    let title = extract_title(&content).unwrap_or_else(|| {
+        file_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("untitled")
+            .to_string()
+    });
 
     let slug = title
         .to_lowercase()
@@ -121,9 +118,7 @@ fn import_file(
     doc.status = "approved".to_string();
     doc.body = content;
 
-    let dest = layout
-        .run_dir(run_id)
-        .join(format!("{}.imported.md", slug));
+    let dest = layout.run_dir(run_id).join(format!("{}.imported.md", slug));
     doc.file_path = dest.clone();
 
     FileStorage::write_document(&doc, &dest).map_err(|e| anyhow::anyhow!("{}", e))?;

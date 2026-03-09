@@ -126,10 +126,7 @@ impl SkillDef {
 
     /// Check if a state is final.
     pub fn is_final_state(&self, state: &str) -> bool {
-        self.workflow
-            .states
-            .get(state)
-            .is_some_and(|s| s.r#final)
+        self.workflow.states.get(state).is_some_and(|s| s.r#final)
     }
 
     /// Attempt a transition: returns the target state if valid.
@@ -204,9 +201,18 @@ prompts:
     #[test]
     fn test_transitions() {
         let skill: SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
-        assert_eq!(skill.try_transition("draft", "submit").unwrap(), "discussion");
-        assert_eq!(skill.try_transition("discussion", "approve").unwrap(), "approved");
-        assert_eq!(skill.try_transition("discussion", "revise").unwrap(), "draft");
+        assert_eq!(
+            skill.try_transition("draft", "submit").unwrap(),
+            "discussion"
+        );
+        assert_eq!(
+            skill.try_transition("discussion", "approve").unwrap(),
+            "approved"
+        );
+        assert_eq!(
+            skill.try_transition("discussion", "revise").unwrap(),
+            "draft"
+        );
         assert!(skill.try_transition("draft", "approve").is_err());
     }
 

@@ -102,8 +102,15 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
 
     for stage in &pipeline_def.stages {
         let state = run.stage_states.get(&stage.name);
-        if !matches!(state, Some(StageState::Completed) | Some(StageState::Skipped)) {
-            issues.push(format!("Stage '{}' is {} (not completed)", stage.name, state.map(|s| s.to_string()).unwrap_or("unknown".into())));
+        if !matches!(
+            state,
+            Some(StageState::Completed) | Some(StageState::Skipped)
+        ) {
+            issues.push(format!(
+                "Stage '{}' is {} (not completed)",
+                stage.name,
+                state.map(|s| s.to_string()).unwrap_or("unknown".into())
+            ));
         }
 
         for skill_name in stage.skill_names() {
@@ -115,7 +122,10 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
                 if let Ok(skill) = registry.get(&d.skill_name)
                     && !skill.is_final_state(&d.status)
                 {
-                    issues.push(format!("Document '{}' is '{}', not final", d.title, d.status));
+                    issues.push(format!(
+                        "Document '{}' is '{}', not final",
+                        d.title, d.status
+                    ));
                 }
             }
         }
@@ -126,9 +136,16 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
     match format {
         OutputFormat::Text => {
             if passed {
-                println!("Pipeline run '{}' VERIFIED — all stages complete, all documents approved.", run.title);
+                println!(
+                    "Pipeline run '{}' VERIFIED — all stages complete, all documents approved.",
+                    run.title
+                );
             } else {
-                println!("Pipeline run '{}' has {} issue(s):", run.title, issues.len());
+                println!(
+                    "Pipeline run '{}' has {} issue(s):",
+                    run.title,
+                    issues.len()
+                );
                 for issue in &issues {
                     println!("  - {}", issue);
                 }
@@ -187,7 +204,10 @@ fn archive_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()
     match format {
         OutputFormat::Text => {
             println!("Archived pipeline run: {} ({})", run.title, run.id);
-            println!("  Artifacts moved to: .popsicle/artifacts/_archived/{}", run.id);
+            println!(
+                "  Artifacts moved to: .popsicle/artifacts/_archived/{}",
+                run.id
+            );
         }
         OutputFormat::Json => {
             let result = serde_json::json!({
@@ -359,9 +379,9 @@ fn get_run(db: &IndexDb, run_id: Option<&str>) -> anyhow::Result<PipelineRun> {
         let runs = db
             .list_pipeline_runs()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        let latest = runs
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("No pipeline runs found. Use `popsicle pipeline run` to start one."))?;
+        let latest = runs.first().ok_or_else(|| {
+            anyhow::anyhow!("No pipeline runs found. Use `popsicle pipeline run` to start one.")
+        })?;
         db.get_pipeline_run(&latest.id)
             .map_err(|e| anyhow::anyhow!("{}", e))?
             .ok_or_else(|| anyhow::anyhow!("Pipeline run not found: {}", latest.id))
@@ -430,7 +450,9 @@ fn run_pipeline(pipeline_name: &str, title: &str, format: &OutputFormat) -> anyh
             println!("  Title: {}", title);
             println!("  Stages:");
             for stage in &pipeline_def.stages {
-                let state = run.stage_states.get(&stage.name)
+                let state = run
+                    .stage_states
+                    .get(&stage.name)
                     .ok_or_else(|| anyhow::anyhow!("Missing state for stage '{}'", stage.name))?;
                 println!(
                     "    {:<20} {:<12} [{}]",
@@ -487,10 +509,7 @@ fn show_status(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()
                     .filter(|d| stage.skill_names().contains(&d.skill_name.as_str()))
                     .collect();
                 for doc in stage_docs {
-                    println!(
-                        "  └─ {} [{}] ({})",
-                        doc.title, doc.status, doc.doc_type
-                    );
+                    println!("  └─ {} [{}] ({})", doc.title, doc.status, doc.doc_type);
                 }
             }
         }
@@ -561,8 +580,19 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
             if !actionable.is_empty() {
                 println!("=== Next Steps ===\n");
                 for (i, step) in actionable.iter().enumerate() {
-                    let approval_tag = if step.requires_approval { " ⚠ REQUIRES APPROVAL" } else { "" };
-                    println!("{}. [{}] {} → {}{}", i + 1, step.stage, step.skill, step.action, approval_tag);
+                    let approval_tag = if step.requires_approval {
+                        " ⚠ REQUIRES APPROVAL"
+                    } else {
+                        ""
+                    };
+                    println!(
+                        "{}. [{}] {} → {}{}",
+                        i + 1,
+                        step.stage,
+                        step.skill,
+                        step.action,
+                        approval_tag
+                    );
                     println!("   {}", step.description);
                     if step.requires_approval {
                         println!("   $ {} --confirm", step.cli_command);
@@ -580,10 +610,7 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
             if !blocked.is_empty() {
                 println!("=== Blocked ===\n");
                 for step in &blocked {
-                    println!(
-                        "  [{}] {} — {}",
-                        step.stage, step.skill, step.description
-                    );
+                    println!("  [{}] {} — {}", step.stage, step.skill, step.description);
                 }
             }
         }

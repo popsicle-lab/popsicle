@@ -110,10 +110,7 @@ impl Advisor {
                             stage: stage.name.clone(),
                             skill: skill_name.to_string(),
                             action: "blocked".to_string(),
-                            description: format!(
-                                "Blocked: waiting for {}",
-                                missing.join(", ")
-                            ),
+                            description: format!("Blocked: waiting for {}", missing.join(", ")),
                             cli_command: String::new(),
                             prompt: None,
                             blocked_by: missing.clone(),
@@ -220,8 +217,7 @@ prompts:
 
     fn make_registry() -> SkillRegistry {
         let mut registry = SkillRegistry::new();
-        let skill: crate::model::SkillDef =
-            serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
+        let skill: crate::model::SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
         registry.register(skill);
         registry
     }

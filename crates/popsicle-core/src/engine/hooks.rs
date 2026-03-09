@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::process::Command;
 
 use crate::error::Result;
-use crate::model::skill::HooksDef;
 use crate::model::Document;
+use crate::model::skill::HooksDef;
 
 /// Hook execution context passed as environment variables to hook commands.
 #[derive(Debug)]
@@ -20,10 +20,7 @@ impl HookContext {
         env.insert("POPSICLE_DOC_TITLE".to_string(), doc.title.clone());
         env.insert("POPSICLE_DOC_STATUS".to_string(), doc.status.clone());
         env.insert("POPSICLE_SKILL".to_string(), doc.skill_name.clone());
-        env.insert(
-            "POPSICLE_RUN_ID".to_string(),
-            doc.pipeline_run_id.clone(),
-        );
+        env.insert("POPSICLE_RUN_ID".to_string(), doc.pipeline_run_id.clone());
         env.insert(
             "POPSICLE_FILE_PATH".to_string(),
             doc.file_path.display().to_string(),

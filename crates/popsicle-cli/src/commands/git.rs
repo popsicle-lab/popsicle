@@ -76,7 +76,14 @@ pub fn execute(cmd: GitCommand, format: &OutputFormat) -> anyhow::Result<()> {
             run,
             stage,
             skill,
-        } => link_commit(sha.as_deref(), doc.as_deref(), run.as_deref(), stage, skill, format),
+        } => link_commit(
+            sha.as_deref(),
+            doc.as_deref(),
+            run.as_deref(),
+            stage,
+            skill,
+            format,
+        ),
         GitCommand::Status { run } => show_status(run.as_deref(), format),
         GitCommand::Log { count, run } => show_log(count, run.as_deref(), format),
         GitCommand::Review {
@@ -119,7 +126,9 @@ fn init_hook(format: &OutputFormat) -> anyhow::Result<()> {
         OutputFormat::Json => {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({"status": "ok", "hook": "post-commit"}))?
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"status": "ok", "hook": "post-commit"})
+                )?
             );
         }
     }
@@ -167,7 +176,8 @@ fn link_commit(
         OutputFormat::Text => {
             println!(
                 "Linked commit {} to pipeline run {}",
-                commit.short_sha, &run_id[..8]
+                commit.short_sha,
+                &run_id[..8]
             );
             println!("  Message: {}", commit.message);
             if let Some(ref d) = link.doc_id {
@@ -191,8 +201,7 @@ fn show_status(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()
     };
 
     let branch = GitTracker::current_branch(&cwd).unwrap_or_else(|_| "unknown".into());
-    let has_changes =
-        GitTracker::has_uncommitted_changes(&cwd).unwrap_or(false);
+    let has_changes = GitTracker::has_uncommitted_changes(&cwd).unwrap_or(false);
     let head = GitTracker::head_sha(&cwd)
         .map(|s| s[..8].to_string())
         .unwrap_or_else(|_| "unknown".into());
@@ -202,9 +211,18 @@ fn show_status(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let total = links.len();
-    let pending = links.iter().filter(|l| l.review_status == ReviewStatus::Pending).count();
-    let passed = links.iter().filter(|l| l.review_status == ReviewStatus::Passed).count();
-    let failed = links.iter().filter(|l| l.review_status == ReviewStatus::Failed).count();
+    let pending = links
+        .iter()
+        .filter(|l| l.review_status == ReviewStatus::Pending)
+        .count();
+    let passed = links
+        .iter()
+        .filter(|l| l.review_status == ReviewStatus::Passed)
+        .count();
+    let failed = links
+        .iter()
+        .filter(|l| l.review_status == ReviewStatus::Failed)
+        .count();
 
     match format {
         OutputFormat::Text => {
@@ -236,16 +254,11 @@ fn show_status(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()
     Ok(())
 }
 
-fn show_log(
-    count: usize,
-    run_id: Option<&str>,
-    format: &OutputFormat,
-) -> anyhow::Result<()> {
+fn show_log(count: usize, run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
     let (layout, cwd) = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
-    let commits =
-        GitTracker::recent_commits(&cwd, count).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let commits = GitTracker::recent_commits(&cwd, count).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let run_filter = match run_id {
         Some(r) => Some(r.to_string()),
@@ -269,12 +282,8 @@ fn show_log(
                 let review = link
                     .map(|l| l.review_status.to_string())
                     .unwrap_or_else(|| "-".to_string());
-                let stage = link
-                    .and_then(|l| l.stage.as_deref())
-                    .unwrap_or("-");
-                let skill = link
-                    .and_then(|l| l.skill.as_deref())
-                    .unwrap_or("-");
+                let stage = link.and_then(|l| l.stage.as_deref()).unwrap_or("-");
+                let skill = link.and_then(|l| l.skill.as_deref()).unwrap_or("-");
                 let msg: String = commit.message.chars().take(40).collect();
                 println!(
                     "{:<10} {:<12} {:<10} {:<10} {}",

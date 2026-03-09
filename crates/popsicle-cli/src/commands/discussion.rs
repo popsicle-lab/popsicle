@@ -183,10 +183,13 @@ pub fn execute(cmd: DiscussionCommand, format: &OutputFormat) -> Result<()> {
 
             match format {
                 OutputFormat::Json => {
-                    println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                        "id": disc.id,
-                        "status": "created"
-                    }))?);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "id": disc.id,
+                            "status": "created"
+                        }))?
+                    );
                 }
                 OutputFormat::Text => {
                     println!("Created discussion: {}", disc.id);
@@ -214,7 +217,9 @@ pub fn execute(cmd: DiscussionCommand, format: &OutputFormat) -> Result<()> {
                 anyhow::bail!("Discussion is not active (status: {})", disc.status);
             }
 
-            let display_name = role_name.filter(|s| !s.is_empty()).unwrap_or_else(|| role.clone());
+            let display_name = role_name
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| role.clone());
 
             let msg = DiscussionMessage {
                 id: new_id(),
@@ -232,10 +237,13 @@ pub fn execute(cmd: DiscussionCommand, format: &OutputFormat) -> Result<()> {
 
             match format {
                 OutputFormat::Json => {
-                    println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                        "id": msg.id,
-                        "status": "recorded"
-                    }))?);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "id": msg.id,
+                            "status": "recorded"
+                        }))?
+                    );
                 }
                 OutputFormat::Text => {
                     println!("Message recorded: {}", msg.id);
@@ -261,10 +269,13 @@ pub fn execute(cmd: DiscussionCommand, format: &OutputFormat) -> Result<()> {
 
             match format {
                 OutputFormat::Json => {
-                    println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                        "role_id": role_id,
-                        "status": "added"
-                    }))?);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "role_id": role_id,
+                            "status": "added"
+                        }))?
+                    );
                 }
                 OutputFormat::Text => {
                     println!("Role added: {} ({})", name, role_id);
@@ -273,11 +284,8 @@ pub fn execute(cmd: DiscussionCommand, format: &OutputFormat) -> Result<()> {
         }
 
         DiscussionCommand::List { run, skill, status } => {
-            let discussions = db.query_discussions(
-                run.as_deref(),
-                skill.as_deref(),
-                status.as_deref(),
-            )?;
+            let discussions =
+                db.query_discussions(run.as_deref(), skill.as_deref(), status.as_deref())?;
 
             let infos: Vec<DiscussionInfo> = discussions
                 .iter()
@@ -402,11 +410,14 @@ pub fn execute(cmd: DiscussionCommand, format: &OutputFormat) -> Result<()> {
 
             match format {
                 OutputFormat::Json => {
-                    println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                        "id": disc.id,
-                        "status": "concluded",
-                        "exported_to": export_path.display().to_string()
-                    }))?);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "id": disc.id,
+                            "status": "concluded",
+                            "exported_to": export_path.display().to_string()
+                        }))?
+                    );
                 }
                 OutputFormat::Text => {
                     println!("Discussion concluded: {}", disc.id);
@@ -430,9 +441,12 @@ pub fn execute(cmd: DiscussionCommand, format: &OutputFormat) -> Result<()> {
                 std::fs::write(&path, &markdown)?;
                 match format {
                     OutputFormat::Json => {
-                        println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                            "exported_to": path
-                        }))?);
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "exported_to": path
+                            }))?
+                        );
                     }
                     OutputFormat::Text => {
                         println!("Exported to: {path}");

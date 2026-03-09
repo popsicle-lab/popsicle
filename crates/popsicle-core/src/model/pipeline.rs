@@ -126,7 +126,10 @@ impl PipelineRun {
     pub fn refresh_states(&mut self, pipeline_def: &PipelineDef) {
         for stage in &pipeline_def.stages {
             let current = self.stage_states.get(&stage.name).copied();
-            if matches!(current, Some(StageState::Completed | StageState::Skipped | StageState::InProgress)) {
+            if matches!(
+                current,
+                Some(StageState::Completed | StageState::Skipped | StageState::InProgress)
+            ) {
                 continue;
             }
             let all_deps_done = stage.depends_on.iter().all(|dep| {
@@ -194,7 +197,8 @@ stages:
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
         let mut run = PipelineRun::new(&def, "Test Feature");
 
-        run.stage_states.insert("domain".to_string(), StageState::Completed);
+        run.stage_states
+            .insert("domain".to_string(), StageState::Completed);
         run.refresh_states(&def);
 
         assert_eq!(run.stage_states["product"], StageState::Ready);

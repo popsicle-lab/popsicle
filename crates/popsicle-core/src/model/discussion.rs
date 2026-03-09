@@ -161,7 +161,7 @@ impl Discussion {
         let mut out = String::new();
 
         out.push_str("---\n");
-        out.push_str(&format!("type: discussion\n"));
+        out.push_str("type: discussion\n");
         out.push_str(&format!("discussion_id: \"{}\"\n", self.id));
         if let Some(ref doc_id) = self.document_id {
             out.push_str(&format!("document_id: \"{doc_id}\"\n"));
@@ -172,7 +172,10 @@ impl Discussion {
             out.push_str(&format!("user_confidence: {c}\n"));
         }
         out.push_str(&format!("status: {}\n", self.status));
-        out.push_str(&format!("created_at: \"{}\"\n", self.created_at.to_rfc3339()));
+        out.push_str(&format!(
+            "created_at: \"{}\"\n",
+            self.created_at.to_rfc3339()
+        ));
         if let Some(ref t) = self.concluded_at {
             out.push_str(&format!("concluded_at: \"{}\"\n", t.to_rfc3339()));
         }

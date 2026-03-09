@@ -37,7 +37,9 @@ impl ProjectWatcher {
                             let w = notify::recommended_watcher(
                                 move |res: std::result::Result<Event, notify::Error>| {
                                     if let Ok(_event) = res {
-                                        let Ok(mut last) = last_clone.lock() else { return };
+                                        let Ok(mut last) = last_clone.lock() else {
+                                            return;
+                                        };
                                         if last.elapsed() > Duration::from_millis(500) {
                                             *last = Instant::now();
                                             let _ = app_clone.emit("popsicle://refresh", ());

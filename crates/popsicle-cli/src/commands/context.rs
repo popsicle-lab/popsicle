@@ -32,9 +32,9 @@ pub fn execute(args: ContextArgs, format: &OutputFormat) -> anyhow::Result<()> {
         let runs = db
             .list_pipeline_runs()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        let latest = runs.first().ok_or_else(|| {
-            anyhow::anyhow!("No pipeline runs found.")
-        })?;
+        let latest = runs
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pipeline runs found."))?;
         db.get_pipeline_run(&latest.id)
             .map_err(|e| anyhow::anyhow!("{}", e))?
             .ok_or_else(|| anyhow::anyhow!("Pipeline run not found"))?
@@ -59,7 +59,11 @@ pub fn execute(args: ContextArgs, format: &OutputFormat) -> anyhow::Result<()> {
                 }
 
                 let state = run.stage_states.get(&stage.name);
-                println!("--- Stage: {} ({}) ---", stage.name, state.map(|s| s.to_string()).unwrap_or_default());
+                println!(
+                    "--- Stage: {} ({}) ---",
+                    stage.name,
+                    state.map(|s| s.to_string()).unwrap_or_default()
+                );
 
                 let stage_docs: Vec<_> = docs
                     .iter()
@@ -72,10 +76,15 @@ pub fn execute(args: ContextArgs, format: &OutputFormat) -> anyhow::Result<()> {
                 }
 
                 for doc_row in stage_docs {
-                    println!("\n  ## {} [{}] ({})", doc_row.title, doc_row.status, doc_row.doc_type);
+                    println!(
+                        "\n  ## {} [{}] ({})",
+                        doc_row.title, doc_row.status, doc_row.doc_type
+                    );
                     println!("  ID: {} | Skill: {}", doc_row.id, doc_row.skill_name);
 
-                    if let Ok(doc) = FileStorage::read_document(std::path::Path::new(&doc_row.file_path)) {
+                    if let Ok(doc) =
+                        FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+                    {
                         println!();
                         for line in doc.body.lines() {
                             println!("  {}", line);

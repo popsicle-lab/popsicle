@@ -156,7 +156,7 @@ targets = [{}]
 
 /// Append `.popsicle/` to `.gitignore` if not already present.
 /// Claude Code respects `.gitignore`, so this prevents it from indexing popsicle internals.
-fn ensure_gitignore(project_root: &PathBuf) -> anyhow::Result<()> {
+fn ensure_gitignore(project_root: &std::path::Path) -> anyhow::Result<()> {
     let gitignore = project_root.join(".gitignore");
     let entry = ".popsicle/";
 
@@ -180,7 +180,7 @@ fn ensure_gitignore(project_root: &PathBuf) -> anyhow::Result<()> {
 
 /// Create `.cursorignore` with `.popsicle/` if not already present.
 /// Prevents Cursor from indexing popsicle internals into AI context.
-fn ensure_cursorignore(project_root: &PathBuf) -> anyhow::Result<()> {
+fn ensure_cursorignore(project_root: &std::path::Path) -> anyhow::Result<()> {
     let cursorignore = project_root.join(".cursorignore");
     let entry = ".popsicle/";
 
