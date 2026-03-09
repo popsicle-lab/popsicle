@@ -29,6 +29,8 @@ pub fn run() {
             commands::get_project_config,
             commands::get_git_status,
             commands::get_commit_links,
+            commands::list_discussions,
+            commands::get_discussion,
         ])
         .setup(|app| {
             ProjectWatcher::setup(app.handle().clone());

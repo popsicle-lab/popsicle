@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/popsicle-core",
     "crates/popsicle-cli",
-    "ui/src-tauri",
 ]
 
 [workspace.package]
