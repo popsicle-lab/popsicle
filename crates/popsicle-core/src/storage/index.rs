@@ -4,8 +4,8 @@ use std::path::Path;
 use crate::error::Result;
 use crate::git::{CommitLink, ReviewStatus};
 use crate::model::{
-    Discussion, DiscussionMessage, DiscussionRole, DiscussionStatus, Document, MessageType,
-    PipelineRun, RoleSource, StageState,
+    Discussion, DiscussionMessage, DiscussionRole, DiscussionStatus, Document, Issue, IssueStatus,
+    IssueType, MessageType, PipelineRun, Priority, RoleSource, StageState,
 };
 
 /// SQLite-backed metadata index for fast queries.
@@ -111,6 +111,24 @@ impl IndexDb {
                 source TEXT NOT NULL,
                 PRIMARY KEY (discussion_id, role_id)
             );
+
+            CREATE TABLE IF NOT EXISTS issues (
+                id TEXT PRIMARY KEY,
+                key TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                issue_type TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'medium',
+                status TEXT NOT NULL DEFAULT 'backlog',
+                pipeline_run_id TEXT,
+                labels TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_issue_key ON issues(key);
+            CREATE INDEX IF NOT EXISTS idx_issue_status ON issues(status);
+            CREATE INDEX IF NOT EXISTS idx_issue_type ON issues(issue_type);
             ",
         )?;
         Ok(())
@@ -601,6 +619,138 @@ impl IndexDb {
         }
         Ok(results)
     }
+
+    // ── Issue methods ──
+
+    pub fn next_issue_seq(&self, prefix: &str) -> Result<u32> {
+        let pattern = format!("{}-", prefix);
+        let max_seq: Option<u32> = self
+            .conn
+            .query_row(
+                "SELECT MAX(CAST(SUBSTR(key, ?1) AS INTEGER)) FROM issues WHERE key LIKE ?2",
+                params![pattern.len() + 1, format!("{}%", pattern)],
+                |row| row.get(0),
+            )
+            .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
+        Ok(max_seq.unwrap_or(0) + 1)
+    }
+
+    pub fn create_issue(&self, issue: &Issue) -> Result<()> {
+        let labels_json = serde_json::to_string(&issue.labels)
+            .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
+        self.conn.execute(
+            "INSERT INTO issues (id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                issue.id,
+                issue.key,
+                issue.title,
+                issue.description,
+                issue.issue_type.to_string(),
+                issue.priority.to_string(),
+                issue.status.to_string(),
+                issue.pipeline_run_id,
+                labels_json,
+                issue.created_at.to_rfc3339(),
+                issue.updated_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_issue(&self, issue: &Issue) -> Result<()> {
+        let labels_json = serde_json::to_string(&issue.labels)
+            .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
+        self.conn.execute(
+            "UPDATE issues SET title=?1, description=?2, priority=?3, status=?4, pipeline_run_id=?5, labels=?6, updated_at=?7 WHERE id=?8",
+            params![
+                issue.title,
+                issue.description,
+                issue.priority.to_string(),
+                issue.status.to_string(),
+                issue.pipeline_run_id,
+                labels_json,
+                chrono::Utc::now().to_rfc3339(),
+                issue.id,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_issue(&self, id_or_key: &str) -> Result<Option<Issue>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at
+             FROM issues WHERE id = ?1 OR key = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id_or_key], |row| {
+            Ok(IssueRow {
+                id: row.get(0)?,
+                key: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                issue_type: row.get(4)?,
+                priority: row.get(5)?,
+                status: row.get(6)?,
+                pipeline_run_id: row.get(7)?,
+                labels: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(issue_from_row(row?)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn query_issues(
+        &self,
+        issue_type: Option<&str>,
+        status: Option<&str>,
+        label: Option<&str>,
+    ) -> Result<Vec<Issue>> {
+        let mut sql = "SELECT id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at FROM issues WHERE 1=1".to_string();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(t) = issue_type {
+            sql.push_str(&format!(" AND issue_type = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(t.to_string()));
+        }
+        if let Some(s) = status {
+            sql.push_str(&format!(" AND status = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(s.to_string()));
+        }
+        if let Some(l) = label {
+            sql.push_str(&format!(" AND labels LIKE ?{}", param_values.len() + 1));
+            param_values.push(Box::new(format!("%\"{}\"%", l)));
+        }
+        sql.push_str(" ORDER BY created_at DESC");
+
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_ref.as_slice(), |row| {
+            Ok(IssueRow {
+                id: row.get(0)?,
+                key: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                issue_type: row.get(4)?,
+                priority: row.get(5)?,
+                status: row.get(6)?,
+                pipeline_run_id: row.get(7)?,
+                labels: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(issue_from_row(row?)?);
+        }
+        Ok(results)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -643,6 +793,57 @@ fn discussion_from_row(row: DiscussionRow) -> Result<Discussion> {
         user_confidence: row.user_confidence,
         created_at,
         concluded_at,
+    })
+}
+
+#[derive(Debug, Clone)]
+struct IssueRow {
+    id: String,
+    key: String,
+    title: String,
+    description: String,
+    issue_type: String,
+    priority: String,
+    status: String,
+    pipeline_run_id: Option<String>,
+    labels: String,
+    created_at: String,
+    updated_at: String,
+}
+
+fn issue_from_row(row: IssueRow) -> Result<Issue> {
+    let issue_type: IssueType = row
+        .issue_type
+        .parse()
+        .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
+    let priority: Priority = row
+        .priority
+        .parse()
+        .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
+    let status: IssueStatus = row
+        .status
+        .parse()
+        .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
+    let created_at = chrono::DateTime::parse_from_rfc3339(&row.created_at)
+        .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
+        .with_timezone(&chrono::Utc);
+    let updated_at = chrono::DateTime::parse_from_rfc3339(&row.updated_at)
+        .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
+        .with_timezone(&chrono::Utc);
+    let labels: Vec<String> = serde_json::from_str(&row.labels).unwrap_or_default();
+
+    Ok(Issue {
+        id: row.id,
+        key: row.key,
+        title: row.title,
+        description: row.description,
+        issue_type,
+        priority,
+        status,
+        pipeline_run_id: row.pipeline_run_id,
+        labels,
+        created_at,
+        updated_at,
     })
 }
 

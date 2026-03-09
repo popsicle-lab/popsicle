@@ -15,6 +15,8 @@ const statusColors: Record<string, string> = {
   code_review: "bg-orange-500/20 text-orange-300",
   superseded: "bg-gray-500/20 text-gray-400",
   skipped: "bg-gray-500/20 text-gray-400",
+  backlog: "bg-gray-500/20 text-gray-300",
+  cancelled: "bg-red-500/20 text-red-400",
 };
 
 export function StatusBadge({ status }: { status: string }) {

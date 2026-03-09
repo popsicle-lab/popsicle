@@ -190,6 +190,16 @@ popsicle pipeline next --format json
 - `popsicle doc transition <id> <action>` — advance workflow (guards enforced)
 - `popsicle git link --doc <id> --stage <s>` — link commit to document
 
+## Issue Tracking
+
+- `popsicle issue list --format json` — list all issues
+- `popsicle issue show <key> --format json` — show issue details
+- `popsicle issue start <key>` — start the workflow for an issue
+
+When the user says "start PROJ-1" or "release requirement PROJ-1":
+1. Run `popsicle issue start <key>` to create the pipeline run
+2. Then run `popsicle pipeline next --format json` to get the first step
+
 ## Workflow Rules
 
 1. Always check `popsicle pipeline next` before starting work

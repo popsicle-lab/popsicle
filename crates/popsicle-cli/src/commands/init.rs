@@ -62,6 +62,7 @@ pub fn execute(args: InitArgs, format: &OutputFormat) -> anyhow::Result<()> {
     let default_config = format!(
         r#"[project]
 # default_pipeline = "full-sdlc"
+key_prefix = "PROJ"
 
 [git]
 auto_track = true

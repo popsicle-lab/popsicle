@@ -209,3 +209,32 @@ pub struct CommitLinkInfo {
     pub review_summary: Option<String>,
     pub linked_at: String,
 }
+
+#[derive(Serialize)]
+pub struct IssueInfo {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub issue_type: String,
+    pub priority: String,
+    pub status: String,
+    pub pipeline_run_id: Option<String>,
+    pub labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct IssueFull {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub description: String,
+    pub issue_type: String,
+    pub priority: String,
+    pub status: String,
+    pub pipeline_run_id: Option<String>,
+    pub labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}

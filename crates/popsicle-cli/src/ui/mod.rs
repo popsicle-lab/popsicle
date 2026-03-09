@@ -31,6 +31,11 @@ pub fn run() {
             commands::get_commit_links,
             commands::list_discussions,
             commands::get_discussion,
+            commands::list_issues,
+            commands::get_issue,
+            commands::create_issue,
+            commands::start_issue,
+            commands::update_issue,
         ])
         .setup(|app| {
             ProjectWatcher::setup(app.handle().clone());

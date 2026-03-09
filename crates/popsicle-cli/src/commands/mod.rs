@@ -3,6 +3,7 @@ mod discussion;
 mod doc;
 mod git;
 mod init;
+mod issue;
 mod migrate;
 mod pipeline;
 mod prompt;
@@ -38,6 +39,10 @@ pub enum Command {
     #[command(subcommand)]
     Discussion(discussion::DiscussionCommand),
 
+    /// Issue tracking: create, list, start, and manage requirements
+    #[command(subcommand)]
+    Issue(issue::IssueCommand),
+
     /// Import existing Markdown documents into a pipeline run
     Migrate(migrate::MigrateArgs),
 
@@ -67,6 +72,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Doc(sub) => doc::execute(sub, format),
         Command::Git(sub) => git::execute(sub, format),
         Command::Discussion(sub) => discussion::execute(sub, format),
+        Command::Issue(sub) => issue::execute(sub, format),
         Command::Migrate(args) => migrate::execute(args, format),
         Command::Context(args) => context::execute(args, format),
         Command::Prompt(args) => prompt::execute(args, format),

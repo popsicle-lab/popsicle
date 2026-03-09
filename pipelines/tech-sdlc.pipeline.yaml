@@ -1,0 +1,22 @@
+name: tech-sdlc
+description: Technical requirement lifecycle — architecture debate through testing
+
+stages:
+  - name: arch-debate
+    skill: arch-debate
+    description: Multi-persona architecture debate for technical decisions
+
+  - name: tech-design
+    skills: [rfc, adr]
+    description: Technical RFC and Architecture Decision Record
+    depends_on: [arch-debate]
+
+  - name: test-planning
+    skills: [priority-test-gate, api-test-gen, functional-e2e]
+    description: Test specification and generation
+    depends_on: [tech-design]
+
+  - name: quality
+    skills: [bug-tracker, test-report]
+    description: Bug tracking and test report analysis
+    depends_on: [test-planning]

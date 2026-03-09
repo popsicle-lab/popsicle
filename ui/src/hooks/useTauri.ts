@@ -231,6 +231,61 @@ export interface DiscussionMessageInfo {
   timestamp: string;
 }
 
+// ── Issue types ──
+
+export interface IssueInfo {
+  id: string;
+  key: string;
+  title: string;
+  issue_type: string;
+  priority: string;
+  status: string;
+  pipeline_run_id: string | null;
+  labels: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IssueFull extends IssueInfo {
+  description: string;
+}
+
+export async function listIssues(filters?: {
+  issueType?: string;
+  status?: string;
+  label?: string;
+}): Promise<IssueInfo[]> {
+  return invoke("list_issues", filters || {});
+}
+
+export async function getIssue(key: string): Promise<IssueFull> {
+  return invoke("get_issue", { key });
+}
+
+export async function createIssue(params: {
+  issueType: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  labels?: string[];
+}): Promise<IssueInfo> {
+  return invoke("create_issue", params);
+}
+
+export async function startIssue(key: string): Promise<IssueInfo> {
+  return invoke("start_issue", { key });
+}
+
+export async function updateIssue(params: {
+  key: string;
+  status?: string;
+  priority?: string;
+  title?: string;
+  labels?: string[];
+}): Promise<IssueInfo> {
+  return invoke("update_issue", params);
+}
+
 export async function listDiscussions(filters?: {
   runId?: string;
   skill?: string;

@@ -18,6 +18,14 @@ pub struct ProjectConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProjectSection {
     pub default_pipeline: Option<String>,
+    /// Issue key prefix (e.g. "PROJ" produces keys like PROJ-1, PROJ-2).
+    pub key_prefix: Option<String>,
+}
+
+impl ProjectSection {
+    pub fn key_prefix_or_default(&self) -> &str {
+        self.key_prefix.as_deref().unwrap_or("PROJ")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
