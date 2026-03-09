@@ -3,7 +3,10 @@ use std::path::Path;
 
 use crate::error::Result;
 use crate::git::{CommitLink, ReviewStatus};
-use crate::model::{Document, PipelineRun, StageState};
+use crate::model::{
+    Discussion, DiscussionMessage, DiscussionRole, DiscussionStatus, Document, MessageType,
+    PipelineRun, RoleSource, StageState,
+};
 
 /// SQLite-backed metadata index for fast queries.
 pub struct IndexDb {
@@ -69,6 +72,45 @@ impl IndexDb {
             CREATE INDEX IF NOT EXISTS idx_cl_run ON commit_links(pipeline_run_id);
             CREATE INDEX IF NOT EXISTS idx_cl_doc ON commit_links(doc_id);
             CREATE INDEX IF NOT EXISTS idx_cl_review ON commit_links(review_status);
+
+            CREATE TABLE IF NOT EXISTS discussions (
+                id TEXT PRIMARY KEY,
+                document_id TEXT,
+                skill TEXT NOT NULL,
+                pipeline_run_id TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                user_confidence INTEGER,
+                created_at TEXT NOT NULL,
+                concluded_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_disc_run ON discussions(pipeline_run_id);
+            CREATE INDEX IF NOT EXISTS idx_disc_skill ON discussions(skill);
+            CREATE INDEX IF NOT EXISTS idx_disc_doc ON discussions(document_id);
+
+            CREATE TABLE IF NOT EXISTS discussion_messages (
+                id TEXT PRIMARY KEY,
+                discussion_id TEXT NOT NULL REFERENCES discussions(id),
+                phase TEXT NOT NULL,
+                role_id TEXT NOT NULL,
+                role_name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                message_type TEXT NOT NULL,
+                reply_to TEXT,
+                timestamp TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_dm_disc ON discussion_messages(discussion_id);
+
+            CREATE TABLE IF NOT EXISTS discussion_roles (
+                discussion_id TEXT NOT NULL REFERENCES discussions(id),
+                role_id TEXT NOT NULL,
+                role_name TEXT NOT NULL,
+                perspective TEXT,
+                source TEXT NOT NULL,
+                PRIMARY KEY (discussion_id, role_id)
+            );
             ",
         )?;
         Ok(())
@@ -333,6 +375,266 @@ impl IndexDb {
         )?;
         Ok(())
     }
+
+    // ── Discussion operations ──
+
+    pub fn upsert_discussion(&self, disc: &Discussion) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO discussions (id, document_id, skill, pipeline_run_id, topic, status, user_confidence, created_at, concluded_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET
+                document_id = excluded.document_id,
+                status = excluded.status,
+                user_confidence = excluded.user_confidence,
+                concluded_at = excluded.concluded_at",
+            params![
+                disc.id,
+                disc.document_id,
+                disc.skill,
+                disc.pipeline_run_id,
+                disc.topic,
+                disc.status.to_string(),
+                disc.user_confidence,
+                disc.created_at.to_rfc3339(),
+                disc.concluded_at.map(|t| t.to_rfc3339()),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_discussion(&self, id: &str) -> Result<Option<Discussion>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, document_id, skill, pipeline_run_id, topic, status, user_confidence, created_at, concluded_at
+             FROM discussions WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(DiscussionRow {
+                id: row.get(0)?,
+                document_id: row.get(1)?,
+                skill: row.get(2)?,
+                pipeline_run_id: row.get(3)?,
+                topic: row.get(4)?,
+                status: row.get(5)?,
+                user_confidence: row.get(6)?,
+                created_at: row.get(7)?,
+                concluded_at: row.get(8)?,
+            })
+        })?;
+
+        if let Some(row) = rows.next() {
+            Ok(Some(discussion_from_row(row?)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn query_discussions(
+        &self,
+        run_id: Option<&str>,
+        skill: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<Vec<Discussion>> {
+        let mut sql = "SELECT id, document_id, skill, pipeline_run_id, topic, status, user_confidence, created_at, concluded_at FROM discussions WHERE 1=1".to_string();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(r) = run_id {
+            sql.push_str(&format!(" AND pipeline_run_id = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(r.to_string()));
+        }
+        if let Some(s) = skill {
+            sql.push_str(&format!(" AND skill = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(s.to_string()));
+        }
+        if let Some(st) = status {
+            sql.push_str(&format!(" AND status = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(st.to_string()));
+        }
+
+        sql.push_str(" ORDER BY created_at DESC");
+
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_refs.as_slice(), |row| {
+            Ok(DiscussionRow {
+                id: row.get(0)?,
+                document_id: row.get(1)?,
+                skill: row.get(2)?,
+                pipeline_run_id: row.get(3)?,
+                topic: row.get(4)?,
+                status: row.get(5)?,
+                user_confidence: row.get(6)?,
+                created_at: row.get(7)?,
+                concluded_at: row.get(8)?,
+            })
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(discussion_from_row(row?)?);
+        }
+        Ok(results)
+    }
+
+    pub fn insert_discussion_message(&self, msg: &DiscussionMessage) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO discussion_messages (id, discussion_id, phase, role_id, role_name, content, message_type, reply_to, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                msg.id,
+                msg.discussion_id,
+                msg.phase,
+                msg.role_id,
+                msg.role_name,
+                msg.content,
+                msg.message_type.to_string(),
+                msg.reply_to,
+                msg.timestamp.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_discussion_messages(&self, discussion_id: &str) -> Result<Vec<DiscussionMessage>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, discussion_id, phase, role_id, role_name, content, message_type, reply_to, timestamp
+             FROM discussion_messages WHERE discussion_id = ?1 ORDER BY timestamp ASC",
+        )?;
+        let rows = stmt.query_map(params![discussion_id], |row| {
+            let msg_type_str: String = row.get(6)?;
+            let ts_str: String = row.get(8)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                msg_type_str,
+                row.get::<_, Option<String>>(7)?,
+                ts_str,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let (id, disc_id, phase, role_id, role_name, content, msg_type_str, reply_to, ts_str) =
+                row?;
+            let message_type: MessageType = msg_type_str
+                .parse()
+                .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
+            let timestamp = chrono::DateTime::parse_from_rfc3339(&ts_str)
+                .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
+                .with_timezone(&chrono::Utc);
+            results.push(DiscussionMessage {
+                id,
+                discussion_id: disc_id,
+                phase,
+                role_id,
+                role_name,
+                content,
+                message_type,
+                reply_to,
+                timestamp,
+            });
+        }
+        Ok(results)
+    }
+
+    pub fn upsert_discussion_role(&self, role: &DiscussionRole) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO discussion_roles (discussion_id, role_id, role_name, perspective, source)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(discussion_id, role_id) DO UPDATE SET
+                role_name = excluded.role_name,
+                perspective = excluded.perspective,
+                source = excluded.source",
+            params![
+                role.discussion_id,
+                role.role_id,
+                role.role_name,
+                role.perspective,
+                role.source.to_string(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_discussion_roles(&self, discussion_id: &str) -> Result<Vec<DiscussionRole>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT discussion_id, role_id, role_name, perspective, source
+             FROM discussion_roles WHERE discussion_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![discussion_id], |row| {
+            let source_str: String = row.get(4)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                source_str,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let (disc_id, role_id, role_name, perspective, source_str) = row?;
+            let source: RoleSource = source_str
+                .parse()
+                .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
+            results.push(DiscussionRole {
+                discussion_id: disc_id,
+                role_id,
+                role_name,
+                perspective,
+                source,
+            });
+        }
+        Ok(results)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DiscussionRow {
+    id: String,
+    document_id: Option<String>,
+    skill: String,
+    pipeline_run_id: String,
+    topic: String,
+    status: String,
+    user_confidence: Option<i32>,
+    created_at: String,
+    concluded_at: Option<String>,
+}
+
+fn discussion_from_row(row: DiscussionRow) -> Result<Discussion> {
+    let status: DiscussionStatus = row
+        .status
+        .parse()
+        .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
+    let created_at = chrono::DateTime::parse_from_rfc3339(&row.created_at)
+        .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
+        .with_timezone(&chrono::Utc);
+    let concluded_at = row
+        .concluded_at
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .map(|t| t.with_timezone(&chrono::Utc))
+                .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))
+        })
+        .transpose()?;
+
+    Ok(Discussion {
+        id: row.id,
+        document_id: row.document_id,
+        skill: row.skill,
+        pipeline_run_id: row.pipeline_run_id,
+        topic: row.topic,
+        status,
+        user_confidence: row.user_confidence,
+        created_at,
+        concluded_at,
+    })
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

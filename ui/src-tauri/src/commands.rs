@@ -468,3 +468,96 @@ pub fn get_commit_links(
     Ok(result)
 }
 
+#[tauri::command]
+pub fn list_discussions(
+    run_id: Option<String>,
+    skill: Option<String>,
+    status: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<DiscussionInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let discussions = db
+        .query_discussions(run_id.as_deref(), skill.as_deref(), status.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    Ok(discussions
+        .iter()
+        .map(|d| {
+            let msg_count = db
+                .get_discussion_messages(&d.id)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            DiscussionInfo {
+                id: d.id.clone(),
+                document_id: d.document_id.clone(),
+                skill: d.skill.clone(),
+                pipeline_run_id: d.pipeline_run_id.clone(),
+                topic: d.topic.clone(),
+                status: d.status.to_string(),
+                user_confidence: d.user_confidence,
+                message_count: msg_count,
+                created_at: d.created_at.to_rfc3339(),
+                concluded_at: d.concluded_at.map(|t| t.to_rfc3339()),
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_discussion(
+    discussion_id: String,
+    state: State<AppState>,
+) -> Result<DiscussionFull, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let disc = db
+        .get_discussion(&discussion_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Discussion not found: {}", discussion_id))?;
+    let roles = db
+        .get_discussion_roles(&discussion_id)
+        .map_err(|e| e.to_string())?;
+    let messages = db
+        .get_discussion_messages(&discussion_id)
+        .map_err(|e| e.to_string())?;
+
+    Ok(DiscussionFull {
+        id: disc.id,
+        document_id: disc.document_id,
+        skill: disc.skill,
+        pipeline_run_id: disc.pipeline_run_id,
+        topic: disc.topic,
+        status: disc.status.to_string(),
+        user_confidence: disc.user_confidence,
+        roles: roles
+            .iter()
+            .map(|r| DiscussionRoleInfo {
+                role_id: r.role_id.clone(),
+                role_name: r.role_name.clone(),
+                perspective: r.perspective.clone(),
+                source: r.source.to_string(),
+            })
+            .collect(),
+        messages: messages
+            .iter()
+            .map(|m| DiscussionMessageInfo {
+                id: m.id.clone(),
+                phase: m.phase.clone(),
+                role_id: m.role_id.clone(),
+                role_name: m.role_name.clone(),
+                content: m.content.clone(),
+                message_type: m.message_type.to_string(),
+                reply_to: m.reply_to.clone(),
+                timestamp: m.timestamp.to_rfc3339(),
+            })
+            .collect(),
+        created_at: disc.created_at.to_rfc3339(),
+        concluded_at: disc.concluded_at.map(|t| t.to_rfc3339()),
+    })
+}
+

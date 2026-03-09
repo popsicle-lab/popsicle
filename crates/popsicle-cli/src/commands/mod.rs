@@ -1,4 +1,5 @@
 mod context;
+mod discussion;
 mod doc;
 mod git;
 mod init;
@@ -33,6 +34,10 @@ pub enum Command {
     #[command(subcommand)]
     Git(git::GitCommand),
 
+    /// Manage discussion sessions (multi-role debate persistence)
+    #[command(subcommand)]
+    Discussion(discussion::DiscussionCommand),
+
     /// Import existing Markdown documents into a pipeline run
     Migrate(migrate::MigrateArgs),
 
@@ -61,6 +66,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Pipeline(sub) => pipeline::execute(sub, format),
         Command::Doc(sub) => doc::execute(sub, format),
         Command::Git(sub) => git::execute(sub, format),
+        Command::Discussion(sub) => discussion::execute(sub, format),
         Command::Migrate(args) => migrate::execute(args, format),
         Command::Context(args) => context::execute(args, format),
         Command::Prompt(args) => prompt::execute(args, format),

@@ -140,6 +140,72 @@ arch-debate（本 skill）
 
 新项目首次使用时，可参照已有配置创建这两个文件，为项目的技术栈定制合适的角色阵容。
 
+## 讨论持久化协议
+
+辩论过程通过 `popsicle discussion` 命令持久化，确保多角色讨论不丢失。
+
+### 辩论开始时
+
+```bash
+# 创建讨论会话
+popsicle discussion create --skill arch-debate --topic "<讨论主题>" --run <run-id> --confidence <1-5>
+
+# 注册参与角色
+popsicle discussion role <discussion-id> --role-id arch --name "架构师" --perspective "系统一致性" --source builtin
+popsicle discussion role <discussion-id> --role-id sec --name "安全专家" --perspective "安全威胁" --source builtin
+```
+
+### 每次角色发言后
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role <role-id> --role-name "<显示名>" \
+  --phase "Phase 1: 问题定义" \
+  --type role-statement \
+  --content "<发言内容>"
+```
+
+### 用户输入后
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role user --role-name "User" \
+  --phase "Phase 1: 问题定义" \
+  --type user-input \
+  --content "<用户输入>"
+```
+
+### 暂停点
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role system --role-name "System" \
+  --phase "Phase 1: 问题定义" \
+  --type pause-point \
+  --content "请确认问题定义是否准确？"
+```
+
+### 阶段小结
+
+```bash
+popsicle discussion message <discussion-id> \
+  --role system --role-name "System" \
+  --phase "Phase 1: 问题定义" \
+  --type phase-summary \
+  --content "共识: ...\n分歧: ..."
+```
+
+### 辩论结束时
+
+```bash
+# 结束讨论并自动导出 Markdown
+popsicle discussion conclude <discussion-id>
+```
+
+这将自动在 `.popsicle/artifacts/<run-id>/` 目录下生成 `<slug>.arch-debate.discussion.md` 文件，完整记录讨论过程。
+
+**最低要求**：至少在每个 Phase 的暂停点和阶段小结时调用 `discussion message`，确保关键决策节点被记录。
+
 ## 参考资源
 
 ### Reference 文件

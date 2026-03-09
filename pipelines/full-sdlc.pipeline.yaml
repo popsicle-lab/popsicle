@@ -21,9 +21,11 @@ stages:
     description: Multi-persona architecture debate for technical decisions
     depends_on: [product]
 
-  - name: architecture
-    skill: adr
-    description: Architecture Decision Record
+  - name: tech-design
+    skills:
+      - rfc
+      - adr
+    description: Technical RFC and Architecture Decision Record (parallel)
     depends_on: [arch-debate]
 
   - name: test-planning
@@ -32,7 +34,7 @@ stages:
       - api-test-gen
       - functional-e2e
     description: Test specification and generation (parallel)
-    depends_on: [architecture]
+    depends_on: [tech-design]
 
   - name: ui-testing
     skill: ui-test

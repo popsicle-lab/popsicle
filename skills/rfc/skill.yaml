@@ -1,0 +1,44 @@
+name: rfc
+description: Technical RFC for design decisions and consensus building
+version: "0.1.0"
+
+inputs:
+  - from_skill: arch-debate
+    artifact_type: arch-debate-record
+    required: false
+  - from_skill: prd
+    artifact_type: prd
+    required: true
+
+artifacts:
+  - type: rfc
+    template: templates/rfc.md
+    file_pattern: "{slug}.rfc.md"
+
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: review
+          action: submit
+          guard: "upstream_approved"
+    review:
+      transitions:
+        - to: accepted
+          action: accept
+          guard: "has_sections:Summary,Motivation,Proposal,Rationale and Alternatives,Open Questions"
+          requires_approval: true
+        - to: draft
+          action: revise
+        - to: rejected
+          action: reject
+    accepted:
+      final: true
+    rejected:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

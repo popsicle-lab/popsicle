@@ -45,6 +45,16 @@ pub fn find_pipeline(project_dir: &Path, name: &str) -> crate::error::Result<Pip
         })
 }
 
+/// Convert a title to a URL-friendly slug.
+pub fn slugify(title: &str) -> String {
+    title
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != '-', "-")
+        .replace("--", "-")
+        .trim_matches('-')
+        .to_string()
+}
+
 /// Ensure project is initialized and return layout.
 pub fn project_layout(project_dir: &Path) -> crate::error::Result<ProjectLayout> {
     let layout = ProjectLayout::new(project_dir);

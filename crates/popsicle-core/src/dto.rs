@@ -1,6 +1,55 @@
 use serde::Serialize;
 
 #[derive(Serialize)]
+pub struct DiscussionInfo {
+    pub id: String,
+    pub document_id: Option<String>,
+    pub skill: String,
+    pub pipeline_run_id: String,
+    pub topic: String,
+    pub status: String,
+    pub user_confidence: Option<i32>,
+    pub message_count: usize,
+    pub created_at: String,
+    pub concluded_at: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct DiscussionFull {
+    pub id: String,
+    pub document_id: Option<String>,
+    pub skill: String,
+    pub pipeline_run_id: String,
+    pub topic: String,
+    pub status: String,
+    pub user_confidence: Option<i32>,
+    pub roles: Vec<DiscussionRoleInfo>,
+    pub messages: Vec<DiscussionMessageInfo>,
+    pub created_at: String,
+    pub concluded_at: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct DiscussionRoleInfo {
+    pub role_id: String,
+    pub role_name: String,
+    pub perspective: Option<String>,
+    pub source: String,
+}
+
+#[derive(Serialize)]
+pub struct DiscussionMessageInfo {
+    pub id: String,
+    pub phase: String,
+    pub role_id: String,
+    pub role_name: String,
+    pub content: String,
+    pub message_type: String,
+    pub reply_to: Option<String>,
+    pub timestamp: String,
+}
+
+#[derive(Serialize)]
 pub struct ProjectInfo {
     pub path: String,
     pub initialized: bool,

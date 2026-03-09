@@ -1,4 +1,4 @@
-import { LayoutDashboard, Puzzle, GitBranch } from "lucide-react";
+import { LayoutDashboard, Puzzle, GitBranch, MessageCircle } from "lucide-react";
 import type { Page } from "../App";
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
 
 const navItems = [
   { kind: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
+  { kind: "discussions" as const, label: "Discussions", icon: MessageCircle },
   { kind: "git" as const, label: "Git Tracking", icon: GitBranch },
   { kind: "skills" as const, label: "Skills", icon: Puzzle },
 ];

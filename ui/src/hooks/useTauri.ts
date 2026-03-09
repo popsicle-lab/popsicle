@@ -185,3 +185,62 @@ export async function getCommitLinks(filters?: {
 }): Promise<CommitLinkInfo[]> {
   return invoke("get_commit_links", filters || {});
 }
+
+export interface DiscussionInfo {
+  id: string;
+  document_id: string | null;
+  skill: string;
+  pipeline_run_id: string;
+  topic: string;
+  status: string;
+  user_confidence: number | null;
+  message_count: number;
+  created_at: string;
+  concluded_at: string | null;
+}
+
+export interface DiscussionFull {
+  id: string;
+  document_id: string | null;
+  skill: string;
+  pipeline_run_id: string;
+  topic: string;
+  status: string;
+  user_confidence: number | null;
+  roles: DiscussionRoleInfo[];
+  messages: DiscussionMessageInfo[];
+  created_at: string;
+  concluded_at: string | null;
+}
+
+export interface DiscussionRoleInfo {
+  role_id: string;
+  role_name: string;
+  perspective: string | null;
+  source: string;
+}
+
+export interface DiscussionMessageInfo {
+  id: string;
+  phase: string;
+  role_id: string;
+  role_name: string;
+  content: string;
+  message_type: string;
+  reply_to: string | null;
+  timestamp: string;
+}
+
+export async function listDiscussions(filters?: {
+  runId?: string;
+  skill?: string;
+  status?: string;
+}): Promise<DiscussionInfo[]> {
+  return invoke("list_discussions", filters || {});
+}
+
+export async function getDiscussion(
+  discussionId: string
+): Promise<DiscussionFull> {
+  return invoke("get_discussion", { discussionId });
+}

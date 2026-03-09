@@ -6,13 +6,14 @@ It organizes the full software development lifecycle through composable **Skills
 
 ## Core Concepts
 
-- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `domain-analysis`, `product-prd`, `tech-rfc`)
+- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `domain-analysis`, `arch-debate`, `rfc`)
 - **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages
 - **Document** — Artifacts produced by Skills, stored as YAML frontmatter + Markdown files for Git-friendliness
+- **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
 - **Guard** — Conditions on workflow transitions that enforce upstream approval and document completeness
 - **Advisor** — Recommends the next step (CLI command + AI prompt) based on current pipeline and document state
-- **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, git status, and commit-document associations
+- **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, discussions, git status, and commit-document associations
 
 ## Installation
 
@@ -173,6 +174,18 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle git log [-n]` | Commit history with review status and associations |
 | `popsicle git review <sha> <passed/failed/skipped>` | Update commit review status |
 
+### Discussion Persistence
+
+| Command | Description |
+|---------|-------------|
+| `popsicle discussion create --skill <s> --topic <t> --run <id>` | Create a new discussion session |
+| `popsicle discussion message <id> --role <r> --phase <p> --content <c>` | Add a message to a discussion |
+| `popsicle discussion role <id> --role-id <r> --name <n>` | Register a participant role |
+| `popsicle discussion list [--run/--skill/--status]` | Query discussions |
+| `popsicle discussion show <id>` | Show discussion with full conversation |
+| `popsicle discussion conclude <id> [--confidence <1-5>]` | Conclude a discussion |
+| `popsicle discussion export <id> [--output <path>]` | Export discussion as Markdown |
+
 ### AI Agent Integration
 
 | Command | Description |
@@ -189,18 +202,28 @@ All commands support `--format json` for machine consumption.
 | Skill | Artifact Type | Description |
 |-------|---------------|-------------|
 | `domain-analysis` | domain-model | Domain boundary analysis and model definition |
-| `product-prd` | prd | Product requirements document |
-| `tech-rfc` | rfc | Technical RFC for design decisions |
-| `tech-adr` | adr | Architecture Decision Record |
-| `test-spec` | test-spec | Test specification and planning |
-| `implementation` | impl-plan | Code implementation tracking |
+| `product-debate` | product-debate-record | Multi-persona product debate to explore options |
+| `prd` | prd | Product requirements document with quality scoring |
+| `arch-debate` | arch-debate-record | Multi-persona architecture debate for technical decisions |
+| `rfc` | rfc | Technical RFC for design decisions and consensus building |
+| `adr` | adr | Architecture Decision Record |
+| `priority-test-gate` | priority-test-gate | Test priority gating and risk assessment |
+| `api-test-gen` | api-test | API test specification and generation |
+| `functional-e2e` | e2e-test | Functional end-to-end test specification |
+| `ui-test` | ui-test | UI test specification and Playwright test generation |
+| `bug-tracker` | bug-report | Bug tracking and issue management |
+| `test-report` | test-report | Test report analysis and aggregation |
 
 ## Built-in Pipeline
 
 **`full-sdlc`** — Full software development lifecycle:
 
 ```
-domain-analysis → product-prd → tech-rfc + tech-adr → test-spec → implementation
+domain-analysis → product-debate → prd → arch-debate → rfc + adr → tests → quality
+                                                          ↓
+                                            priority-test-gate + api-test-gen + functional-e2e
+                                                          ↓
+                                         prd → ui-test → bug-tracker + test-report
 ```
 
 ## Guard Conditions
@@ -236,6 +259,7 @@ Developer ──→                               ↑
                                   Desktop UI (read-only)
                                     ├── Pipeline DAG visualization
                                     ├── Document viewer + metadata panel
+                                    ├── Discussion viewer (conversational UI)
                                     ├── Git tracking + commit-document links
                                     └── Next Step Advisor
 ```
@@ -282,6 +306,7 @@ The Tauri desktop app provides read-only visualization:
 - **Dashboard** — Pipeline run overview, Git status bar, document statistics, quick actions with copyable commands
 - **Pipeline View** — Stage DAG with status highlighting, documents and commits per stage, verification status, archive hint, Next Step Advisor
 - **Document Viewer** — Markdown rendering + metadata panel (type, status, skill, tags, timeline, linked commits)
+- **Discussions** — Conversational UI for multi-role review sessions with phase grouping, role color coding, participant sidebar, and message type differentiation (role statements, user input, pause points, phase summaries, decisions)
 - **Git Tracking** — Branch/HEAD status, tracked commits with review status, commit-document-stage associations
 - **Skills Registry** — Browse all skills with workflow diagrams and input dependencies
 

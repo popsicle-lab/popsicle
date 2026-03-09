@@ -6,6 +6,8 @@ import { PipelineView } from "./pages/PipelineView";
 import { DocumentView } from "./pages/DocumentView";
 import { SkillsView } from "./pages/SkillsView";
 import { GitView } from "./pages/GitView";
+import { DiscussionsView } from "./pages/DiscussionsView";
+import { DiscussionDetailView } from "./pages/DiscussionDetailView";
 import { ProjectPicker } from "./components/ProjectPicker";
 
 export type Page =
@@ -13,7 +15,9 @@ export type Page =
   | { kind: "pipeline"; runId: string }
   | { kind: "document"; docId: string }
   | { kind: "skills" }
-  | { kind: "git" };
+  | { kind: "git" }
+  | { kind: "discussions" }
+  | { kind: "discussion"; discussionId: string };
 
 export default function App() {
   const { dir, setProjectDir } = useProjectDir();
@@ -58,6 +62,15 @@ export default function App() {
         {page.kind === "skills" && <SkillsView key={refreshKey} />}
         {page.kind === "git" && (
           <GitView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "discussions" && (
+          <DiscussionsView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "discussion" && (
+          <DiscussionDetailView
+            key={`${page.discussionId}-${refreshKey}`}
+            discussionId={page.discussionId}
+          />
         )}
       </main>
     </div>
