@@ -1,25 +1,27 @@
 import { useEffect, useState } from "react";
 import {
   listPipelineRuns,
-  listSkills,
   listDocuments,
+  listIssues,
+  getIssueProgress,
   getGitStatus,
   type PipelineRunInfo,
-  type SkillInfo,
   type DocInfo,
   type GitStatusInfo,
+  type IssueInfo,
+  type IssueProgress,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   GitBranch,
   FileText,
-  Puzzle,
   ArrowRight,
   GitCommit,
   Copy,
   Check,
   Zap,
   Terminal,
+  ClipboardList,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -29,23 +31,42 @@ interface Props {
 
 export function Dashboard({ setPage }: Props) {
   const [runs, setRuns] = useState<PipelineRunInfo[]>([]);
-  const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [docs, setDocs] = useState<DocInfo[]>([]);
+  const [issues, setIssues] = useState<IssueInfo[]>([]);
+  const [activeProgress, setActiveProgress] = useState<
+    { issue: IssueInfo; progress: IssueProgress }[]
+  >([]);
   const [gitStatus, setGitStatus] = useState<GitStatusInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       listPipelineRuns(),
-      listSkills(),
       listDocuments(),
+      listIssues(),
       getGitStatus().catch(() => null),
     ])
-      .then(([r, s, d, g]) => {
+      .then(([r, d, iss, g]) => {
         setRuns(r);
-        setSkills(s);
         setDocs(d);
+        setIssues(iss);
         setGitStatus(g);
+
+        const active = iss.filter((i) => i.status === "in_progress");
+        Promise.all(
+          active.map((i) =>
+            getIssueProgress(i.key)
+              .then((p) => ({ issue: i, progress: p }))
+              .catch(() => null),
+          ),
+        ).then((results) => {
+          setActiveProgress(
+            results.filter(
+              (r): r is { issue: IssueInfo; progress: IssueProgress } =>
+                r !== null,
+            ),
+          );
+        });
       })
       .catch((e) => setError(e?.toString()));
   }, []);
@@ -58,12 +79,16 @@ export function Dashboard({ setPage }: Props) {
     );
   }
 
+  const activeIssueCount = issues.filter(
+    (i) => i.status === "in_progress",
+  ).length;
+
   const statusCounts = docs.reduce(
     (acc, d) => {
       acc[d.status] = (acc[d.status] || 0) + 1;
       return acc;
     },
-    {} as Record<string, number>
+    {} as Record<string, number>,
   );
 
   return (
@@ -73,16 +98,16 @@ export function Dashboard({ setPage }: Props) {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard
+          icon={<ClipboardList size={20} />}
+          label="Active Issues"
+          value={activeIssueCount}
+          color="var(--accent-purple)"
+        />
+        <StatCard
           icon={<GitBranch size={20} />}
           label="Pipeline Runs"
           value={runs.length}
           color="var(--accent)"
-        />
-        <StatCard
-          icon={<Puzzle size={20} />}
-          label="Skills"
-          value={skills.length}
-          color="var(--accent-purple)"
         />
         <StatCard
           icon={<FileText size={20} />}
@@ -97,6 +122,86 @@ export function Dashboard({ setPage }: Props) {
           color="var(--accent-yellow)"
         />
       </div>
+
+      {/* Active Issues in Progress */}
+      {activeProgress.length > 0 && (
+        <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
+          <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ClipboardList
+                size={16}
+                className="text-[var(--accent-purple)]"
+              />
+              <h3 className="font-medium text-sm">Issues in Progress</h3>
+            </div>
+            <button
+              onClick={() => setPage({ kind: "issues" })}
+              className="text-xs text-[var(--accent)] hover:underline"
+            >
+              View all →
+            </button>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {activeProgress.map(({ issue, progress }) => {
+              const stagePct =
+                progress.stages_total > 0
+                  ? Math.round(
+                      (progress.stages_completed / progress.stages_total) * 100,
+                    )
+                  : 0;
+              const color =
+                stagePct === 100
+                  ? "var(--accent-green)"
+                  : stagePct >= 50
+                    ? "var(--accent-yellow)"
+                    : "var(--accent)";
+
+              return (
+                <button
+                  key={issue.id}
+                  onClick={() =>
+                    setPage({ kind: "issue", issueKey: issue.key })
+                  }
+                  className="w-full px-4 py-3 hover:bg-[var(--bg-tertiary)] transition-colors text-left"
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-xs text-[var(--accent)]">
+                        {issue.key}
+                      </span>
+                      <span className="font-medium text-sm truncate">
+                        {issue.title}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3">
+                      {progress.current_stage && (
+                        <span className="text-xs text-[var(--accent-purple)]">
+                          {progress.current_stage}
+                        </span>
+                      )}
+                      <span
+                        className="text-xs font-mono"
+                        style={{ color }}
+                      >
+                        {progress.stages_completed}/{progress.stages_total}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-full h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${stagePct}%`,
+                        background: color,
+                      }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Git Status Bar */}
       {gitStatus && (

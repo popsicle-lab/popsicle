@@ -27,3 +27,4 @@ This shows what to do next, including the CLI command and AI prompt.
 3. Guard conditions enforce that upstream documents must be approved before downstream work
 4. Fill in document sections with real content — template placeholders will be rejected by guards
 5. Link your commits to the relevant documents and stages
+6. **Approval steps** (e.g. discussion conclude, doc approve): do NOT run `popsicle doc transition … --confirm` for the user. You must stop, show the command, and ask the user to review and run it themselves in their terminal.

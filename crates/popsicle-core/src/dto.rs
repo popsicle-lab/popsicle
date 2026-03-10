@@ -240,3 +240,39 @@ pub struct IssueFull {
     pub created_at: String,
     pub updated_at: String,
 }
+
+// ── Issue progress aggregation ──
+
+#[derive(Serialize)]
+pub struct IssueProgress {
+    pub issue_key: String,
+    pub pipeline_run_id: Option<String>,
+    pub pipeline_name: Option<String>,
+    pub stages_total: u32,
+    pub stages_completed: u32,
+    pub docs_total: u32,
+    pub docs_final: u32,
+    pub checklist_checked: u32,
+    pub checklist_total: u32,
+    pub current_stage: Option<String>,
+    pub stage_summaries: Vec<StageSummary>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct StageSummary {
+    pub name: String,
+    pub state: String,
+    pub docs: Vec<DocInfo>,
+}
+
+// ── Activity timeline ──
+
+#[derive(Serialize)]
+pub struct ActivityEvent {
+    pub timestamp: String,
+    pub event_type: String,
+    pub title: String,
+    pub detail: Option<String>,
+    pub doc_id: Option<String>,
+    pub stage: Option<String>,
+}

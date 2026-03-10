@@ -595,6 +595,8 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
                     );
                     println!("   {}", step.description);
                     if step.requires_approval {
+                        println!("   → 此步骤需您本人审批，请先审阅文档/参与讨论，勿由 AI 代执行。");
+                        println!("   → 确认后由您本人在终端执行：");
                         println!("   $ {} --confirm", step.cli_command);
                     } else {
                         println!("   $ {}", step.cli_command);

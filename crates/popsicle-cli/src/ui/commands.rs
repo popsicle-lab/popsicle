@@ -4,7 +4,7 @@ use popsicle_core::dto::*;
 use popsicle_core::engine::{Advisor, count_checkboxes};
 use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
-use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority};
+use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority, StageState};
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectConfig, ProjectLayout, DocumentRow};
 use tauri::State;
 
@@ -745,4 +745,195 @@ pub fn update_issue(
     db.update_issue(&issue).map_err(|e| e.to_string())?;
 
     Ok(issue_to_info(&issue))
+}
+
+// ── Issue progress aggregation ──
+
+#[tauri::command]
+pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssueProgress, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+    let registry = helpers::load_registry(&dir).map_err(|e| e.to_string())?;
+
+    let issue = db
+        .get_issue(&key)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Issue not found: {}", key))?;
+
+    let run_id = match &issue.pipeline_run_id {
+        Some(id) => id.clone(),
+        None => {
+            return Ok(IssueProgress {
+                issue_key: issue.key,
+                pipeline_run_id: None,
+                pipeline_name: None,
+                stages_total: 0,
+                stages_completed: 0,
+                docs_total: 0,
+                docs_final: 0,
+                checklist_checked: 0,
+                checklist_total: 0,
+                current_stage: None,
+                stage_summaries: vec![],
+            });
+        }
+    };
+
+    let run = db
+        .get_pipeline_run(&run_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Run not found: {}", run_id))?;
+
+    let pipeline_def =
+        helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
+
+    let docs = db
+        .query_documents(None, None, Some(&run_id))
+        .map_err(|e| e.to_string())?;
+
+    let stages_total = pipeline_def.stages.len() as u32;
+    let mut stages_completed: u32 = 0;
+    let mut current_stage: Option<String> = None;
+    let mut total_cl_checked: u32 = 0;
+    let mut total_cl_total: u32 = 0;
+    let mut docs_total: u32 = 0;
+    let mut docs_final: u32 = 0;
+    let mut stage_summaries = Vec::new();
+
+    for stage in &pipeline_def.stages {
+        let state_val = run
+            .stage_states
+            .get(&stage.name)
+            .copied()
+            .unwrap_or(StageState::Blocked);
+
+        if state_val == StageState::Completed || state_val == StageState::Skipped {
+            stages_completed += 1;
+        }
+
+        if current_stage.is_none()
+            && (state_val == StageState::InProgress || state_val == StageState::Ready)
+        {
+            current_stage = Some(stage.name.clone());
+        }
+
+        let stage_docs: Vec<DocInfo> = docs
+            .iter()
+            .filter(|d| stage.skill_names().contains(&d.skill_name.as_str()))
+            .map(|d| {
+                let info = doc_row_to_info(d);
+                total_cl_checked += info.checklist_checked;
+                total_cl_total += info.checklist_total;
+                docs_total += 1;
+                if registry
+                    .get(&d.skill_name)
+                    .map(|s| s.is_final_state(&d.status))
+                    .unwrap_or(false)
+                {
+                    docs_final += 1;
+                }
+                info
+            })
+            .collect();
+
+        stage_summaries.push(StageSummary {
+            name: stage.name.clone(),
+            state: state_val.to_string(),
+            docs: stage_docs,
+        });
+    }
+
+    Ok(IssueProgress {
+        issue_key: issue.key,
+        pipeline_run_id: Some(run_id),
+        pipeline_name: Some(run.pipeline_name),
+        stages_total,
+        stages_completed,
+        docs_total,
+        docs_final,
+        checklist_checked: total_cl_checked,
+        checklist_total: total_cl_total,
+        current_stage,
+        stage_summaries,
+    })
+}
+
+// ── Activity timeline ──
+
+#[tauri::command]
+pub fn get_activity(run_id: String, state: State<AppState>) -> Result<Vec<ActivityEvent>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let docs = db
+        .query_documents(None, None, Some(&run_id))
+        .map_err(|e| e.to_string())?;
+
+    let commits = db
+        .query_commit_links(Some(&run_id), None, None)
+        .map_err(|e| e.to_string())?;
+
+    let mut events: Vec<ActivityEvent> = Vec::new();
+
+    for d in &docs {
+        if let Some(ref ts) = d.created_at {
+            events.push(ActivityEvent {
+                timestamp: ts.clone(),
+                event_type: "doc_created".to_string(),
+                title: format!("{} created", d.title),
+                detail: Some(d.doc_type.clone()),
+                doc_id: Some(d.id.clone()),
+                stage: None,
+            });
+        }
+        if let Some(ref ts) = d.updated_at {
+            if d.updated_at != d.created_at {
+                events.push(ActivityEvent {
+                    timestamp: ts.clone(),
+                    event_type: "doc_updated".to_string(),
+                    title: format!("{} → {}", d.title, d.status),
+                    detail: None,
+                    doc_id: Some(d.id.clone()),
+                    stage: None,
+                });
+            }
+        }
+    }
+
+    for c in &commits {
+        let commit = GitTracker::commit_info(&dir, &c.sha).ok();
+        events.push(ActivityEvent {
+            timestamp: c.linked_at.clone(),
+            event_type: "commit_linked".to_string(),
+            title: commit
+                .as_ref()
+                .map(|ci| ci.message.clone())
+                .unwrap_or_else(|| c.sha[..8.min(c.sha.len())].to_string()),
+            detail: c.stage.clone(),
+            doc_id: c.doc_id.clone(),
+            stage: c.stage.clone(),
+        });
+    }
+
+    events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    events.truncate(50);
+
+    Ok(events)
+}
+
+// ── Find issue by pipeline run ──
+
+#[tauri::command]
+pub fn find_issue_by_run(run_id: String, state: State<AppState>) -> Result<Option<IssueInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let issue = db
+        .find_issue_by_run_id(&run_id)
+        .map_err(|e| e.to_string())?;
+
+    Ok(issue.as_ref().map(issue_to_info))
 }

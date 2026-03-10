@@ -295,8 +295,12 @@ function MiniChecklistBar({
 function NextStepCard({ step }: { step: NextStepInfo }) {
   const [copied, setCopied] = useState(false);
 
+  const cmdToShow = step.requires_approval
+    ? `${step.cli_command} --confirm`
+    : step.cli_command;
+
   const copyCommand = () => {
-    navigator.clipboard.writeText(step.cli_command);
+    navigator.clipboard.writeText(cmdToShow);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -320,10 +324,15 @@ function NextStepCard({ step }: { step: NextStepInfo }) {
       <p className="text-sm text-[var(--text-secondary)] mb-2">
         {step.description}
       </p>
+      {step.requires_approval && (
+        <p className="text-xs text-amber-400/90 mb-2">
+          需您本人审批：请先审阅/参与讨论，确认后由您本人在终端执行下方命令，勿让 AI 代执行。
+        </p>
+      )}
       {step.cli_command && (
         <div className="flex items-center gap-2">
           <code className="flex-1 text-xs bg-[var(--bg-primary)] px-3 py-1.5 rounded font-mono text-[var(--accent)] overflow-x-auto">
-            $ {step.cli_command}
+            $ {cmdToShow}
           </code>
           <button
             onClick={copyCommand}

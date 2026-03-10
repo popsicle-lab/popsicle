@@ -61,6 +61,7 @@ export default function App() {
           <DocumentView
             key={`${page.docId}-${refreshKey}`}
             docId={page.docId}
+            setPage={setPage}
           />
         )}
         {page.kind === "skills" && <SkillsView key={refreshKey} />}

@@ -4,7 +4,7 @@ use anyhow::Context;
 use popsicle_core::engine::guard;
 use popsicle_core::engine::hooks::{self, HookContext, HookEvent};
 use popsicle_core::helpers;
-use popsicle_core::model::{Document, PipelineDef, StageState};
+use popsicle_core::model::{Document, IssueStatus, PipelineDef, StageState};
 use popsicle_core::registry::SkillRegistry;
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
 
@@ -327,6 +327,21 @@ fn sync_pipeline_stage(
             run.stage_states
                 .insert(stage.name.clone(), StageState::Completed);
             run.refresh_states(&pipeline_def);
+
+            let all_pipeline_done = pipeline_def.stages.iter().all(|s| {
+                matches!(
+                    run.stage_states.get(&s.name),
+                    Some(StageState::Completed | StageState::Skipped)
+                )
+            });
+            if all_pipeline_done {
+                if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {
+                    if issue.status != IssueStatus::Done {
+                        issue.status = IssueStatus::Done;
+                        let _ = db.update_issue(&issue);
+                    }
+                }
+            }
         }
     }
 
