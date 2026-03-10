@@ -28,7 +28,11 @@ pub fn check_guard(
     all_docs: &[DocumentRow],
     registry: &SkillRegistry,
 ) -> Result<GuardResult> {
-    let parts: Vec<&str> = guard.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    let parts: Vec<&str> = guard
+        .split(';')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     if parts.len() > 1 {
         let mut failed = Vec::new();
@@ -243,10 +247,7 @@ fn check_checklist_complete(doc: &Document, section: Option<&str>) -> Result<Gua
         Ok(GuardResult {
             passed: false,
             guard_name,
-            message: format!(
-                "{}/{} checklist items still unchecked.",
-                unchecked, total
-            ),
+            message: format!("{}/{} checklist items still unchecked.", unchecked, total),
         })
     }
 }
@@ -460,7 +461,11 @@ mod tests {
 
         let result = check_checklist_complete(&doc, None).unwrap();
         assert!(!result.passed);
-        assert!(result.message.contains("2/3 checklist items still unchecked"));
+        assert!(
+            result
+                .message
+                .contains("2/3 checklist items still unchecked")
+        );
     }
 
     #[test]
@@ -506,7 +511,10 @@ mod tests {
         assert!(scoped.passed, "Scoped should pass: {}", scoped.message);
 
         let global = check_checklist_complete(&doc, None).unwrap();
-        assert!(!global.passed, "Global should fail due to Open Questions checkbox");
+        assert!(
+            !global.passed,
+            "Global should fail due to Open Questions checkbox"
+        );
     }
 
     #[test]

@@ -6,15 +6,22 @@ use watcher::ProjectWatcher;
 
 pub struct AppState {
     pub project_dir: Mutex<Option<String>>,
+    pub initial_dir: String,
 }
 
 pub fn run() {
+    let initial_dir = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             project_dir: Mutex::new(None),
+            initial_dir,
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_initial_dir,
             commands::set_project_dir,
             commands::get_project_status,
             commands::list_skills,

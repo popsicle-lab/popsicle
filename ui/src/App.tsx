@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useProjectDir, useRefresh } from "./hooks/useTauri";
+import { useProjectDir, useRefresh, getInitialDir } from "./hooks/useTauri";
 import { Sidebar } from "./components/Sidebar";
 import { Dashboard } from "./pages/Dashboard";
 import { PipelineView } from "./pages/PipelineView";
@@ -27,6 +27,8 @@ export default function App() {
   const { dir, setProjectDir } = useProjectDir();
   const [page, setPage] = useState<Page>({ kind: "dashboard" });
   const [refreshKey, setRefreshKey] = useState(0);
+  const [initialDir, setInitialDir] = useState<string | null>(null);
+  const [autoOpenAttempted, setAutoOpenAttempted] = useState(false);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
   useRefresh(refresh);
@@ -36,11 +38,28 @@ export default function App() {
     const projectPath = params.get("project");
     if (projectPath) {
       setProjectDir(projectPath).catch(console.error);
+      setAutoOpenAttempted(true);
+      return;
     }
+
+    getInitialDir().then((cwd) => {
+      setInitialDir(cwd || null);
+      if (cwd) {
+        setProjectDir(cwd)
+          .catch(() => {})
+          .finally(() => setAutoOpenAttempted(true));
+      } else {
+        setAutoOpenAttempted(true);
+      }
+    });
   }, [setProjectDir]);
 
+  if (!autoOpenAttempted) {
+    return null;
+  }
+
   if (!dir) {
-    return <ProjectPicker onSelect={setProjectDir} />;
+    return <ProjectPicker onSelect={setProjectDir} initialPath={initialDir ?? undefined} />;
   }
 
   return (

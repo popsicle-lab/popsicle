@@ -3,10 +3,11 @@ import { FolderOpen } from "lucide-react";
 
 interface Props {
   onSelect: (path: string) => Promise<void>;
+  initialPath?: string;
 }
 
-export function ProjectPicker({ onSelect }: Props) {
-  const [path, setPath] = useState("");
+export function ProjectPicker({ onSelect, initialPath }: Props) {
+  const [path, setPath] = useState(initialPath ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 

@@ -178,6 +178,26 @@ fn build_overview(skills: &[&SkillDef]) -> String {
     let mut s = String::from(
         r#"This project uses Popsicle for spec-driven development orchestration.
 
+## Binary Resolution
+
+When running `popsicle` commands, prefer the binary in the **project root directory** first,
+then fall back to the one on the system PATH:
+
+- **Linux / macOS**: `./popsicle` if it exists, otherwise `popsicle`
+- **Windows**: `.\popsicle.exe` if it exists, otherwise `popsicle`
+
+Before running any popsicle command, resolve the binary:
+
+```bash
+# Linux / macOS
+if [ -x "./popsicle" ]; then POPSICLE=./popsicle; else POPSICLE=popsicle; fi
+
+# Windows (PowerShell)
+# if (Test-Path ".\popsicle.exe") { $POPSICLE = ".\popsicle.exe" } else { $POPSICLE = "popsicle" }
+```
+
+Then use `$POPSICLE` in place of `popsicle` for all commands.
+
 ## Before Starting Any Task
 
 ```bash
@@ -320,6 +340,8 @@ description: Check what to do next in the Popsicle pipeline. Use when starting w
 ---
 
 Check what to do next in the Popsicle pipeline and follow the recommended action.
+
+Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
 
 ```bash
 popsicle pipeline next --format json

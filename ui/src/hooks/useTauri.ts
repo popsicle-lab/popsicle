@@ -92,6 +92,10 @@ export function useRefresh(callback: () => void) {
   }, [callback]);
 }
 
+export async function getInitialDir(): Promise<string> {
+  return invoke("get_initial_dir");
+}
+
 export function useProjectDir() {
   const [dir, setDir] = useState<string | null>(null);
 

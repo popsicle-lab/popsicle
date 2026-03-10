@@ -338,13 +338,12 @@ fn sync_pipeline_stage(
                     Some(StageState::Completed | StageState::Skipped)
                 )
             });
-            if all_pipeline_done {
-                if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {
-                    if issue.status != IssueStatus::Done {
-                        issue.status = IssueStatus::Done;
-                        let _ = db.update_issue(&issue);
-                    }
-                }
+            if all_pipeline_done
+                && let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id)
+                && issue.status != IssueStatus::Done
+            {
+                issue.status = IssueStatus::Done;
+                let _ = db.update_issue(&issue);
             }
         }
     }

@@ -5,7 +5,7 @@ use popsicle_core::engine::{Advisor, count_checkboxes};
 use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority, StageState};
-use popsicle_core::storage::{FileStorage, IndexDb, ProjectConfig, ProjectLayout, DocumentRow};
+use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
 
 use super::AppState;
@@ -34,6 +34,11 @@ fn doc_row_to_info(d: &DocumentRow) -> DocInfo {
         checklist_total: (checked + unchecked) as u32,
         checklist_checked: checked as u32,
     }
+}
+
+#[tauri::command]
+pub fn get_initial_dir(state: State<AppState>) -> String {
+    state.initial_dir.clone()
 }
 
 #[tauri::command]
@@ -888,17 +893,17 @@ pub fn get_activity(run_id: String, state: State<AppState>) -> Result<Vec<Activi
                 stage: None,
             });
         }
-        if let Some(ref ts) = d.updated_at {
-            if d.updated_at != d.created_at {
-                events.push(ActivityEvent {
-                    timestamp: ts.clone(),
-                    event_type: "doc_updated".to_string(),
-                    title: format!("{} → {}", d.title, d.status),
-                    detail: None,
-                    doc_id: Some(d.id.clone()),
-                    stage: None,
-                });
-            }
+        if let Some(ref ts) = d.updated_at
+            && d.updated_at != d.created_at
+        {
+            events.push(ActivityEvent {
+                timestamp: ts.clone(),
+                event_type: "doc_updated".to_string(),
+                title: format!("{} → {}", d.title, d.status),
+                detail: None,
+                doc_id: Some(d.id.clone()),
+                stage: None,
+            });
         }
     }
 
@@ -926,7 +931,10 @@ pub fn get_activity(run_id: String, state: State<AppState>) -> Result<Vec<Activi
 // ── Find issue by pipeline run ──
 
 #[tauri::command]
-pub fn find_issue_by_run(run_id: String, state: State<AppState>) -> Result<Option<IssueInfo>, String> {
+pub fn find_issue_by_run(
+    run_id: String,
+    state: State<AppState>,
+) -> Result<Option<IssueInfo>, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
