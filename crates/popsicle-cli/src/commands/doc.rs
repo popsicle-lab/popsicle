@@ -210,8 +210,12 @@ fn show_doc(id: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .find(|d| d.id == id)
         .context(format!("Document not found: {}", id))?;
 
-    let doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+    let mut doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
         .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    if doc.skill_name.is_empty() {
+        doc.skill_name = doc_row.skill_name.clone();
+    }
 
     match format {
         OutputFormat::Text => {
@@ -373,6 +377,10 @@ fn transition_doc(
 
     let mut doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
         .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    if doc.skill_name.is_empty() {
+        doc.skill_name = doc_row.skill_name.clone();
+    }
 
     let skill = registry
         .get(&doc.skill_name)
