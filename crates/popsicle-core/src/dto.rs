@@ -138,6 +138,8 @@ pub struct DocInfo {
     pub skill_name: String,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub checklist_checked: u32,
+    pub checklist_total: u32,
 }
 
 #[derive(Serialize)]

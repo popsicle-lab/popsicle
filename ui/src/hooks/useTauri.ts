@@ -61,6 +61,8 @@ export interface DocInfo {
   skill_name: string;
   created_at: string | null;
   updated_at: string | null;
+  checklist_checked: number;
+  checklist_total: number;
 }
 
 export interface DocFull extends DocInfo {

@@ -27,7 +27,7 @@ workflow:
       transitions:
         - to: completed
           action: approve
-          guard: "has_sections:Generated Tests,Coverage Summary"
+          guard: "has_sections:Generated Tests,Coverage Summary;checklist_complete:Generation Checklist"
           requires_approval: true
         - to: generating
           action: revise

@@ -37,6 +37,13 @@
 # Command to run generated tests
 ```
 
+## Generation Checklist
+
+- [ ] All P0 features have unit tests
+- [ ] All generated tests compile
+- [ ] Test file locations match naming conventions
+- [ ] Coverage meets threshold
+
 ## Issues Found
 
 - ...

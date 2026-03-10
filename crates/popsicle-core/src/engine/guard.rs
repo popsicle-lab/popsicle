@@ -13,11 +13,49 @@ pub struct GuardResult {
 
 /// Evaluate a guard condition string against the current state.
 ///
+/// Multiple guards can be combined with `;` (all must pass):
+///   `"upstream_approved;has_sections:Summary;checklist_complete:Tasks"`
+///
 /// Supported guard types:
 /// - `upstream_approved` — all required upstream skill documents must be in a final state
 /// - `has_sections:<Section1>,<Section2>` — document body must contain these H2 headings
 ///   with non-template content beneath them
+/// - `checklist_complete` — all Markdown checkboxes in the document are checked
+/// - `checklist_complete:<Section>` — all checkboxes in the named H2 section are checked
 pub fn check_guard(
+    guard: &str,
+    doc: &Document,
+    all_docs: &[DocumentRow],
+    registry: &SkillRegistry,
+) -> Result<GuardResult> {
+    let parts: Vec<&str> = guard.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+
+    if parts.len() > 1 {
+        let mut failed = Vec::new();
+        for part in &parts {
+            let result = check_single_guard(part, doc, all_docs, registry)?;
+            if !result.passed {
+                failed.push(result.message);
+            }
+        }
+        if failed.is_empty() {
+            return Ok(GuardResult {
+                passed: true,
+                guard_name: guard.to_string(),
+                message: "All guards passed.".to_string(),
+            });
+        }
+        return Ok(GuardResult {
+            passed: false,
+            guard_name: guard.to_string(),
+            message: failed.join(". "),
+        });
+    }
+
+    check_single_guard(guard.trim(), doc, all_docs, registry)
+}
+
+fn check_single_guard(
     guard: &str,
     doc: &Document,
     all_docs: &[DocumentRow],
@@ -32,6 +70,14 @@ pub fn check_guard(
     if let Some(sections_str) = guard.strip_prefix("has_sections:") {
         let required: Vec<&str> = sections_str.split(',').map(|s| s.trim()).collect();
         return check_has_sections(doc, &required);
+    }
+
+    if guard == "checklist_complete" {
+        return check_checklist_complete(doc, None);
+    }
+
+    if let Some(section) = guard.strip_prefix("checklist_complete:") {
+        return check_checklist_complete(doc, Some(section.trim()));
     }
 
     Err(PopsicleError::InvalidSkillDef(format!(
@@ -147,6 +193,78 @@ fn check_has_sections(doc: &Document, required: &[&str]) -> Result<GuardResult> 
             message: reasons.join(". "),
         })
     }
+}
+
+/// Check that all Markdown checkboxes are checked.
+/// If `section` is provided, only checkboxes in that H2 section are examined.
+fn check_checklist_complete(doc: &Document, section: Option<&str>) -> Result<GuardResult> {
+    let text = match section {
+        Some(name) => {
+            let header = format!("## {}", name);
+            match doc.body.find(&header) {
+                Some(pos) => {
+                    let after_header = &doc.body[pos + header.len()..];
+                    extract_section_content(after_header)
+                }
+                None => {
+                    return Ok(GuardResult {
+                        passed: false,
+                        guard_name: format!("checklist_complete:{}", name),
+                        message: format!("Section '{}' not found in document.", name),
+                    });
+                }
+            }
+        }
+        None => doc.body.clone(),
+    };
+
+    let (checked, unchecked) = count_checkboxes(&text);
+    let total = checked + unchecked;
+    let guard_name = match section {
+        Some(name) => format!("checklist_complete:{}", name),
+        None => "checklist_complete".to_string(),
+    };
+
+    if total == 0 {
+        return Ok(GuardResult {
+            passed: false,
+            guard_name,
+            message: "No checklist items found.".to_string(),
+        });
+    }
+
+    if unchecked == 0 {
+        Ok(GuardResult {
+            passed: true,
+            guard_name,
+            message: format!("All {} checklist items complete.", total),
+        })
+    } else {
+        Ok(GuardResult {
+            passed: false,
+            guard_name,
+            message: format!(
+                "{}/{} checklist items still unchecked.",
+                unchecked, total
+            ),
+        })
+    }
+}
+
+/// Count checked `- [x]` and unchecked `- [ ]` Markdown checkboxes in text.
+/// Returns (checked, unchecked).
+pub fn count_checkboxes(text: &str) -> (usize, usize) {
+    let mut checked = 0usize;
+    let mut unchecked = 0usize;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ") {
+            checked += 1;
+        } else if trimmed.starts_with("- [ ] ") {
+            unchecked += 1;
+        }
+    }
+    (checked, unchecked)
 }
 
 /// Extract content between the current H2 header and the next H2 header.
@@ -291,5 +409,215 @@ mod tests {
         let result = check_has_sections(&doc, &["Background", "Goals"]).unwrap();
         assert!(!result.passed);
         assert!(result.message.contains("template placeholders"));
+    }
+
+    #[test]
+    fn test_count_checkboxes() {
+        let text = "- [x] Done item\n- [ ] Pending item\n- [X] Also done\n- Regular list item\n  - [ ] Nested pending";
+        let (checked, unchecked) = count_checkboxes(text);
+        assert_eq!(checked, 2);
+        assert_eq!(unchecked, 2);
+    }
+
+    #[test]
+    fn test_checklist_complete_all_checked() {
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl".into(),
+            title: "Test".into(),
+            status: "coding".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: "## Tasks\n\n- [x] Build API\n- [x] Write docs\n".into(),
+            file_path: std::path::PathBuf::new(),
+        };
+
+        let result = check_checklist_complete(&doc, None).unwrap();
+        assert!(result.passed, "Should pass: {}", result.message);
+        assert!(result.message.contains("2 checklist items complete"));
+    }
+
+    #[test]
+    fn test_checklist_complete_some_unchecked() {
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl".into(),
+            title: "Test".into(),
+            status: "coding".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: "## Tasks\n\n- [x] Build API\n- [ ] Write docs\n- [ ] Deploy\n".into(),
+            file_path: std::path::PathBuf::new(),
+        };
+
+        let result = check_checklist_complete(&doc, None).unwrap();
+        assert!(!result.passed);
+        assert!(result.message.contains("2/3 checklist items still unchecked"));
+    }
+
+    #[test]
+    fn test_checklist_complete_no_items() {
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl".into(),
+            title: "Test".into(),
+            status: "coding".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: "## Summary\n\nJust text, no checkboxes.\n".into(),
+            file_path: std::path::PathBuf::new(),
+        };
+
+        let result = check_checklist_complete(&doc, None).unwrap();
+        assert!(!result.passed);
+        assert!(result.message.contains("No checklist items found"));
+    }
+
+    #[test]
+    fn test_checklist_complete_scoped_to_section() {
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl".into(),
+            title: "Test".into(),
+            status: "coding".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: "## Open Questions\n\n- [ ] Decide on DB\n\n## Task Checklist\n\n- [x] Build API\n- [x] Write tests\n\n## Notes\n\nSome notes.\n".into(),
+            file_path: std::path::PathBuf::new(),
+        };
+
+        let scoped = check_checklist_complete(&doc, Some("Task Checklist")).unwrap();
+        assert!(scoped.passed, "Scoped should pass: {}", scoped.message);
+
+        let global = check_checklist_complete(&doc, None).unwrap();
+        assert!(!global.passed, "Global should fail due to Open Questions checkbox");
+    }
+
+    #[test]
+    fn test_checklist_complete_missing_section() {
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl".into(),
+            title: "Test".into(),
+            status: "coding".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: "## Summary\n\nSome content.\n".into(),
+            file_path: std::path::PathBuf::new(),
+        };
+
+        let result = check_checklist_complete(&doc, Some("Task Checklist")).unwrap();
+        assert!(!result.passed);
+        assert!(result.message.contains("not found"));
+    }
+
+    #[test]
+    fn test_compound_guard_all_pass() {
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl".into(),
+            title: "Test".into(),
+            status: "coding".into(),
+            skill_name: "domain-analysis".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: "## Summary\n\nReal content here.\n\n## Checklist\n\n- [x] Done\n".into(),
+            file_path: std::path::PathBuf::new(),
+        };
+
+        let registry = make_registry();
+        let docs: Vec<DocumentRow> = vec![];
+
+        let result = check_guard(
+            "has_sections:Summary;checklist_complete:Checklist",
+            &doc,
+            &docs,
+            &registry,
+        )
+        .unwrap();
+        assert!(result.passed, "Compound should pass: {}", result.message);
+    }
+
+    #[test]
+    fn test_compound_guard_partial_fail() {
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl".into(),
+            title: "Test".into(),
+            status: "coding".into(),
+            skill_name: "domain-analysis".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: "## Summary\n\nReal content here.\n\n## Checklist\n\n- [ ] Not done\n".into(),
+            file_path: std::path::PathBuf::new(),
+        };
+
+        let registry = make_registry();
+        let docs: Vec<DocumentRow> = vec![];
+
+        let result = check_guard(
+            "has_sections:Summary;checklist_complete:Checklist",
+            &doc,
+            &docs,
+            &registry,
+        )
+        .unwrap();
+        assert!(!result.passed);
+        assert!(result.message.contains("unchecked"));
+    }
+
+    fn make_registry() -> SkillRegistry {
+        let yaml = r#"
+name: domain-analysis
+description: Domain boundary analysis
+version: "0.1.0"
+artifacts:
+  - type: domain-model
+    template: templates/domain.md
+    file_pattern: "{slug}.domain.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: review
+          action: submit
+    review:
+      transitions:
+        - to: approved
+          action: approve
+    approved:
+      final: true
+"#;
+        let mut registry = SkillRegistry::new();
+        let skill: crate::model::SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
+        registry.register(skill);
+        registry
     }
 }

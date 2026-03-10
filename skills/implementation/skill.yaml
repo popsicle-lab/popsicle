@@ -36,7 +36,7 @@ workflow:
       transitions:
         - to: review
           action: submit
-          guard: "has_sections:Change Summary,Files Changed"
+          guard: "has_sections:Change Summary,Files Changed;checklist_complete:Verification Checklist"
     review:
       transitions:
         - to: completed

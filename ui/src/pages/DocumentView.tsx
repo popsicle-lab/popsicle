@@ -16,6 +16,7 @@ import {
   GitBranch,
   GitCommit,
   Puzzle,
+  ListChecks,
 } from "lucide-react";
 
 interface Props {
@@ -73,6 +74,7 @@ export function DocumentView({ docId }: Props) {
             <MetaRow icon={<Tag size={14} />} label="Status">
               <StatusBadge status={doc.status} />
             </MetaRow>
+            <ChecklistProgress body={doc.body} />
             <MetaRow icon={<Puzzle size={14} />} label="Skill">
               {doc.skill_name}
             </MetaRow>
@@ -177,6 +179,62 @@ function MetaRow({
         <span className="text-xs">{label}</span>
       </div>
       <div className="pl-5">{children}</div>
+    </div>
+  );
+}
+
+export function parseCheckboxes(body: string): {
+  checked: number;
+  unchecked: number;
+} {
+  let checked = 0;
+  let unchecked = 0;
+  for (const line of body.split("\n")) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("- [x] ") || trimmed.startsWith("- [X] ")) {
+      checked++;
+    } else if (trimmed.startsWith("- [ ] ")) {
+      unchecked++;
+    }
+  }
+  return { checked, unchecked };
+}
+
+function ChecklistProgress({ body }: { body: string }) {
+  const { checked, unchecked } = parseCheckboxes(body || "");
+  const total = checked + unchecked;
+  if (total === 0) return null;
+
+  const pct = Math.round((checked / total) * 100);
+  const color =
+    pct === 100
+      ? "var(--accent-green)"
+      : pct >= 50
+        ? "var(--accent-yellow)"
+        : "var(--accent-red)";
+
+  return (
+    <div className="pb-3 mb-1 border-b border-[var(--border)]">
+      <div className="flex items-center gap-1.5 text-[var(--text-secondary)] mb-2">
+        <ListChecks size={14} />
+        <span className="text-xs">Checklist</span>
+      </div>
+      <div className="pl-5">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-mono" style={{ color }}>
+            {checked}/{total}
+          </span>
+          <span className="text-xs font-mono" style={{ color }}>
+            {pct}%
+          </span>
+        </div>
+        <div className="w-full h-1.5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${pct}%`, background: color }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

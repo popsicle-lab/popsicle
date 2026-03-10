@@ -40,6 +40,13 @@
 # Command to run generated E2E tests
 ```
 
+## Generation Checklist
+
+- [ ] All spec perspectives have test files
+- [ ] All scenarios from spec are covered
+- [ ] All generated tests compile
+- [ ] Self-consistency check passed
+
 ## Issues Found
 
 - ...

@@ -166,11 +166,19 @@ export function PipelineView({ runId, setPage }: Props) {
                       onClick={() =>
                         setPage({ kind: "document", docId: doc.id })
                       }
-                      className="w-full flex items-center gap-1.5 text-xs py-1 px-2 rounded bg-[var(--bg-primary)]/50 hover:bg-[var(--bg-primary)] transition-colors mt-1 text-left"
+                      className="w-full text-xs py-1 px-2 rounded bg-[var(--bg-primary)]/50 hover:bg-[var(--bg-primary)] transition-colors mt-1 text-left"
                     >
-                      <FileText size={12} />
-                      <span className="truncate flex-1">{doc.title}</span>
-                      <StatusBadge status={doc.status} />
+                      <div className="flex items-center gap-1.5">
+                        <FileText size={12} />
+                        <span className="truncate flex-1">{doc.title}</span>
+                        <StatusBadge status={doc.status} />
+                      </div>
+                      {doc.checklist_total > 0 && (
+                        <MiniChecklistBar
+                          checked={doc.checklist_checked}
+                          total={doc.checklist_total}
+                        />
+                      )}
                     </button>
                   ))}
                   {stage.documents.length === 0 && (
@@ -251,6 +259,35 @@ function CopyableCommand({ command }: { command: string }) {
           <Copy size={14} className="text-[var(--text-secondary)]" />
         )}
       </button>
+    </div>
+  );
+}
+
+function MiniChecklistBar({
+  checked,
+  total,
+}: {
+  checked: number;
+  total: number;
+}) {
+  const pct = Math.round((checked / total) * 100);
+  const color =
+    pct === 100
+      ? "var(--accent-green)"
+      : pct >= 50
+        ? "var(--accent-yellow)"
+        : "var(--accent-red)";
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <div className="flex-1 h-1 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <span className="text-[10px] font-mono shrink-0" style={{ color }}>
+        {checked}/{total}
+      </span>
     </div>
   );
 }

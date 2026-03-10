@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use popsicle_core::dto::*;
-use popsicle_core::engine::Advisor;
+use popsicle_core::engine::{Advisor, count_checkboxes};
 use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority};
-use popsicle_core::storage::{FileStorage, IndexDb, ProjectConfig, ProjectLayout};
+use popsicle_core::storage::{FileStorage, IndexDb, ProjectConfig, ProjectLayout, DocumentRow};
 use tauri::State;
 
 use super::AppState;
@@ -16,6 +16,24 @@ fn get_dir(state: &State<AppState>) -> Result<PathBuf, String> {
         .as_ref()
         .map(PathBuf::from)
         .ok_or_else(|| "No project directory set".to_string())
+}
+
+fn doc_row_to_info(d: &DocumentRow) -> DocInfo {
+    let (checked, unchecked) = std::fs::read_to_string(&d.file_path)
+        .ok()
+        .map(|body| count_checkboxes(&body))
+        .unwrap_or((0, 0));
+    DocInfo {
+        id: d.id.clone(),
+        doc_type: d.doc_type.clone(),
+        title: d.title.clone(),
+        status: d.status.clone(),
+        skill_name: d.skill_name.clone(),
+        created_at: d.created_at.clone(),
+        updated_at: d.updated_at.clone(),
+        checklist_total: (checked + unchecked) as u32,
+        checklist_checked: checked as u32,
+    }
 }
 
 #[tauri::command]
@@ -166,15 +184,7 @@ pub fn get_pipeline_status(
             let stage_docs: Vec<DocInfo> = docs
                 .iter()
                 .filter(|d| stage.skill_names().contains(&d.skill_name.as_str()))
-                .map(|d| DocInfo {
-                    id: d.id.clone(),
-                    doc_type: d.doc_type.clone(),
-                    title: d.title.clone(),
-                    status: d.status.clone(),
-                    skill_name: d.skill_name.clone(),
-                    created_at: d.created_at.clone(),
-                    updated_at: d.updated_at.clone(),
-                })
+                .map(doc_row_to_info)
                 .collect();
             StageStatusInfo {
                 name: stage.name.clone(),
@@ -208,18 +218,7 @@ pub fn list_documents(
     let docs = db
         .query_documents(skill.as_deref(), status.as_deref(), run_id.as_deref())
         .map_err(|e| e.to_string())?;
-    Ok(docs
-        .iter()
-        .map(|d| DocInfo {
-            id: d.id.clone(),
-            doc_type: d.doc_type.clone(),
-            title: d.title.clone(),
-            status: d.status.clone(),
-            skill_name: d.skill_name.clone(),
-            created_at: d.created_at.clone(),
-            updated_at: d.updated_at.clone(),
-        })
-        .collect())
+    Ok(docs.iter().map(doc_row_to_info).collect())
 }
 
 #[tauri::command]

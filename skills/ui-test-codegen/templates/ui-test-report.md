@@ -44,6 +44,13 @@
 npx playwright test
 ```
 
+## Generation Checklist
+
+- [ ] All spec scenarios have test files
+- [ ] All page objects generated
+- [ ] All generated tests compile
+- [ ] Playwright config verified
+
 ## Issues Found
 
 - ...

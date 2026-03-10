@@ -37,6 +37,13 @@
 # Command to run generated API tests
 ```
 
+## Generation Checklist
+
+- [ ] All spec endpoints have test files
+- [ ] All M1-M9 categories covered per spec
+- [ ] All generated tests compile
+- [ ] Self-consistency check passed
+
 ## Issues Found
 
 - ...
