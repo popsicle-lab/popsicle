@@ -11,6 +11,8 @@ pub struct Document {
     pub doc_type: String,
     pub title: String,
     pub status: String,
+    /// Omitted in older frontmatter; when empty, callers should fill from index (doc_row.skill_name).
+    #[serde(default)]
     pub skill_name: String,
     pub pipeline_run_id: String,
     #[serde(default)]
