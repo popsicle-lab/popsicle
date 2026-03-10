@@ -1,0 +1,40 @@
+name: e2e-test-codegen
+description: Generate end-to-end test code from approved E2E test specifications
+version: "0.1.0"
+
+inputs:
+  - from_skill: e2e-test-spec
+    artifact_type: e2e-test-spec
+    required: true
+  - from_skill: implementation
+    artifact_type: impl-record
+    required: false
+
+artifacts:
+  - type: e2e-test-report
+    template: templates/e2e-test-report.md
+    file_pattern: "{slug}.e2e-test-report.md"
+
+workflow:
+  initial: generating
+  states:
+    generating:
+      transitions:
+        - to: review
+          action: submit
+          guard: "upstream_approved"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          guard: "has_sections:Generated Tests,Coverage Summary"
+          requires_approval: true
+        - to: generating
+          action: revise
+    completed:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

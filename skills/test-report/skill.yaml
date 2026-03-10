@@ -6,8 +6,17 @@ inputs:
   - from_skill: bug-tracker
     artifact_type: bug-report
     required: false
-  - from_skill: priority-test-gate
-    artifact_type: test-gate-report
+  - from_skill: unit-test-codegen
+    artifact_type: unit-test-report
+    required: false
+  - from_skill: api-test-codegen
+    artifact_type: api-test-report
+    required: false
+  - from_skill: ui-test-codegen
+    artifact_type: ui-test-report
+    required: false
+  - from_skill: e2e-test-codegen
+    artifact_type: e2e-test-report
     required: false
 
 artifacts:

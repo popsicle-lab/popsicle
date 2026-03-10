@@ -11,9 +11,9 @@
 - 不同部署形态下的行为差异验证
 
 不适用：
-- 单接口参数化测试（输入/输出/错误码穷举）→ `api-test-gen`
+- 单接口参数化测试（输入/输出/错误码穷举）→ `api-test-spec`
 - UI 界面功能测试 → `ui-test`
-- Rust 单元测试 → `priority-test-gate`
+- Rust 单元测试 → `priority-test-spec`
 
 ## 六个测试视角
 

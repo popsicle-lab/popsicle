@@ -1,6 +1,6 @@
 name: ui-test
-description: Spec-driven Playwright UI test generation
-version: "0.1.0"
+description: Spec-driven Playwright UI test specification
+version: "0.2.0"
 
 inputs:
   - from_skill: prd
@@ -22,16 +22,13 @@ workflow:
           guard: "upstream_approved"
     review:
       transitions:
-        - to: generating
+        - to: approved
           action: approve
+          guard: "has_sections:Coverage Plan,Test Scenarios"
           requires_approval: true
         - to: proposal
           action: revise
-    generating:
-      transitions:
-        - to: completed
-          action: complete
-    completed:
+    approved:
       final: true
 
 hooks:

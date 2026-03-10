@@ -207,23 +207,33 @@ All commands support `--format json` for machine consumption.
 | `arch-debate` | arch-debate-record | Multi-persona architecture debate for technical decisions |
 | `rfc` | rfc | Technical RFC for design decisions and consensus building |
 | `adr` | adr | Architecture Decision Record |
-| `priority-test-gate` | priority-test-gate | Test priority gating and risk assessment |
-| `api-test-gen` | api-test | API test specification and generation |
-| `functional-e2e` | e2e-test | Functional end-to-end test specification |
-| `ui-test` | ui-test | UI test specification and Playwright test generation |
+| `priority-test-spec` | test-gate-report | Test priority classification (P0/P1/P2) |
+| `api-test-spec` | api-test-spec | API integration test specification (gRPC/HTTP) |
+| `e2e-test-spec` | e2e-test-spec | Functional end-to-end test specification |
+| `ui-test` | ui-test-spec | UI test specification (Playwright) |
+| `implementation` | impl-record | Code implementation guided by design and test specs |
+| `unit-test-codegen` | unit-test-report | Unit test code generation from priority specs |
+| `api-test-codegen` | api-test-report | API test code generation from test specs |
+| `e2e-test-codegen` | e2e-test-report | E2E test code generation from test specs |
+| `ui-test-codegen` | ui-test-report | UI test code generation from test specs |
 | `bug-tracker` | bug-report | Bug tracking and issue management |
-| `test-report` | test-report | Test report analysis and aggregation |
+| `test-report` | test-summary | Test report analysis and aggregation |
 
 ## Built-in Pipeline
 
 **`full-sdlc`** — Full software development lifecycle:
 
 ```
-domain-analysis → product-debate → prd → arch-debate → rfc + adr → tests → quality
-                                                          ↓
-                                            priority-test-gate + api-test-gen + functional-e2e
-                                                          ↓
-                                         prd → ui-test → bug-tracker + test-report
+product-debate → prd → arch-debate → rfc + adr
+                  ↓                       ↓
+             ui-test-planning      test-planning (priority-test-spec + api-test-spec + e2e-test-spec)
+                  ↓                       ↓
+                  │              implementation
+                  ↓                    ↓
+                  └──→ test-codegen ←──┘
+                  (unit-test-codegen + api-test-codegen + e2e-test-codegen + ui-test-codegen)
+                            ↓
+                   quality (bug-tracker + test-report)
 ```
 
 ## Guard Conditions
