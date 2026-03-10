@@ -1,0 +1,53 @@
+name: implementation
+description: Code implementation guided by RFC, ADR, and test specifications
+version: "0.1.0"
+
+inputs:
+  - from_skill: rfc
+    artifact_type: rfc
+    required: true
+  - from_skill: adr
+    artifact_type: adr
+    required: true
+  - from_skill: priority-test-spec
+    artifact_type: test-gate-report
+    required: false
+  - from_skill: api-test-spec
+    artifact_type: api-test-spec
+    required: false
+  - from_skill: e2e-test-spec
+    artifact_type: e2e-test-spec
+    required: false
+
+artifacts:
+  - type: impl-record
+    template: templates/impl-record.md
+    file_pattern: "{slug}.impl-record.md"
+
+workflow:
+  initial: planning
+  states:
+    planning:
+      transitions:
+        - to: coding
+          action: start
+          guard: "upstream_approved"
+    coding:
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Change Summary,Files Changed"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: coding
+          action: revise
+    completed:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

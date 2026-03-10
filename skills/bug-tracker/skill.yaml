@@ -3,17 +3,17 @@ description: Test-driven bug tracking with dedup, recording, and reporting
 version: "0.1.0"
 
 inputs:
-  - from_skill: priority-test-gate
-    artifact_type: test-gate-report
+  - from_skill: unit-test-codegen
+    artifact_type: unit-test-report
     required: false
-  - from_skill: api-test-gen
-    artifact_type: api-test-spec
+  - from_skill: api-test-codegen
+    artifact_type: api-test-report
     required: false
-  - from_skill: ui-test
-    artifact_type: ui-test-spec
+  - from_skill: ui-test-codegen
+    artifact_type: ui-test-report
     required: false
-  - from_skill: functional-e2e
-    artifact_type: e2e-test-spec
+  - from_skill: e2e-test-codegen
+    artifact_type: e2e-test-report
     required: false
 
 artifacts:

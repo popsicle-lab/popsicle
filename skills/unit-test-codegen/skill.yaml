@@ -1,0 +1,40 @@
+name: unit-test-codegen
+description: Generate unit test code based on priority test gate report and implementation
+version: "0.1.0"
+
+inputs:
+  - from_skill: priority-test-spec
+    artifact_type: test-gate-report
+    required: true
+  - from_skill: implementation
+    artifact_type: impl-record
+    required: false
+
+artifacts:
+  - type: unit-test-report
+    template: templates/unit-test-report.md
+    file_pattern: "{slug}.unit-test-report.md"
+
+workflow:
+  initial: generating
+  states:
+    generating:
+      transitions:
+        - to: review
+          action: submit
+          guard: "upstream_approved"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          guard: "has_sections:Generated Tests,Coverage Summary"
+          requires_approval: true
+        - to: generating
+          action: revise
+    completed:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

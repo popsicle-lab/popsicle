@@ -1,7 +1,8 @@
 name: tech-sdlc
-description: Technical requirement lifecycle — architecture debate through testing
+description: Technical requirement lifecycle — architecture debate through implementation and testing
 
 stages:
+  # --- Design ---
   - name: arch-debate
     skill: arch-debate
     description: Multi-persona architecture debate for technical decisions
@@ -11,12 +12,26 @@ stages:
     description: Technical RFC and Architecture Decision Record
     depends_on: [arch-debate]
 
+  # --- Test Planning ---
   - name: test-planning
-    skills: [priority-test-gate, api-test-gen, functional-e2e]
-    description: Test specification and generation
+    skills: [priority-test-spec, api-test-spec, e2e-test-spec]
+    description: Test specification and priority classification
     depends_on: [tech-design]
 
+  # --- Code Implementation ---
+  - name: implementation
+    skill: implementation
+    description: Code implementation guided by design and test specifications
+    depends_on: [tech-design, test-planning]
+
+  # --- Test Code Generation ---
+  - name: test-codegen
+    skills: [unit-test-codegen, api-test-codegen, e2e-test-codegen]
+    description: Generate and run test code against implementation
+    depends_on: [implementation, test-planning]
+
+  # --- Quality ---
   - name: quality
     skills: [bug-tracker, test-report]
     description: Bug tracking and test report analysis
-    depends_on: [test-planning]
+    depends_on: [test-codegen]

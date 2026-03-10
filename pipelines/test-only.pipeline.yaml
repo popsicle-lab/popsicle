@@ -1,18 +1,27 @@
 name: test-only
-description: Testing pipeline — skip requirements, go straight to test generation
+description: Testing pipeline — skip requirements, generate test specs and code
 
 stages:
-  - name: test-generation
+  - name: test-planning
     skills:
-      - priority-test-gate
-      - api-test-gen
+      - priority-test-spec
+      - api-test-spec
       - ui-test
-      - functional-e2e
-    description: Generate all test types in parallel
+      - e2e-test-spec
+    description: Generate all test specifications in parallel
+
+  - name: test-codegen
+    skills:
+      - unit-test-codegen
+      - api-test-codegen
+      - ui-test-codegen
+      - e2e-test-codegen
+    description: Generate all test code in parallel
+    depends_on: [test-planning]
 
   - name: quality
     skills:
       - bug-tracker
       - test-report
     description: Bug tracking and test report analysis
-    depends_on: [test-generation]
+    depends_on: [test-codegen]

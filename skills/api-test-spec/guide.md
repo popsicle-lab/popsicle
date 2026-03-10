@@ -19,7 +19,7 @@ Spec 由 Agent 生成，人类审阅后 Agent 再生成测试代码。
 不适用：
 - 跨接口 E2E 链路 → 使用 `story-e2e`
 - UI 测试 → 使用 `ui-test`
-- Rust 单元测试 → 使用 `priority-test-gate`
+- Rust 单元测试 → 使用 `priority-test-spec`
 - 深度边界组合覆盖 → 使用 `boundary-tdd`
 
 ## 文件布局

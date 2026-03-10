@@ -1,6 +1,6 @@
-name: priority-test-gate
-description: Auto-discover features, classify P0/P1/P2, generate unit tests for P0
-version: "0.1.0"
+name: priority-test-spec
+description: Auto-discover features and classify P0/P1/P2 test priorities
+version: "0.2.0"
 
 inputs:
   - from_skill: adr
@@ -17,16 +17,18 @@ workflow:
   states:
     discovery:
       transitions:
-        - to: generating
-          action: confirm
+        - to: review
+          action: submit
           guard: "upstream_approved"
-    generating:
+    review:
       transitions:
-        - to: completed
-          action: complete
+        - to: approved
+          action: approve
+          guard: "has_sections:Feature Classification,Coverage by Dimension"
+          requires_approval: true
         - to: discovery
-          action: rediscover
-    completed:
+          action: revise
+    approved:
       final: true
 
 hooks:

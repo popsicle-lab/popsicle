@@ -1,24 +1,21 @@
-name: functional-e2e
-description: Functional end-to-end test spec generation with six-perspective analysis
-version: "0.1.0"
+name: api-test-spec
+description: Spec-driven API integration test specification (gRPC/HTTP)
+version: "0.2.0"
 
 inputs:
-  - from_skill: prd
-    artifact_type: prd
-    required: true
   - from_skill: adr
     artifact_type: adr
-    required: false
+    required: true
 
 artifacts:
-  - type: e2e-test-spec
-    template: templates/e2e-test-spec.md
-    file_pattern: "{slug}.e2e-spec.md"
+  - type: api-test-spec
+    template: templates/api-test-spec.md
+    file_pattern: "{slug}.api-test-spec.md"
 
 workflow:
-  initial: analysis
+  initial: spec-gen
   states:
-    analysis:
+    spec-gen:
       transitions:
         - to: review
           action: submit
@@ -27,8 +24,9 @@ workflow:
       transitions:
         - to: approved
           action: approve
+          guard: "has_sections:Coverage Matrix,Test Cases"
           requires_approval: true
-        - to: analysis
+        - to: spec-gen
           action: revise
     approved:
       final: true

@@ -1,7 +1,8 @@
 name: full-sdlc
-description: Full software development lifecycle — product debate through testing and quality
+description: Full software development lifecycle — product debate through implementation, testing, and quality
 
 stages:
+  # --- Requirements & Design ---
   - name: product-debate
     skill: product-debate
     description: Multi-persona product debate to explore options
@@ -23,22 +24,40 @@ stages:
     description: Technical RFC and Architecture Decision Record (parallel)
     depends_on: [arch-debate]
 
+  # --- Test Planning (before implementation) ---
   - name: test-planning
     skills:
-      - priority-test-gate
-      - api-test-gen
-      - functional-e2e
-    description: Test specification and generation (parallel)
+      - priority-test-spec
+      - api-test-spec
+      - e2e-test-spec
+    description: Test specification and priority classification (parallel)
     depends_on: [tech-design]
 
-  - name: ui-testing
+  - name: ui-test-planning
     skill: ui-test
-    description: UI test specification and Playwright test generation
+    description: UI test specification driven by product requirements
     depends_on: [product]
 
+  # --- Code Implementation ---
+  - name: implementation
+    skill: implementation
+    description: Code implementation guided by design and test specifications
+    depends_on: [tech-design, test-planning]
+
+  # --- Test Code Generation (after implementation) ---
+  - name: test-codegen
+    skills:
+      - unit-test-codegen
+      - api-test-codegen
+      - e2e-test-codegen
+      - ui-test-codegen
+    description: Generate and run test code against implementation (parallel)
+    depends_on: [implementation, test-planning, ui-test-planning]
+
+  # --- Quality ---
   - name: quality
     skills:
       - bug-tracker
       - test-report
     description: Bug tracking and test report analysis
-    depends_on: [test-planning, ui-testing]
+    depends_on: [test-codegen]

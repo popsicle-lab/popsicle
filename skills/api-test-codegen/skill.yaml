@@ -1,0 +1,40 @@
+name: api-test-codegen
+description: Generate API integration test code from approved test specifications
+version: "0.1.0"
+
+inputs:
+  - from_skill: api-test-spec
+    artifact_type: api-test-spec
+    required: true
+  - from_skill: implementation
+    artifact_type: impl-record
+    required: false
+
+artifacts:
+  - type: api-test-report
+    template: templates/api-test-report.md
+    file_pattern: "{slug}.api-test-report.md"
+
+workflow:
+  initial: generating
+  states:
+    generating:
+      transitions:
+        - to: review
+          action: submit
+          guard: "upstream_approved"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          guard: "has_sections:Generated Tests,Coverage Summary"
+          requires_approval: true
+        - to: generating
+          action: revise
+    completed:
+      final: true
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null
