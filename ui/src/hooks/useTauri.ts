@@ -288,6 +288,49 @@ export async function updateIssue(params: {
   return invoke("update_issue", params);
 }
 
+// ── Issue progress & activity ──
+
+export interface IssueProgress {
+  issue_key: string;
+  pipeline_run_id: string | null;
+  pipeline_name: string | null;
+  stages_total: number;
+  stages_completed: number;
+  docs_total: number;
+  docs_final: number;
+  checklist_checked: number;
+  checklist_total: number;
+  current_stage: string | null;
+  stage_summaries: StageSummary[];
+}
+
+export interface StageSummary {
+  name: string;
+  state: string;
+  docs: DocInfo[];
+}
+
+export interface ActivityEvent {
+  timestamp: string;
+  event_type: string;
+  title: string;
+  detail: string | null;
+  doc_id: string | null;
+  stage: string | null;
+}
+
+export async function getIssueProgress(key: string): Promise<IssueProgress> {
+  return invoke("get_issue_progress", { key });
+}
+
+export async function getActivity(runId: string): Promise<ActivityEvent[]> {
+  return invoke("get_activity", { runId });
+}
+
+export async function findIssueByRun(runId: string): Promise<IssueInfo | null> {
+  return invoke("find_issue_by_run", { runId });
+}
+
 export async function listDiscussions(filters?: {
   runId?: string;
   skill?: string;

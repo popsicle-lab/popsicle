@@ -145,9 +145,12 @@ fn build_skill_command(skill: &SkillDef) -> String {
         for t in &sd.transitions {
             if t.requires_approval {
                 s.push_str(&format!(
-                    "# From '{}': {} (⚠ requires human approval — do NOT run this automatically)\n",
+                    "# From '{}': {} (⚠ requires human approval)\n",
                     state, t.action
                 ));
+                s.push_str(
+                    "# 禁止代用户执行。必须由用户本人审阅/参与讨论后，由用户自己在终端执行：\n",
+                );
                 s.push_str(&format!(
                     "popsicle doc transition <doc-id> {} --confirm\n",
                     t.action
@@ -206,7 +209,7 @@ When the user says "start PROJ-1" or "release requirement PROJ-1":
 2. Guards enforce upstream document approval before downstream work proceeds
 3. Fill document sections with real content — template placeholders are rejected
 4. Link commits to documents with `popsicle git link`
-5. Transitions marked `requires_approval` need human confirmation — STOP and ask the user to review, then let them run the command with `--confirm`
+5. Transitions marked `requires_approval` (e.g. discussion conclude, doc approve): do NOT run the command with `--confirm` for the user. You must STOP, show the user the suggested command, and ask them to review and run it themselves in their terminal. No exception.
 "#,
     );
 

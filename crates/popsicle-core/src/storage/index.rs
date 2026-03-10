@@ -703,6 +703,32 @@ impl IndexDb {
         }
     }
 
+    pub fn find_issue_by_run_id(&self, run_id: &str) -> Result<Option<Issue>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at
+             FROM issues WHERE pipeline_run_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![run_id], |row| {
+            Ok(IssueRow {
+                id: row.get(0)?,
+                key: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                issue_type: row.get(4)?,
+                priority: row.get(5)?,
+                status: row.get(6)?,
+                pipeline_run_id: row.get(7)?,
+                labels: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })?;
+        match rows.next() {
+            Some(row) => Ok(Some(issue_from_row(row?)?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn query_issues(
         &self,
         issue_type: Option<&str>,

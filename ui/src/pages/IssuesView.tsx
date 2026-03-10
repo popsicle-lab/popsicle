@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import {
   listIssues,
   createIssue,
+  getIssueProgress,
   type IssueInfo,
+  type IssueProgress,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import { ClipboardList, ArrowRight, Plus, X } from "lucide-react";
@@ -28,6 +30,7 @@ const priorityColors: Record<string, string> = {
 
 export function IssuesView({ setPage }: Props) {
   const [issues, setIssues] = useState<IssueInfo[]>([]);
+  const [progressMap, setProgressMap] = useState<Record<string, IssueProgress>>({});
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreate, setShowCreate] = useState(false);
@@ -38,7 +41,23 @@ export function IssuesView({ setPage }: Props) {
       issueType: typeFilter === "all" ? undefined : typeFilter,
       status: statusFilter === "all" ? undefined : statusFilter,
     })
-      .then(setIssues)
+      .then((list) => {
+        setIssues(list);
+        const active = list.filter((i) => i.pipeline_run_id);
+        Promise.all(
+          active.map((i) =>
+            getIssueProgress(i.key)
+              .then((p) => [i.key, p] as const)
+              .catch(() => null),
+          ),
+        ).then((results) => {
+          const map: Record<string, IssueProgress> = {};
+          for (const r of results) {
+            if (r) map[r[0]] = r[1];
+          }
+          setProgressMap(map);
+        });
+      })
       .catch((e) => setError(e?.toString()));
   }, [typeFilter, statusFilter]);
 
@@ -143,39 +162,54 @@ export function IssuesView({ setPage }: Props) {
           </div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {issues.map((issue) => (
-              <button
-                key={issue.id}
-                onClick={() => setPage({ kind: "issue", issueKey: issue.key })}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-[var(--accent)]">
-                      {issue.key}
-                    </span>
-                    <span className="font-medium truncate">{issue.title}</span>
-                    <TypeBadge type={issue.issue_type} />
-                    <StatusBadge status={issue.status} />
-                  </div>
-                  <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
-                    <span className={priorityColors[issue.priority] || ""}>
-                      {issue.priority}
-                    </span>
-                    {issue.labels.length > 0 && (
-                      <span>{issue.labels.join(", ")}</span>
+            {issues.map((issue) => {
+              const prog = progressMap[issue.key];
+              return (
+                <button
+                  key={issue.id}
+                  onClick={() =>
+                    setPage({ kind: "issue", issueKey: issue.key })
+                  }
+                  className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-[var(--accent)]">
+                        {issue.key}
+                      </span>
+                      <span className="font-medium truncate">
+                        {issue.title}
+                      </span>
+                      <TypeBadge type={issue.issue_type} />
+                      <StatusBadge status={issue.status} />
+                    </div>
+                    <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
+                      <span className={priorityColors[issue.priority] || ""}>
+                        {issue.priority}
+                      </span>
+                      {prog && prog.current_stage && (
+                        <span className="text-[var(--accent-purple)]">
+                          {prog.current_stage}
+                        </span>
+                      )}
+                      {issue.labels.length > 0 && (
+                        <span>{issue.labels.join(", ")}</span>
+                      )}
+                      <span>
+                        {new Date(issue.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {prog && prog.stages_total > 0 && (
+                      <IssueProgressBar progress={prog} />
                     )}
-                    <span>
-                      {new Date(issue.created_at).toLocaleDateString()}
-                    </span>
                   </div>
-                </div>
-                <ArrowRight
-                  size={16}
-                  className="text-[var(--text-secondary)] shrink-0 ml-2"
-                />
-              </button>
-            ))}
+                  <ArrowRight
+                    size={16}
+                    className="text-[var(--text-secondary)] shrink-0 ml-2"
+                  />
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -212,6 +246,40 @@ function StatCard({
         {value}
       </div>
       <div className="text-xs text-[var(--text-secondary)]">{label}</div>
+    </div>
+  );
+}
+
+function IssueProgressBar({ progress }: { progress: IssueProgress }) {
+  const stagePct =
+    progress.stages_total > 0
+      ? Math.round(
+          (progress.stages_completed / progress.stages_total) * 100,
+        )
+      : 0;
+  const color =
+    stagePct === 100
+      ? "var(--accent-green)"
+      : stagePct >= 50
+        ? "var(--accent-yellow)"
+        : "var(--accent)";
+
+  return (
+    <div className="flex items-center gap-2 mt-1.5">
+      <div className="flex-1 h-1 bg-[var(--bg-tertiary)] rounded-full overflow-hidden max-w-[200px]">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${stagePct}%`, background: color }}
+        />
+      </div>
+      <span className="text-[10px] font-mono text-[var(--text-secondary)]">
+        {progress.stages_completed}/{progress.stages_total} stages
+      </span>
+      {progress.checklist_total > 0 && (
+        <span className="text-[10px] font-mono text-[var(--text-secondary)]">
+          {progress.checklist_checked}/{progress.checklist_total} checks
+        </span>
+      )}
     </div>
   );
 }

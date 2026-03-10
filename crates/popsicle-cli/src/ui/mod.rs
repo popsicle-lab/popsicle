@@ -36,6 +36,9 @@ pub fn run() {
             commands::create_issue,
             commands::start_issue,
             commands::update_issue,
+            commands::get_issue_progress,
+            commands::get_activity,
+            commands::find_issue_by_run,
         ])
         .setup(|app| {
             ProjectWatcher::setup(app.handle().clone());
