@@ -360,6 +360,58 @@ Error: Skill name conflict — 'prd' already exists (from module 'official').
 
 在出现真实的多 Module 共存需求之前，暂不做最终决策。两种策略的实现成本都很低，可以根据实际使用模式再选择。
 
+## 10. Domain Priming over Persona — 领域约束优于角色扮演
+
+### 问题
+
+是否应该为 Skill 引入代理人格系统——让 AI 在执行不同 Skill 时扮演不同角色（如"架构师 Winston"、"产品经理 John"），以提升产出质量？
+
+### 背景
+
+一些框架（如 BMAD-METHOD）为每个代理定义完整的人格：名字、身份、沟通风格、原则。其假设是角色扮演能让 LLM 更"专业"地执行任务。
+
+### 决策
+
+**不引入代理人格。** 继续使用 `guide.md`（领域写作指导）+ `prompts`（任务指令）+ Guard（结构化约束）的组合。
+
+### 理由
+
+多项 2025 年研究表明，**专家人格提示（persona prompting）对 LLM 任务性能的提升不稳定，而领域约束（domain priming）更可靠。**
+
+**人格提示的问题：**
+
+- 专家人格通常带来正面或**不显著**的性能变化，但模型对无关的人格细节高度敏感，**性能下降可达 30 个百分点** [1]
+- 在事实准确性任务上，领域内专家人格对性能**无显著影响** [2]
+- 人格提示的效果波动很大，在数学任务上 Gemini 下降 6.1%，GPT-4 下降 3.3% [3]
+
+**领域约束（Domain Priming）更有效：**
+
+- 非人格的领域提示一致性地提升了约 +2.5% 的性能 [3]
+- 效果更稳定、可预测，不受随机人格细节的干扰
+
+**唯一的正面证据来自代码生成：** 性格特质引导（如"谨慎、注重细节"）在代码生成任务中提升了 pass rate，28 组实验中 23 组有提升 [4]。但这更接近于行为约束而非角色扮演——与 Popsicle 已有的 `guide.md` 写作指导本质相同。
+
+Popsicle 现有机制已经对应了研究中被证明有效的模式：
+
+| Popsicle 机制 | 研究概念 | 研究结论 |
+|---|---|---|
+| `guide.md`（写作指导） | Domain priming | 有效，稳定提升 |
+| `skill.yaml` prompts（任务指令） | Task-specific prompting | 有效 |
+| Guard（结构化约束） | Constraint prompting | 有效 |
+| 人格系统（名字、身份、风格） | Persona prompting | 不稳定，可能有害 |
+
+### 开放问题
+
+- 未来模型是否会对人格提示更鲁棒？如果出现可复现的正面证据，可重新评估。
+- 是否在 `guide.md` 中增加行为约束（如"优先考虑安全性"、"质疑每个假设"）作为 domain priming 的强化？这不同于人格扮演，是对 LLM 行为的直接约束。
+
+### 参考文献
+
+1. Luz de Araujo, P.H., Röttger, P., Hovy, D., & Roth, B. (2025). *Principled Personas: Defining and Measuring the Intended Effects of Persona Prompting on Task Performance.* EMNLP 2025. https://aclanthology.org/2025.emnlp-main.1364/
+2. *Prompting Science Report 4: Playing Pretend: Expert Personas Don't Improve Factual Accuracy.* arXiv:2512.05858. https://arxiv.org/abs/2512.05858
+3. *Domain Priming vs Persona Prompting: Performance Comparison.* OpenReview. https://openreview.net/pdf?id=sVaRgmH8FE
+4. *Personality-Guided Code Generation Using Large Language Models.* ACL 2025. https://aclanthology.org/2025.acl-long.54/
+
 ---
 
 *本文档随项目演进持续更新。每个设计决策记录问题、决策和理由，为后续的重新评估提供上下文。*
