@@ -412,6 +412,83 @@ Popsicle 现有机制已经对应了研究中被证明有效的模式：
 3. *Domain Priming vs Persona Prompting: Performance Comparison.* OpenReview. https://openreview.net/pdf?id=sVaRgmH8FE
 4. *Personality-Guided Code Generation Using Large Language Models.* ACL 2025. https://aclanthology.org/2025.acl-long.54/
 
+## 11. Project Context as Persistent Ground Truth — 项目技术画像的持久化
+
+### 问题
+
+`popsicle prompt` 和 `popsicle context` 提供的是 **pipeline 运行时的文档上下文**——PRD、RFC、test-spec 等产出物。但 LLM 在执行 Skill 时还需要另一层信息：**项目本身的技术约束**——用什么语言、什么框架、什么编码规范、什么测试模式。这类信息不属于任何 Skill 的产出物，却影响每个 Skill 的执行质量。
+
+### 决策
+
+引入 `popsicle context scan` 命令，自动分析项目文件生成技术画像，持久化为 `.popsicle/project-context.md`。此文件在 `popsicle prompt` 时自动注入，作为所有 Skill 的背景上下文。
+
+### 理由
+
+**domain priming 的效果取决于约束的具体性。**
+
+`guide.md` 提供的是通用的写作指导（"分析领域边界"），但缺少项目特定的技术约束。一个 Rust 项目和一个 TypeScript 项目执行同一个 `rfc` Skill 时，架构决策空间完全不同。如果 LLM 不知道项目用 Rust，它可能建议一个依赖 Node.js 生态的方案。
+
+自动生成的 project context 提供这一层缺失的约束：
+
+- 从 `Cargo.toml` / `package.json` / `go.mod` 等推断技术栈和版本
+- 从目录结构推断项目组织模式（monorepo、workspace、微服务等）
+- 从 `.gitignore`、CI 配置推断开发实践
+- 从已有代码推断编码风格和模式
+
+**这是 domain priming 的强化，不是 persona。** 研究表明具体的领域约束比抽象的角色设定更能提升 LLM 性能（见第 10 节）。Project context 把这个原则从 Skill 级别提升到项目级别。
+
+### 设计约束
+
+- **可编辑**：自动生成后用户可以手动补充和修改，`scan` 命令不覆盖已有内容
+- **注入位置**：作为 prompt 的最前部（背景铺垫，`low` relevance 位置），不抢占高权重上游文档的 attention
+- **按需更新**：不自动重新扫描，用户显式运行 `popsicle context scan` 时才更新
+
+### 开放问题
+
+- 自动扫描应该提取哪些信息？过少则无价值，过多则成为噪声。需要实验确定最优信息密度
+- 是否支持用户在 `config.toml` 中声明技术栈，作为 scan 的补充或替代？
+- Project context 是否应该参与 Guard 检查——如 RFC 提议的技术方案是否与 project context 声明的技术栈一致？
+
+## 12. Scale-Adaptive Pipeline Selection — 规模自适应的 Pipeline 推荐
+
+### 问题
+
+Popsicle 提供多条 Pipeline（`full-sdlc`、`tech-sdlc`、`test-only`），但用户需要自己判断哪条适合当前任务。一个小 bug 修复走 `full-sdlc` 是浪费，一个大型功能走 `test-only` 则覆盖不足。
+
+### 决策
+
+在 Advisor 中增加 Pipeline 推荐能力：根据任务描述和项目上下文，建议最合适的 Pipeline。
+
+### 理由
+
+**Pipeline 选择本质上是一个复杂度评估问题。** 不同规模的任务需要不同深度的流程：
+
+| 任务规模 | 适合的 Pipeline | 信号 |
+|---------|----------------|------|
+| Bug 修复、配置变更 | `test-only` 或无 Pipeline | 单文件变更、无架构影响 |
+| 小型功能、技术重构 | `tech-sdlc` | 不涉及产品需求变更、影响范围可控 |
+| 新功能、跨模块变更 | `full-sdlc` | 涉及用户场景、需要产品讨论和架构决策 |
+
+当前 `popsicle pipeline next` 已经能推荐"下一步做什么"，但这是在 Pipeline 选定之后。Pipeline 推荐是更上游的决策——**在用户开始之前，帮助选择正确的深度。**
+
+### 实现方向
+
+**近期（低成本）**：`popsicle pipeline recommend` 命令，接受任务描述作为输入，基于关键词和启发式规则推荐 Pipeline。规则可以编码为简单的匹配逻辑：
+
+- 提及"bug"、"fix"、"typo"、"config" → 推荐 `test-only` 或跳过 Pipeline
+- 提及"refactor"、"migrate"、"upgrade" → 推荐 `tech-sdlc`
+- 提及"feature"、"user story"、"product" → 推荐 `full-sdlc`
+
+**中期（与 Issue 集成）**：当用户通过 `popsicle issue start` 启动工作流时，根据 Issue 的标签、描述、关联文档自动推荐 Pipeline，用户确认后启动。
+
+**长期（数据驱动）**：根据历史 Pipeline 运行数据（Token 消耗、回退次数、完成时间）学习推荐模型，自动调整推荐阈值。
+
+### 开放问题
+
+- 推荐是否可以覆盖到 Pipeline 内部——对于 `full-sdlc`，是否建议跳过某些阶段（如已有架构的项目跳过 `arch-debate`）？
+- 是否需要支持用户定义推荐规则，而非硬编码启发式？
+- 错误推荐的成本如何控制？推荐过轻（如大功能走 `test-only`）比推荐过重（小修复走 `full-sdlc`）危害更大
+
 ---
 
 *本文档随项目演进持续更新。每个设计决策记录问题、决策和理由，为后续的重新评估提供上下文。*
