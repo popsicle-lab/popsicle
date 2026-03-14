@@ -27,13 +27,12 @@ pub enum IssueType {
 
 impl IssueType {
     /// Returns the default pipeline name for this issue type.
-    /// `None` means no pipeline is auto-associated (e.g. Idea).
     pub fn default_pipeline(&self) -> Option<&'static str> {
         match self {
             Self::Product => Some("full-sdlc"),
             Self::Technical => Some("tech-sdlc"),
             Self::Bug => Some("test-only"),
-            Self::Idea => None,
+            Self::Idea => Some("design-only"),
         }
     }
 }

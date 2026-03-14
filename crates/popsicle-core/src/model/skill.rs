@@ -32,6 +32,29 @@ fn default_version() -> String {
     "0.1.0".to_string()
 }
 
+/// How important an upstream input is to the current Skill.
+/// Controls injection position (attention-aware ordering) and content extraction.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Relevance {
+    Low,
+    Medium,
+    #[default]
+    High,
+}
+
+impl std::fmt::Display for Relevance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Low => write!(f, "low"),
+            Self::Medium => write!(f, "medium"),
+            Self::High => write!(f, "high"),
+        }
+    }
+}
+
 /// Declares a dependency on another Skill's artifact output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillInput {
@@ -39,6 +62,12 @@ pub struct SkillInput {
     pub artifact_type: String,
     #[serde(default = "default_true")]
     pub required: bool,
+    /// Importance level — controls injection position and content extraction.
+    #[serde(default)]
+    pub relevance: Relevance,
+    /// When set, only these H2 sections are injected (used with `medium` relevance).
+    #[serde(default)]
+    pub sections: Option<Vec<String>>,
 }
 
 fn default_true() -> bool {
@@ -266,5 +295,74 @@ workflow:
         assert!(approve.requires_approval);
         let revise = actions.iter().find(|t| t.action == "revise").unwrap();
         assert!(!revise.requires_approval);
+    }
+
+    #[test]
+    fn test_relevance_defaults_to_high() {
+        let skill: SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
+        assert_eq!(skill.inputs[0].relevance, Relevance::High);
+        assert!(skill.inputs[0].sections.is_none());
+    }
+
+    #[test]
+    fn test_relevance_and_sections_parsed() {
+        let yaml = r#"
+name: test-skill
+description: Test
+version: "0.1.0"
+inputs:
+  - from_skill: upstream-a
+    artifact_type: doc-a
+    required: true
+    relevance: low
+  - from_skill: upstream-b
+    artifact_type: doc-b
+    required: true
+    relevance: medium
+    sections:
+      - Problem Statement
+      - Goals
+  - from_skill: upstream-c
+    artifact_type: doc-c
+    required: false
+artifacts:
+  - type: doc
+    template: templates/doc.md
+    file_pattern: "{slug}.doc.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: done
+          action: finish
+    done:
+      final: true
+"#;
+        let skill: SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(skill.inputs.len(), 3);
+
+        assert_eq!(skill.inputs[0].relevance, Relevance::Low);
+        assert!(skill.inputs[0].sections.is_none());
+
+        assert_eq!(skill.inputs[1].relevance, Relevance::Medium);
+        let sections = skill.inputs[1].sections.as_ref().unwrap();
+        assert_eq!(sections, &["Problem Statement", "Goals"]);
+
+        assert_eq!(skill.inputs[2].relevance, Relevance::High);
+        assert!(skill.inputs[2].sections.is_none());
+    }
+
+    #[test]
+    fn test_relevance_ordering() {
+        assert!(Relevance::Low < Relevance::Medium);
+        assert!(Relevance::Medium < Relevance::High);
+    }
+
+    #[test]
+    fn test_relevance_display() {
+        assert_eq!(Relevance::Low.to_string(), "low");
+        assert_eq!(Relevance::Medium.to_string(), "medium");
+        assert_eq!(Relevance::High.to_string(), "high");
     }
 }

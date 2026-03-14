@@ -5,6 +5,7 @@ use anyhow::Context;
 use popsicle_core::agent::{AgentInstaller, AgentTarget};
 use popsicle_core::registry::{SkillLoader, SkillRegistry};
 use popsicle_core::scaffold;
+use popsicle_core::scanner::ProjectScanner;
 use popsicle_core::storage::{IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -89,6 +90,17 @@ targets = [{}]
         vec![]
     };
 
+    // Auto-scan project context if not yet generated
+    let context_path = layout.project_context_path();
+    let context_scanned = if !context_path.exists() {
+        let scanner = ProjectScanner::new(&project_root);
+        let content = scanner.scan();
+        std::fs::write(&context_path, &content)?;
+        true
+    } else {
+        false
+    };
+
     // Load all skills (built-in + any pre-existing) to generate agent instructions
     let mut registry = SkillRegistry::new();
     let skills_dir = project_root.join(".popsicle").join("skills");
@@ -130,6 +142,12 @@ targets = [{}]
                 );
             }
             println!("  Skills registered: {}", skill_refs.len());
+            if context_scanned {
+                println!(
+                    "  Project context: {} (auto-generated)",
+                    context_path.display()
+                );
+            }
             if !agent_files.is_empty() {
                 println!("  Agent instructions:");
                 for f in &agent_files {
@@ -147,6 +165,7 @@ targets = [{}]
                 "builtin_files": builtin_files,
                 "agent_files": agent_files,
                 "config": config_path.display().to_string(),
+                "project_context_scanned": context_scanned,
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }

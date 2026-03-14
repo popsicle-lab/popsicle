@@ -5,11 +5,13 @@ import {
   listIssues,
   getIssueProgress,
   getGitStatus,
+  getProjectContext,
   type PipelineRunInfo,
   type DocInfo,
   type GitStatusInfo,
   type IssueInfo,
   type IssueProgress,
+  type ProjectContextInfo,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -22,6 +24,14 @@ import {
   Zap,
   Terminal,
   ClipboardList,
+  ChevronDown,
+  ChevronRight,
+  Cpu,
+  FolderTree,
+  Wrench,
+  Package,
+  StickyNote,
+  Layers,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -37,6 +47,7 @@ export function Dashboard({ setPage }: Props) {
     { issue: IssueInfo; progress: IssueProgress }[]
   >([]);
   const [gitStatus, setGitStatus] = useState<GitStatusInfo | null>(null);
+  const [projectCtx, setProjectCtx] = useState<ProjectContextInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,12 +56,14 @@ export function Dashboard({ setPage }: Props) {
       listDocuments(),
       listIssues(),
       getGitStatus().catch(() => null),
+      getProjectContext().catch(() => null),
     ])
-      .then(([r, d, iss, g]) => {
+      .then(([r, d, iss, g, pc]) => {
         setRuns(r);
         setDocs(d);
         setIssues(iss);
         setGitStatus(g);
+        setProjectCtx(pc);
 
         const active = iss.filter((i) => i.status === "in_progress");
         Promise.all(
@@ -122,6 +135,11 @@ export function Dashboard({ setPage }: Props) {
           color="var(--accent-yellow)"
         />
       </div>
+
+      {/* Project Context */}
+      {projectCtx?.available && projectCtx.content && (
+        <ProjectContextCard content={projectCtx.content} />
+      )}
 
       {/* Active Issues in Progress */}
       {activeProgress.length > 0 && (
@@ -396,4 +414,126 @@ function QuickAction({
       )}
     </button>
   );
+}
+
+// ── Project Context Card ──
+
+interface ParsedSection {
+  title: string;
+  items: string[];
+}
+
+function parseProjectContext(content: string): ParsedSection[] {
+  const sections: ParsedSection[] = [];
+  let current: ParsedSection | null = null;
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("## ")) {
+      if (current) sections.push(current);
+      current = { title: trimmed.slice(3), items: [] };
+    } else if (current && trimmed.startsWith("- ")) {
+      current.items.push(trimmed.slice(2));
+    }
+  }
+  if (current) sections.push(current);
+  return sections;
+}
+
+const sectionIcons: Record<string, React.ReactNode> = {
+  "Tech Stack": <Cpu size={14} />,
+  "Project Structure": <FolderTree size={14} />,
+  "Development Practices": <Wrench size={14} />,
+  "Key Dependencies": <Package size={14} />,
+  Notes: <StickyNote size={14} />,
+};
+
+function ProjectContextCard({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const sections = parseProjectContext(content);
+
+  const summary = sections.find((s) => s.title === "Tech Stack");
+  const summaryText = summary
+    ? summary.items
+        .filter((i) => i.startsWith("**Language**") || i.startsWith("**Build**"))
+        .map((i) => i.replace(/\*\*/g, "").split(":").pop()?.trim())
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
+  return (
+    <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors rounded-xl"
+      >
+        <div className="flex items-center gap-2">
+          <Layers size={16} className="text-[var(--accent-purple)]" />
+          <h3 className="font-medium text-sm">Project Context</h3>
+          {!expanded && summaryText && (
+            <span className="text-xs text-[var(--text-secondary)] ml-2">
+              {summaryText}
+            </span>
+          )}
+        </div>
+        {expanded ? (
+          <ChevronDown size={16} className="text-[var(--text-secondary)]" />
+        ) : (
+          <ChevronRight size={16} className="text-[var(--text-secondary)]" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 grid grid-cols-2 gap-4">
+          {sections.map((section) => {
+            if (section.items.length === 0) return null;
+            const icon = sectionIcons[section.title] ?? <FileText size={14} />;
+            return (
+              <div
+                key={section.title}
+                className="bg-[var(--bg-primary)]/50 rounded-lg border border-[var(--border)] p-3"
+              >
+                <div className="flex items-center gap-1.5 text-[var(--text-secondary)] mb-2">
+                  {icon}
+                  <span className="text-xs font-medium">{section.title}</span>
+                </div>
+                <ul className="space-y-1">
+                  {section.items.map((item, i) => (
+                    <li key={i} className="text-xs text-[var(--text-primary)]">
+                      <ContextItem text={item} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+          <div className="col-span-2 text-xs text-[var(--text-secondary)] flex items-center gap-1">
+            <Terminal size={12} />
+            <span>
+              Update with{" "}
+              <code className="text-[var(--accent)] bg-[var(--bg-tertiary)] px-1 py-0.5 rounded">
+                popsicle context scan --force
+              </code>
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContextItem({ text }: { text: string }) {
+  const boldRegex = /\*\*(.+?)\*\*:\s*(.*)/;
+  const match = text.match(boldRegex);
+  if (match) {
+    return (
+      <span>
+        <span className="font-medium text-[var(--text-primary)]">
+          {match[1]}
+        </span>
+        <span className="text-[var(--text-secondary)]">: {match[2]}</span>
+      </span>
+    );
+  }
+  return <span className="text-[var(--text-secondary)]">{text}</span>;
 }

@@ -8,7 +8,13 @@ export interface SkillInfo {
   version: string;
   artifact_types: string[];
   workflow_initial: string;
-  inputs: { from_skill: string; artifact_type: string; required: boolean }[];
+  inputs: {
+    from_skill: string;
+    artifact_type: string;
+    required: boolean;
+    relevance: string;
+    sections?: string[];
+  }[];
   workflow_states: {
     name: string;
     is_final: boolean;
@@ -335,6 +341,190 @@ export async function findIssueByRun(runId: string): Promise<IssueInfo | null> {
   return invoke("find_issue_by_run", { runId });
 }
 
+// ── Project context ──
+
+export interface ProjectContextInfo {
+  available: boolean;
+  content: string | null;
+  path: string | null;
+}
+
+export async function getProjectContext(): Promise<ProjectContextInfo> {
+  return invoke("get_project_context");
+}
+
+// ── Bug types ──
+
+export interface BugInfo {
+  id: string;
+  key: string;
+  title: string;
+  severity: string;
+  priority: string;
+  status: string;
+  source: string;
+  issue_id: string | null;
+  pipeline_run_id: string | null;
+  labels: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BugFull {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  severity: string;
+  priority: string;
+  status: string;
+  steps_to_reproduce: string[];
+  expected_behavior: string;
+  actual_behavior: string;
+  environment: string | null;
+  stack_trace: string | null;
+  source: string;
+  related_test_case_id: string | null;
+  related_commit_sha: string | null;
+  fix_commit_sha: string | null;
+  issue_id: string | null;
+  pipeline_run_id: string | null;
+  labels: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listBugs(filters?: {
+  severity?: string;
+  status?: string;
+  issueId?: string;
+  runId?: string;
+}): Promise<BugInfo[]> {
+  return invoke("list_bugs", filters || {});
+}
+
+export async function getBug(key: string): Promise<BugFull> {
+  return invoke("get_bug", { key });
+}
+
+// ── TestCase types ──
+
+export interface TestCaseInfo {
+  id: string;
+  key: string;
+  title: string;
+  test_type: string;
+  priority_level: string;
+  status: string;
+  source_doc_id: string | null;
+  user_story_id: string | null;
+  issue_id: string | null;
+  pipeline_run_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TestCaseFull {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  test_type: string;
+  priority_level: string;
+  status: string;
+  preconditions: string[];
+  steps: string[];
+  expected_result: string;
+  source_doc_id: string | null;
+  user_story_id: string | null;
+  issue_id: string | null;
+  pipeline_run_id: string | null;
+  labels: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TestCoverageSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  no_runs: number;
+  pass_rate: number;
+}
+
+export async function listTestCases(filters?: {
+  testType?: string;
+  priority?: string;
+  status?: string;
+  runId?: string;
+}): Promise<TestCaseInfo[]> {
+  return invoke("list_test_cases", filters || {});
+}
+
+export async function getTestCase(key: string): Promise<TestCaseFull> {
+  return invoke("get_test_case", { key });
+}
+
+export async function getTestCoverage(filters?: {
+  runId?: string;
+}): Promise<TestCoverageSummary> {
+  return invoke("get_test_coverage", filters || {});
+}
+
+// ── UserStory types ──
+
+export interface UserStoryInfo {
+  id: string;
+  key: string;
+  title: string;
+  persona: string;
+  priority: string;
+  status: string;
+  issue_id: string | null;
+  pipeline_run_id: string | null;
+  ac_count: number;
+  ac_verified: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserStoryFull {
+  id: string;
+  key: string;
+  title: string;
+  description: string;
+  persona: string;
+  goal: string;
+  benefit: string;
+  priority: string;
+  status: string;
+  source_doc_id: string | null;
+  issue_id: string | null;
+  pipeline_run_id: string | null;
+  acceptance_criteria: AcceptanceCriterionInfo[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AcceptanceCriterionInfo {
+  id: string;
+  description: string;
+  verified: boolean;
+  test_case_ids: string[];
+}
+
+export async function listUserStories(filters?: {
+  status?: string;
+  issueId?: string;
+  runId?: string;
+}): Promise<UserStoryInfo[]> {
+  return invoke("list_user_stories", filters || {});
+}
+
+export async function getUserStory(key: string): Promise<UserStoryFull> {
+  return invoke("get_user_story", { key });
+}
+
 export async function listDiscussions(filters?: {
   runId?: string;
   skill?: string;
@@ -347,4 +537,48 @@ export async function getDiscussion(
   discussionId: string
 ): Promise<DiscussionFull> {
   return invoke("get_discussion", { discussionId });
+}
+
+// ── Memory types ──
+
+export interface MemoryInfo {
+  id: number;
+  memory_type: string;
+  summary: string;
+  created: string;
+  layer: string;
+  refs: number;
+  tags: string[];
+  files: string[];
+  run: string | null;
+  stale: boolean;
+  detail: string;
+}
+
+export interface MemoryStatsInfo {
+  line_count: number;
+  max_lines: number;
+  total: number;
+  long_term: number;
+  short_term: number;
+  bugs: number;
+  decisions: number;
+  patterns: number;
+  gotchas: number;
+  stale: number;
+}
+
+export async function listMemories(filters?: {
+  layer?: string;
+  memoryType?: string;
+}): Promise<MemoryInfo[]> {
+  return invoke("list_memories", filters || {});
+}
+
+export async function getMemoryStats(): Promise<MemoryStatsInfo> {
+  return invoke("get_memory_stats");
+}
+
+export async function getMemory(id: number): Promise<MemoryInfo> {
+  return invoke("get_memory", { id });
 }

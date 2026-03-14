@@ -9,6 +9,11 @@ inputs:
   - from_skill: prd
     artifact_type: prd
     required: true
+    relevance: medium
+    sections:
+      - Problem Statement
+      - User Stories & Acceptance Criteria
+      - Technical Constraints
 
 artifacts:
   - type: rfc
@@ -37,6 +42,13 @@ workflow:
       final: true
     rejected:
       final: true
+
+prompts:
+  draft: |
+    Write an RFC based on the architecture debate outcome and PRD requirements.
+    Include: Summary, Motivation, Proposal, Rationale and Alternatives, Open Questions.
+    If upstream documents are not available, gather design context from the user.
+    Full context: popsicle prompt rfc --run {run_id}
 
 hooks:
   on_enter: null

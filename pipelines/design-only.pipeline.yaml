@@ -1,0 +1,25 @@
+name: design-only
+description: Design and planning only — product debate through technical design, no implementation
+scale: planning
+keywords: [plan, explore, evaluate, design, 规划, 探索, 可行性, 评估, feasibility]
+
+stages:
+  # --- Requirements & Design ---
+  - name: product-debate
+    skill: product-debate
+    description: Multi-persona product debate to explore options
+
+  - name: product
+    skill: prd
+    description: Product requirements document with quality scoring
+    depends_on: [product-debate]
+
+  - name: arch-debate
+    skill: arch-debate
+    description: Multi-persona architecture debate for technical decisions
+    depends_on: [product]
+
+  - name: tech-design
+    skills: [rfc, adr]
+    description: Technical RFC and Architecture Decision Record (parallel)
+    depends_on: [arch-debate]

@@ -9,6 +9,10 @@ inputs:
   - from_skill: prd
     artifact_type: prd
     required: true
+    relevance: medium
+    sections:
+      - Problem Statement
+      - Technical Constraints
 
 artifacts:
   - type: adr
@@ -37,6 +41,13 @@ workflow:
       final: true
     superseded:
       final: true
+
+prompts:
+  draft: |
+    Write an Architecture Decision Record. Capture the Context, Decision, and
+    Consequences. Reference the arch-debate outcome if available, or gather
+    the decision context from the user directly.
+    Full context: popsicle prompt adr --run {run_id}
 
 hooks:
   on_enter: null

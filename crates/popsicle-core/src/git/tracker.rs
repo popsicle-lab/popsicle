@@ -171,6 +171,36 @@ impl GitTracker {
             .collect())
     }
 
+    /// Count total lines changed in a file since `since_date` (YYYY-MM-DD).
+    /// Returns the sum of insertions + deletions. Returns 0 if the file has no changes.
+    pub fn file_changes_since(repo_dir: &Path, file_path: &str, since_date: &str) -> Result<u64> {
+        let output = Command::new("git")
+            .args([
+                "log",
+                &format!("--since={}", since_date),
+                "--numstat",
+                "--pretty=",
+                "--",
+                file_path,
+            ])
+            .current_dir(repo_dir)
+            .output()
+            .map_err(|e| PopsicleError::Storage(format!("git log --numstat failed: {}", e)))?;
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut total: u64 = 0;
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let added: u64 = parts[0].parse().unwrap_or(0);
+                let deleted: u64 = parts[1].parse().unwrap_or(0);
+                total += added + deleted;
+            }
+        }
+
+        Ok(total)
+    }
+
     /// Install a post-commit git hook that calls `popsicle git on-commit`.
     pub fn install_hook(repo_dir: &Path) -> Result<()> {
         let hooks_dir = repo_dir.join(".git").join("hooks");

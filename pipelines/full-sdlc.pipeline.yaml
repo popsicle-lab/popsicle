@@ -1,5 +1,7 @@
 name: full-sdlc
 description: Full software development lifecycle — product debate through implementation, testing, and quality
+scale: full
+keywords: [feature, user story, product, 功能, 需求, 新功能, cross-module, 跨模块]
 
 stages:
   # --- Requirements & Design ---

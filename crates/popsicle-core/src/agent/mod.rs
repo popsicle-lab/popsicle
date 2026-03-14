@@ -230,6 +230,30 @@ When the user says "start PROJ-1" or "release requirement PROJ-1":
 3. Fill document sections with real content — template placeholders are rejected
 4. Link commits to documents with `popsicle git link`
 5. Transitions marked `requires_approval` (e.g. discussion conclude, doc approve): do NOT run the command with `--confirm` for the user. You must STOP, show the user the suggested command, and ask them to review and run it themselves in their terminal. No exception.
+
+## Memory Management
+
+Project memories persist bugs, decisions, patterns, and gotchas across sessions.
+
+- `popsicle memory save --type <bug|decision|pattern|gotcha> --summary "..." --detail "..." --tags "t1,t2" --files "path1,path2"`
+- `popsicle memory list` — list all memories
+- `popsicle memory stats` — usage statistics (line count / 200 limit)
+- `popsicle memory promote <id>` — promote short-term → long-term
+- `popsicle memory gc` — remove stale memories
+- `popsicle memory check-stale` — detect outdated memories via git diff
+
+### When to Save Memories
+
+1. **Bug fix**: after fixing a non-trivial bug, save the root cause and fix approach (`--type bug`)
+2. **Technical decision**: when choosing between alternatives with trade-offs (`--type decision`)
+3. **Repeated pattern**: when the same issue appears 2+ times, consolidate into a pattern (`--type pattern`)
+4. **Gotcha / pitfall**: when discovering a non-obvious constraint or trap (`--type gotcha`)
+
+### Memory Writing Principles
+
+1. **One sentence summary** — the `--summary` must be self-contained and actionable
+2. **Detail is optional but precise** — root cause, not symptoms; solution, not narrative
+3. **Tag related files** — use `--files` so the memory can be matched to future prompts and auto-detected as stale
 "#,
     );
 
@@ -291,6 +315,16 @@ fn install_claude(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
     std::fs::write(next_dir.join("SKILL.md"), SKILL_NEXT)?;
     installed.push(".claude/skills/popsicle-next/SKILL.md".to_string());
 
+    let memory_dir = skills_dir.join("popsicle-memory");
+    std::fs::create_dir_all(&memory_dir)?;
+    std::fs::write(memory_dir.join("SKILL.md"), SKILL_MEMORY)?;
+    installed.push(".claude/skills/popsicle-memory/SKILL.md".to_string());
+
+    let ctx_scan_dir = skills_dir.join("popsicle-context-scan");
+    std::fs::create_dir_all(&ctx_scan_dir)?;
+    std::fs::write(ctx_scan_dir.join("SKILL.md"), SKILL_CONTEXT_SCAN)?;
+    installed.push(".claude/skills/popsicle-context-scan/SKILL.md".to_string());
+
     Ok(installed)
 }
 
@@ -316,6 +350,16 @@ fn install_cursor(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
         installed.push(format!(".cursor/skills/popsicle-{}/SKILL.md", skill.name));
     }
 
+    let memory_dir = skills_dir.join("popsicle-memory");
+    std::fs::create_dir_all(&memory_dir)?;
+    std::fs::write(memory_dir.join("SKILL.md"), SKILL_MEMORY)?;
+    installed.push(".cursor/skills/popsicle-memory/SKILL.md".to_string());
+
+    let ctx_scan_dir = skills_dir.join("popsicle-context-scan");
+    std::fs::create_dir_all(&ctx_scan_dir)?;
+    std::fs::write(ctx_scan_dir.join("SKILL.md"), SKILL_CONTEXT_SCAN)?;
+    installed.push(".cursor/skills/popsicle-context-scan/SKILL.md".to_string());
+
     Ok(installed)
 }
 
@@ -333,6 +377,114 @@ fn build_agent_skill(skill: &SkillDef) -> String {
 
     s
 }
+
+const SKILL_MEMORY: &str = r#"---
+name: popsicle-memory
+description: Save project memories (bug fixes, decisions, patterns, gotchas) for cross-session persistence. Use after fixing bugs, making technical decisions, discovering patterns, or hitting gotchas.
+---
+
+Save a project memory so it persists across sessions and gets injected into future prompts.
+
+Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
+
+## IMPORTANT: Memory vs Bug Recording
+
+- **Discovered a NEW bug?** → Use `popsicle bug create` or `popsicle bug record` (NOT memory). This stores the bug in the database and makes it visible in the Desktop UI's Bugs page.
+- **FIXED a bug and want to remember the lesson?** → Use `popsicle memory save --type bug`. This saves the root cause and fix approach as a memory for future sessions.
+
+Memory is for **cross-session experience**, not for **issue tracking**.
+
+## When to Use
+
+- **After fixing a bug**: save the root cause and fix so future sessions avoid re-introducing it
+- **After a technical decision**: save the choice and rationale (e.g. "chose BTreeMap over HashMap for deterministic ordering")
+- **After discovering a pattern**: when the same class of issue appears 2+ times, consolidate into a reusable pattern
+- **After hitting a gotcha**: save non-obvious constraints (e.g. "serde requires #[serde(default)] for backward-compatible YAML fields")
+
+## Commands
+
+```bash
+# Save a bug-fix memory (AFTER fixing — for the lesson learned, NOT for new bug reporting)
+popsicle memory save --type bug \
+  --summary "HashMap iteration causes non-deterministic context ordering" \
+  --detail "assemble_input_context used HashMap, causing high-relevance docs to appear mid-prompt. Fix: use BTreeMap." \
+  --tags "context-injection,ordering" \
+  --files "engine/context.rs"
+
+# Save a decision memory
+popsicle memory save --type decision \
+  --summary "Prompt ordering: context before instruction for attention optimization" \
+  --detail "Based on LLM attention U-curve, high-relevance context placed adjacent to instruction at prompt end." \
+  --tags "prompt,attention"
+
+# Save a pattern memory (long-term)
+popsicle memory save --type pattern --long-term \
+  --summary "Always use #[serde(default)] for new YAML fields" \
+  --detail "New fields without default break deserialization of existing files." \
+  --tags "serde,yaml,backward-compat" \
+  --files "model/skill.rs"
+
+# Save a gotcha
+popsicle memory save --type gotcha \
+  --summary "Tauri invoke parameter names must be camelCase" \
+  --tags "tauri,frontend"
+
+# Check current memory usage
+popsicle memory stats
+
+# Review memories before saving to avoid duplicates
+popsicle memory list
+```
+
+## Principles
+
+1. **Be concise**: summary should be one self-contained sentence; detail is 1-3 lines max
+2. **Tag files**: use `--files` so the memory auto-matches future prompts and stale detection works
+3. **Avoid duplicates**: run `popsicle memory list` first; if a similar memory exists, consider promoting it or merging
+4. **Default is short-term**: only use `--long-term` for validated, high-confidence memories
+5. **Never use memory to report new bugs**: use `popsicle bug create` / `popsicle bug record` instead
+"#;
+
+const SKILL_CONTEXT_SCAN: &str = r#"---
+name: popsicle-context-scan
+description: Analyze the project codebase and generate a rich technical profile. Use when starting work on a new project or when the project context seems incomplete.
+---
+
+Analyze the project's codebase to build a comprehensive technical profile.
+
+Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
+
+## When to Use
+
+- After `popsicle init` (project-context.md has basic info but lacks depth)
+- When `.popsicle/project-context.md` is missing or sparse
+- When `popsicle pipeline next` suggests updating project context
+
+## Analysis Steps
+
+1. Read `.popsicle/project-context.md` to see what's already detected
+2. Sample 3-5 representative source files to identify:
+   - Coding conventions (naming, error handling, module organization)
+   - Architecture patterns (layered, hexagonal, MVC, etc.)
+   - Testing patterns (unit test structure, mocking approach)
+3. Check for project-specific conventions:
+   - README, CONTRIBUTING.md, or similar docs
+   - Linter/formatter configurations for style rules
+4. Write findings using the CLI:
+
+```bash
+popsicle context update --section "Architecture Patterns" --content "..."
+popsicle context update --section "Coding Conventions" --content "..."
+popsicle context update --section "Testing Patterns" --content "..."
+```
+
+## Guidelines
+
+- Be concise: each section should be 3-10 bullet points
+- Focus on patterns that affect AI code generation quality
+- Don't repeat what's already in Tech Stack or Key Dependencies
+- Use the project's actual terminology (e.g. "crate" for Rust, "package" for Node)
+"#;
 
 const SKILL_NEXT: &str = r#"---
 name: popsicle-next

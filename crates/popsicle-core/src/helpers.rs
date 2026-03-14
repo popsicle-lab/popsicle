@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use crate::model::PipelineDef;
+use crate::engine::PipelineRecommender;
+use crate::model::{Issue, PipelineDef};
 use crate::registry::{PipelineLoader, SkillLoader, SkillRegistry};
 use crate::storage::ProjectLayout;
 
@@ -60,4 +61,52 @@ pub fn project_layout(project_dir: &Path) -> crate::error::Result<ProjectLayout>
     let layout = ProjectLayout::new(project_dir);
     layout.ensure_initialized()?;
     Ok(layout)
+}
+
+/// Resolve the best pipeline for an issue.
+///
+/// Strategy: use PipelineRecommender on the issue title + description first.
+/// If no keyword matches, fall back to `IssueType::default_pipeline()`.
+pub fn resolve_pipeline_for_issue(
+    issue: &Issue,
+    pipelines: &[PipelineDef],
+) -> Option<ResolvedPipeline> {
+    let task_text = if issue.description.is_empty() {
+        issue.title.clone()
+    } else {
+        format!("{} {}", issue.title, issue.description)
+    };
+
+    let rec = PipelineRecommender::recommend(&task_text, pipelines);
+
+    if !rec.reason.contains("No keyword match") {
+        return Some(ResolvedPipeline {
+            pipeline_name: rec.pipeline_name,
+            reason: rec.reason,
+            source: PipelineSource::Recommender,
+        });
+    }
+
+    issue
+        .issue_type
+        .default_pipeline()
+        .map(|name| ResolvedPipeline {
+            pipeline_name: name.to_string(),
+            reason: format!("Default pipeline for issue type '{}'", issue.issue_type),
+            source: PipelineSource::IssueTypeDefault,
+        })
+}
+
+/// Result of pipeline resolution for an issue.
+#[derive(Debug, Clone)]
+pub struct ResolvedPipeline {
+    pub pipeline_name: String,
+    pub reason: String,
+    pub source: PipelineSource,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PipelineSource {
+    Recommender,
+    IssueTypeDefault,
 }

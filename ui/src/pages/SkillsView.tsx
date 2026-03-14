@@ -89,6 +89,22 @@ export function SkillsView() {
                               required
                             </span>
                           )}
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded ${
+                              input.relevance === "high"
+                                ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                                : input.relevance === "medium"
+                                  ? "bg-yellow-500/15 text-yellow-500"
+                                  : "bg-[var(--text-secondary)]/15 text-[var(--text-secondary)]"
+                            }`}
+                          >
+                            {input.relevance}
+                          </span>
+                          {input.sections && (
+                            <span className="text-xs text-[var(--text-secondary)]">
+                              [{input.sections.join(", ")}]
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>

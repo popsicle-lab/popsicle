@@ -12,12 +12,18 @@ inputs:
   - from_skill: priority-test-spec
     artifact_type: test-gate-report
     required: false
+    relevance: medium
+    sections:
+      - Feature Classification
+      - Coverage by Dimension
   - from_skill: api-test-spec
     artifact_type: api-test-spec
     required: false
+    relevance: low
   - from_skill: e2e-test-spec
     artifact_type: e2e-test-spec
     required: false
+    relevance: low
 
 artifacts:
   - type: impl-record
@@ -46,6 +52,18 @@ workflow:
           action: revise
     completed:
       final: true
+
+prompts:
+  planning: |
+    Create an implementation plan. Review the RFC and ADR for design decisions.
+    If this pipeline skips design phases, gather architecture context from the user.
+    Break down into components, define implementation order, and identify key interfaces.
+    Full context: popsicle prompt implementation --state planning --run {run_id}
+  coding: |
+    Implement components per the plan. Follow project coding conventions from
+    project context. After each significant change, update the impl-record with
+    files changed and verification checklist.
+    Link commits: popsicle git link --doc <doc-id> --stage implementation
 
 hooks:
   on_enter: null

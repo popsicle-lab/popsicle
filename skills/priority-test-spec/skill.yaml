@@ -31,7 +31,14 @@ workflow:
     approved:
       final: true
 
+prompts:
+  discovery: |
+    Discover features and classify test priorities (P0/P1/P2). Analyze the ADR
+    and codebase to identify critical paths. If ADR is not available, analyze the
+    codebase directly. Apply three dimensions: Happy path, Boundary, Error.
+    Full context: popsicle prompt priority-test-spec --run {run_id}
+
 hooks:
   on_enter: null
   on_artifact_created: null
-  on_complete: null
+  on_complete: "popsicle extract test-cases --from-doc $POPSICLE_DOC_ID --type unit"

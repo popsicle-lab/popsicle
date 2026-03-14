@@ -37,7 +37,14 @@ workflow:
     closed:
       final: true
 
+prompts:
+  collecting: |
+    Collect bugs from test execution results. For each failure: dedup against
+    existing bugs, record or reuse, then continue. Never interrupt the test flow
+    for a single bug. Use: popsicle bug record --from-test --error "<msg>"
+    Full context: popsicle prompt bug-tracker --run {run_id}
+
 hooks:
   on_enter: null
   on_artifact_created: null
-  on_complete: null
+  on_complete: "popsicle extract bugs --from-doc $POPSICLE_DOC_ID"

@@ -31,7 +31,14 @@ workflow:
     approved:
       final: true
 
+prompts:
+  spec-gen: |
+    Generate API integration test specifications. Analyze ADR and codebase for
+    API endpoints. If ADR is not available, discover APIs from the codebase directly.
+    Stage 1: generate spec (block for review). Stage 2: generate test code.
+    Full context: popsicle prompt api-test-spec --run {run_id}
+
 hooks:
   on_enter: null
   on_artifact_created: null
-  on_complete: null
+  on_complete: "popsicle extract test-cases --from-doc $POPSICLE_DOC_ID --type api"

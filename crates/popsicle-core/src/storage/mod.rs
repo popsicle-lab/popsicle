@@ -42,6 +42,14 @@ impl ProjectLayout {
         self.root.join("config.toml")
     }
 
+    pub fn project_context_path(&self) -> PathBuf {
+        self.root.join("project-context.md")
+    }
+
+    pub fn memories_path(&self) -> PathBuf {
+        self.root.join("memories.md")
+    }
+
     /// The artifacts directory for a specific pipeline run.
     pub fn run_dir(&self, run_slug: &str) -> PathBuf {
         self.artifacts_dir().join(run_slug)

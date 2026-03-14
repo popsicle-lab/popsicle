@@ -1,6 +1,6 @@
 use std::env;
 
-use popsicle_core::engine::Advisor;
+use popsicle_core::engine::{Advisor, PipelineRecommender};
 use popsicle_core::helpers;
 use popsicle_core::model::{PipelineDef, PipelineRun, StageState};
 use popsicle_core::storage::{IndexDb, ProjectLayout};
@@ -63,6 +63,11 @@ pub enum PipelineCommand {
         #[arg(short, long, default_value = "implementation")]
         skill: String,
     },
+    /// Recommend the best pipeline for a task based on its description
+    Recommend {
+        /// Task description (e.g. "add user authentication feature")
+        task: String,
+    },
 }
 
 pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()> {
@@ -79,6 +84,7 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
         PipelineCommand::Verify { run } => verify_run(run.as_deref(), format),
         PipelineCommand::Archive { run } => archive_run(run.as_deref(), format),
         PipelineCommand::Quick { title, skill } => quick_run(&title, &skill, format),
+        PipelineCommand::Recommend { task } => recommend_pipeline(&task, format),
     }
 }
 
@@ -240,6 +246,8 @@ fn quick_run(title: &str, skill_name: &str, format: &OutputFormat) -> anyhow::Re
             description: format!("Quick: {}", title),
             depends_on: vec![],
         }],
+        keywords: vec![],
+        scale: None,
     };
 
     let run = PipelineRun::new(&quick_def, title);
@@ -270,6 +278,42 @@ fn quick_run(title: &str, skill_name: &str, format: &OutputFormat) -> anyhow::Re
                 "cli_command": format!("popsicle doc create {} --title \"{}\" --run {}", skill_name, title, run.id),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+    }
+
+    Ok(())
+}
+
+fn recommend_pipeline(task: &str, format: &OutputFormat) -> anyhow::Result<()> {
+    let pipelines = load_pipelines()?;
+
+    if pipelines.is_empty() {
+        anyhow::bail!("No pipeline templates found. Run `popsicle init` first.");
+    }
+
+    let rec = PipelineRecommender::recommend(task, &pipelines);
+
+    match format {
+        OutputFormat::Text => {
+            println!("=== Pipeline Recommendation ===\n");
+            println!("  Task:      {}", task);
+            println!("  Pipeline:  {} (scale: {})", rec.pipeline_name, rec.scale);
+            println!("  Reason:    {}", rec.reason);
+            println!("\n  Start with:");
+            println!("  $ {}", rec.cli_command);
+
+            if !rec.alternatives.is_empty() {
+                println!("\n  Alternatives:");
+                for alt in &rec.alternatives {
+                    println!(
+                        "    - {} (scale: {}) — {}",
+                        alt.pipeline_name, alt.scale, alt.reason
+                    );
+                }
+            }
+        }
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&rec)?);
         }
     }
 
@@ -566,9 +610,17 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs);
+    let hints = collect_context_hints(&layout);
 
     match format {
         OutputFormat::Text => {
+            for hint in &hints {
+                println!("hint: {}", hint);
+            }
+            if !hints.is_empty() {
+                println!();
+            }
+
             let actionable: Vec<_> = steps.iter().filter(|s| s.action != "blocked").collect();
             let blocked: Vec<_> = steps.iter().filter(|s| s.action == "blocked").collect();
 
@@ -603,6 +655,9 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
                     } else {
                         println!("   $ {}", step.cli_command);
                     }
+                    for hint in &step.hints {
+                        println!("   💡 {}", hint);
+                    }
                     if let Some(prompt) = &step.prompt {
                         let preview: String = prompt.chars().take(100).collect();
                         println!("   AI Prompt: {}...", preview.trim());
@@ -619,9 +674,40 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
             }
         }
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&steps)?);
+            let mut result = serde_json::to_value(&steps)?;
+            if !hints.is_empty() {
+                let wrapper = serde_json::json!({
+                    "hints": hints,
+                    "steps": result,
+                });
+                result = wrapper;
+            }
+            println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
 
     Ok(())
+}
+
+fn collect_context_hints(layout: &ProjectLayout) -> Vec<String> {
+    let mut hints = Vec::new();
+    let context_path = layout.project_context_path();
+
+    if !context_path.exists() {
+        hints.push("Run 'popsicle context scan' to generate project technical profile".to_string());
+    } else if let Ok(content) = std::fs::read_to_string(&context_path) {
+        let deep_sections = [
+            "## Architecture Patterns",
+            "## Coding Conventions",
+            "## Testing Patterns",
+        ];
+        let has_deep = deep_sections.iter().any(|s| content.contains(s));
+        if !has_deep {
+            hints.push(
+                "Project context lacks deep analysis. Consider running the popsicle-context-scan skill".to_string(),
+            );
+        }
+    }
+
+    hints
 }

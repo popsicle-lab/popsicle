@@ -10,6 +10,12 @@ pub struct PipelineDef {
     pub name: String,
     pub description: String,
     pub stages: Vec<StageDef>,
+    /// Keywords for scale-adaptive pipeline recommendation matching.
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    /// Complexity scale: "minimal", "light", "standard", "full", "planning".
+    #[serde(default)]
+    pub scale: Option<String>,
 }
 
 /// A stage groups one or more Skills that execute within the same phase.
@@ -41,6 +47,11 @@ impl StageDef {
 }
 
 impl PipelineDef {
+    /// Collect all skill names across every stage in this pipeline.
+    pub fn all_skill_names(&self) -> Vec<&str> {
+        self.stages.iter().flat_map(|s| s.skill_names()).collect()
+    }
+
     /// Load from a YAML file.
     pub fn load(path: &std::path::Path) -> crate::error::Result<Self> {
         let content = std::fs::read_to_string(path)?;
@@ -203,5 +214,27 @@ stages:
 
         assert_eq!(run.stage_states["product"], StageState::Ready);
         assert_eq!(run.stage_states["tech-design"], StageState::Blocked);
+    }
+
+    #[test]
+    fn test_all_skill_names() {
+        let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
+        let names = def.all_skill_names();
+        assert_eq!(
+            names,
+            vec!["domain-analysis", "product-prd", "tech-rfc", "tech-adr"]
+        );
+    }
+
+    #[test]
+    fn test_all_skill_names_empty() {
+        let def = PipelineDef {
+            name: "empty".to_string(),
+            description: "No stages".to_string(),
+            stages: vec![],
+            keywords: vec![],
+            scale: None,
+        };
+        assert!(def.all_skill_names().is_empty());
     }
 }
