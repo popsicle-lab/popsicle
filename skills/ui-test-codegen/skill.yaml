@@ -9,6 +9,10 @@ inputs:
   - from_skill: implementation
     artifact_type: impl-record
     required: false
+    relevance: medium
+    sections:
+      - Change Summary
+      - Files Changed
 
 artifacts:
   - type: ui-test-report
@@ -33,6 +37,13 @@ workflow:
           action: revise
     completed:
       final: true
+
+prompts:
+  generating: |
+    Generate Playwright UI test code from the approved UI test spec. If test-spec
+    is not available, analyze UI components in the codebase and generate tests
+    for critical user interactions using Page Object patterns.
+    Full context: popsicle prompt ui-test-codegen --run {run_id}
 
 hooks:
   on_enter: null

@@ -9,6 +9,10 @@ inputs:
   - from_skill: adr
     artifact_type: adr
     required: false
+    relevance: medium
+    sections:
+      - Context
+      - Decision
 
 artifacts:
   - type: e2e-test-spec
@@ -33,7 +37,14 @@ workflow:
     approved:
       final: true
 
+prompts:
+  analysis: |
+    Analyze user scenarios for E2E test coverage. Use six perspectives: POS, BND,
+    CHN, INV, LFC, DPL. Reference PRD for user stories if available, or analyze
+    the codebase directly for user-facing flows.
+    Full context: popsicle prompt e2e-test-spec --run {run_id}
+
 hooks:
   on_enter: null
   on_artifact_created: null
-  on_complete: null
+  on_complete: "popsicle extract test-cases --from-doc $POPSICLE_DOC_ID --type e2e"

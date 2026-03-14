@@ -1,5 +1,7 @@
 name: test-only
 description: Testing pipeline — skip requirements, generate test specs and code
+scale: minimal
+keywords: [test, coverage, 测试, 覆盖率, spec, 补充测试]
 
 stages:
   - name: test-planning

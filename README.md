@@ -2,7 +2,7 @@
 
 Popsicle is a spec-driven development orchestration engine — a border collie that oversees AI coding.
 
-It organizes the full software development lifecycle through composable **Skills** and **Pipelines**, provides a CLI for AI agents to call, tracks Git commits with document associations, and offers a desktop UI for read-only visualization.
+It organizes the full software development lifecycle through composable **Skills** and **Pipelines**, provides a CLI for AI agents to call, tracks Git commits with document associations, and offers a desktop UI for read-only visualization. It also auto-scans project context, maintains cross-session memory, tracks work items (bugs, stories, test cases), and recommends the right pipeline for every task.
 
 ## Core Concepts
 
@@ -13,7 +13,12 @@ It organizes the full software development lifecycle through composable **Skills
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
 - **Guard** — Conditions on workflow transitions that enforce upstream approval and document completeness
 - **Advisor** — Recommends the next step (CLI command + AI prompt) based on current pipeline and document state
-- **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, discussions, git status, and commit-document associations
+- **Project Context** — Auto-scanned technical profile (tech stack, structure, dev practices, dependencies) injected into all AI prompts as background context
+- **Memory** — Two-layer (short-term / long-term) cross-session memory for bugs, decisions, patterns, and gotchas, stored in a single Markdown file with event-driven staleness
+- **Work Items** — First-class Bug, UserStory, and TestCase entities extracted from documents or created manually, linked to pipeline runs, issues, and commits
+- **Pipeline Recommender** — Suggests the best pipeline based on task description keywords and project scale
+- **Extractor** — Parses structured entities (stories, test cases, bugs) from Markdown documents
+- **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, discussions, git status, work items, memories, and commit-document associations
 
 ## Installation
 
@@ -98,6 +103,12 @@ popsicle init --agent claude,cursor
 # Install git post-commit hook for automatic tracking
 popsicle git init
 
+# Scan project to generate technical profile
+popsicle context scan
+
+# Get pipeline recommendation for your task
+popsicle pipeline recommend --task "Add user authentication"
+
 # Start a development pipeline
 popsicle pipeline run full-sdlc --title "My Feature"
 
@@ -106,6 +117,13 @@ popsicle pipeline next
 
 # Quick change (skip full pipeline ceremony)
 popsicle pipeline quick --title "Fix login button"
+
+# Extract structured entities from documents
+popsicle extract user-stories --from-doc <doc-id>
+popsicle extract test-cases --from-doc <doc-id> --type unit
+
+# Save a memory for future sessions
+popsicle memory save --type bug --summary "SQLite WAL mode required for concurrent access"
 ```
 
 ## Agent Support
@@ -151,6 +169,7 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle pipeline next [--run <id>]` | Advisor: recommended next steps |
 | `popsicle pipeline verify [--run <id>]` | Verify all stages complete and documents approved |
 | `popsicle pipeline archive [--run <id>]` | Archive a completed pipeline run |
+| `popsicle pipeline recommend --task <desc>` | Recommend pipeline based on task description |
 
 ### Skills & Documents
 
@@ -163,6 +182,46 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle doc list [--skill/--status/--run]` | Query documents |
 | `popsicle doc show <id>` | View document content and metadata |
 | `popsicle doc transition <id> <action>` | Advance document through workflow (guards enforced) |
+
+### Bug Tracking
+
+| Command | Description |
+|---------|-------------|
+| `popsicle bug create` | Create a bug report |
+| `popsicle bug list [--severity/--status/--issue/--run]` | List bugs with filters |
+| `popsicle bug show <key>` | Show bug details |
+| `popsicle bug update <key>` | Update bug fields |
+| `popsicle bug link <key> --commit <sha>` | Link bug to a fix commit |
+| `popsicle bug record --from-test --error <msg>` | Create bug from test failure (auto-dedup) |
+
+### User Stories
+
+| Command | Description |
+|---------|-------------|
+| `popsicle story create` | Create a user story |
+| `popsicle story list [--status/--issue/--run]` | List user stories |
+| `popsicle story show <key>` | Show story details with acceptance criteria |
+| `popsicle story update <key>` | Update story fields |
+| `popsicle story extract --from-doc <doc-id>` | Extract stories from a PRD document |
+| `popsicle story link --ac <ac-id> --test-case <tc-key>` | Link acceptance criterion to test case |
+
+### Test Cases
+
+| Command | Description |
+|---------|-------------|
+| `popsicle test list [--type/--priority/--status]` | List test cases |
+| `popsicle test show <key>` | Show test case details |
+| `popsicle test extract --from-doc <doc-id> --type <t>` | Extract test cases from test spec document |
+| `popsicle test run-result` | Record a test execution result |
+| `popsicle test coverage` | Show test coverage summary |
+
+### Entity Extraction
+
+| Command | Description |
+|---------|-------------|
+| `popsicle extract user-stories --from-doc <doc-id>` | Parse user stories from document |
+| `popsicle extract test-cases --from-doc <doc-id> --type <t>` | Parse test cases from document |
+| `popsicle extract bugs --from-doc <doc-id>` | Parse bugs from document |
 
 ### Git Tracking
 
@@ -186,12 +245,28 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle discussion conclude <id> [--confidence <1-5>]` | Conclude a discussion |
 | `popsicle discussion export <id> [--output <path>]` | Export discussion as Markdown |
 
-### AI Agent Integration
+### Memory
 
 | Command | Description |
 |---------|-------------|
-| `popsicle context [--run <id>] [--stage <s>]` | Full pipeline context with document bodies (JSON) |
-| `popsicle prompt <skill> [--state <s>] [--run <id>]` | AI prompt with upstream context injected |
+| `popsicle memory save --type <t> --summary <s>` | Save a memory (bug/decision/pattern/gotcha) |
+| `popsicle memory list [--layer/--type]` | List memories with filters |
+| `popsicle memory show <id>` | Show memory details |
+| `popsicle memory delete <id>` | Delete a memory |
+| `popsicle memory promote <id>` | Promote short-term → long-term |
+| `popsicle memory stale <id>` | Mark a memory as stale |
+| `popsicle memory gc` | Garbage collect all stale memories |
+| `popsicle memory check-stale` | Detect stale memories via git diff |
+| `popsicle memory stats` | Show memory statistics |
+
+### Project Context & AI Integration
+
+| Command | Description |
+|---------|-------------|
+| `popsicle context scan` | Auto-scan project and generate technical profile |
+| `popsicle context show [--run <id>] [--stage <s>]` | Full pipeline context with document bodies (JSON) |
+| `popsicle context update --section <name>` | Update a section in project-context.md |
+| `popsicle prompt <skill> [--state <s>] [--run <id>]` | AI prompt with upstream context + memory injected |
 | `popsicle migrate --skill <s> <paths...>` | Import existing Markdown docs into a pipeline run |
 | `popsicle completions <zsh/bash/fish>` | Generate shell completions |
 
@@ -219,9 +294,9 @@ All commands support `--format json` for machine consumption.
 | `bug-tracker` | bug-report | Bug tracking and issue management |
 | `test-report` | test-summary | Test report analysis and aggregation |
 
-## Built-in Pipeline
+## Built-in Pipelines
 
-**`full-sdlc`** — Full software development lifecycle:
+### `full-sdlc` — Full software development lifecycle (scale: full)
 
 ```
 product-debate → prd → arch-debate → rfc + adr
@@ -235,6 +310,32 @@ product-debate → prd → arch-debate → rfc + adr
                             ↓
                    quality (bug-tracker + test-report)
 ```
+
+### `tech-sdlc` — Technical refactoring & migration (scale: standard)
+
+```
+arch-debate → rfc + adr → test-planning → implementation → test-codegen → quality
+```
+
+### `design-only` — Design & planning only (scale: planning)
+
+```
+product-debate → prd → arch-debate → rfc + adr
+```
+
+### `impl-test` — Implementation & testing (scale: light)
+
+```
+implementation → test-codegen → quality (bug-tracker + test-report)
+```
+
+### `test-only` — Testing only (scale: minimal)
+
+```
+test-planning → test-codegen → quality
+```
+
+Use `popsicle pipeline recommend --task "<description>"` to get a recommendation based on your task.
 
 ## Guard Conditions
 
@@ -270,6 +371,8 @@ Developer ──→                               ↑
                                     ├── Pipeline DAG visualization
                                     ├── Document viewer + metadata panel
                                     ├── Discussion viewer (conversational UI)
+                                    ├── Bug / Story / TestCase tracking
+                                    ├── Memory browser
                                     ├── Git tracking + commit-document links
                                     └── Next Step Advisor
 ```
@@ -283,6 +386,10 @@ Developer ──→                               ↑
 - **Git-aware** — Post-commit hooks auto-track commits; link commits to documents, stages, and skills
 - **Multi-agent** — Native support for Claude Code and Cursor with auto-generated skills following the Agent Skills open standard
 - **Hybrid storage** — Documents as Markdown files (Git-friendly), metadata and state indexed in SQLite
+- **Context-aware** — Project tech profile auto-scanned and injected with attention-optimized ordering (low → medium → high relevance)
+- **Memory-driven** — Cross-session memory with event-driven staleness, two-layer promotion, and 200-line budget
+- **Work item traceability** — Bugs, stories, and test cases linked across documents, pipeline runs, issues, and commits
+- **Scale-adaptive** — Pipeline recommender matches task complexity to the right workflow depth
 - **Extensible** — Custom skills (`skill create`), pipelines (`pipeline create`), hooks for lifecycle events
 
 ### Project Layout (after `popsicle init`)
@@ -293,7 +400,9 @@ your-project/
 │   ├── skills/                   # Built-in + custom skill definitions
 │   ├── pipelines/                # Pipeline templates
 │   ├── artifacts/                # Documents organized by pipeline run
-│   ├── popsicle.db               # SQLite index
+│   ├── project-context.md        # Auto-scanned technical profile
+│   ├── memories.md               # Cross-session memory store (≤200 lines)
+│   ├── popsicle.db               # SQLite index (docs, bugs, stories, test cases, memories)
 │   └── config.toml               # Project configuration
 ├── .claude/                      # Claude Code (--agent claude)
 │   ├── CLAUDE.md                 # Instructions + skill catalog
@@ -317,6 +426,10 @@ The Tauri desktop app provides read-only visualization:
 - **Pipeline View** — Stage DAG with status highlighting, documents and commits per stage, verification status, archive hint, Next Step Advisor
 - **Document Viewer** — Markdown rendering + metadata panel (type, status, skill, tags, timeline, linked commits)
 - **Discussions** — Conversational UI for multi-role review sessions with phase grouping, role color coding, participant sidebar, and message type differentiation (role statements, user input, pause points, phase summaries, decisions)
+- **User Stories** — Story list with acceptance criteria verification progress, detail view with linked test cases
+- **Test Cases** — Test case list with type/priority/status filters, coverage summary, execution results
+- **Bugs** — Bug list with severity/status filters, statistics cards, detail view with reproduction steps and linked commits
+- **Memories** — Memory browser with layer/type filters, capacity gauge, staleness indicators
 - **Git Tracking** — Branch/HEAD status, tracked commits with review status, commit-document-stage associations
 - **Skills Registry** — Browse all skills with workflow diagrams and input dependencies
 

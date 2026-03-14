@@ -6,6 +6,7 @@ inputs:
   - from_skill: domain-analysis
     artifact_type: domain-model
     required: false
+    relevance: low
 
 artifacts:
   - type: product-debate-record
@@ -28,6 +29,16 @@ workflow:
           action: restart
     concluded:
       final: true
+
+prompts:
+  setup: |
+    Set up a product debate. Load domain context if available, identify 4-6 expert
+    roles, and define the debate topic. Pause for user confirmation before starting.
+    Full context: popsicle prompt product-debate --state setup --run {run_id}
+  debating: |
+    Facilitate multi-role product debate. Each phase: roles state positions, then
+    pause for user input. Cover feasibility, market fit, risk, and prioritization.
+    Full context: popsicle prompt product-debate --state debating --run {run_id}
 
 hooks:
   on_enter: null

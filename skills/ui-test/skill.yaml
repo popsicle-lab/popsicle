@@ -31,7 +31,14 @@ workflow:
     approved:
       final: true
 
+prompts:
+  proposal: |
+    Propose a UI test plan using Playwright. Analyze PRD for UI requirements.
+    If PRD is not available, analyze the codebase for UI components and user flows.
+    Define Coverage Plan and Test Scenarios with Page Object patterns.
+    Full context: popsicle prompt ui-test --run {run_id}
+
 hooks:
   on_enter: null
   on_artifact_created: null
-  on_complete: null
+  on_complete: "popsicle extract test-cases --from-doc $POPSICLE_DOC_ID --type ui"

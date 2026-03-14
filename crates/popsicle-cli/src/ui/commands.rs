@@ -4,7 +4,10 @@ use popsicle_core::dto::*;
 use popsicle_core::engine::{Advisor, count_checkboxes};
 use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
-use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority, StageState};
+use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
+use popsicle_core::model::{
+    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, StageState,
+};
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
 
@@ -92,6 +95,8 @@ pub fn list_skills(state: State<AppState>) -> Result<Vec<SkillInfo>, String> {
                     from_skill: i.from_skill.clone(),
                     artifact_type: i.artifact_type.clone(),
                     required: i.required,
+                    relevance: i.relevance.to_string(),
+                    sections: i.sections.clone(),
                 })
                 .collect(),
             workflow_states: s
@@ -691,12 +696,16 @@ pub fn start_issue(key: String, state: State<AppState>) -> Result<IssueInfo, Str
         return Err(format!("Issue {} already has a pipeline run", key));
     }
 
-    let pipeline_name = issue
-        .issue_type
-        .default_pipeline()
-        .ok_or_else(|| format!("Issue type '{}' has no default pipeline", issue.issue_type))?;
+    let pipelines = helpers::load_pipelines(&dir).map_err(|e| e.to_string())?;
+    let resolved = helpers::resolve_pipeline_for_issue(&issue, &pipelines).ok_or_else(|| {
+        format!(
+            "Could not determine pipeline for issue type '{}'",
+            issue.issue_type
+        )
+    })?;
 
-    let pipeline_def = helpers::find_pipeline(&dir, pipeline_name).map_err(|e| e.to_string())?;
+    let pipeline_def =
+        helpers::find_pipeline(&dir, &resolved.pipeline_name).map_err(|e| e.to_string())?;
     pipeline_def.validate().map_err(|e| e.to_string())?;
 
     let run = PipelineRun::new(&pipeline_def, &issue.title);
@@ -944,4 +953,465 @@ pub fn find_issue_by_run(
         .map_err(|e| e.to_string())?;
 
     Ok(issue.as_ref().map(issue_to_info))
+}
+
+// ── Project context ──
+
+#[tauri::command]
+pub fn get_project_context(state: State<AppState>) -> Result<ProjectContextInfo, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let path = layout.project_context_path();
+
+    if path.exists() {
+        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        Ok(ProjectContextInfo {
+            available: true,
+            content: Some(content),
+            path: Some(path.display().to_string()),
+        })
+    } else {
+        Ok(ProjectContextInfo {
+            available: false,
+            content: None,
+            path: None,
+        })
+    }
+}
+
+// ── Bug commands ──
+
+fn bug_to_info(b: &Bug) -> BugInfo {
+    BugInfo {
+        id: b.id.clone(),
+        key: b.key.clone(),
+        title: b.title.clone(),
+        severity: b.severity.to_string(),
+        priority: b.priority.to_string(),
+        status: b.status.to_string(),
+        source: b.source.to_string(),
+        issue_id: b.issue_id.clone(),
+        pipeline_run_id: b.pipeline_run_id.clone(),
+        labels: b.labels.clone(),
+        created_at: b.created_at.to_rfc3339(),
+        updated_at: b.updated_at.to_rfc3339(),
+    }
+}
+
+#[tauri::command]
+pub fn list_bugs(
+    severity: Option<String>,
+    status: Option<String>,
+    issue_id: Option<String>,
+    run_id: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<BugInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let bugs = db
+        .query_bugs(
+            severity.as_deref(),
+            status.as_deref(),
+            issue_id.as_deref(),
+            run_id.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(bugs.iter().map(bug_to_info).collect())
+}
+
+#[tauri::command]
+pub fn get_bug(key: String, state: State<AppState>) -> Result<BugFull, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let bug = db
+        .get_bug(&key)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Bug not found: {}", key))?;
+
+    Ok(BugFull {
+        id: bug.id,
+        key: bug.key,
+        title: bug.title,
+        description: bug.description,
+        severity: bug.severity.to_string(),
+        priority: bug.priority.to_string(),
+        status: bug.status.to_string(),
+        steps_to_reproduce: bug.steps_to_reproduce,
+        expected_behavior: bug.expected_behavior,
+        actual_behavior: bug.actual_behavior,
+        environment: bug.environment,
+        stack_trace: bug.stack_trace,
+        source: bug.source.to_string(),
+        related_test_case_id: bug.related_test_case_id,
+        related_commit_sha: bug.related_commit_sha,
+        fix_commit_sha: bug.fix_commit_sha,
+        issue_id: bug.issue_id,
+        pipeline_run_id: bug.pipeline_run_id,
+        labels: bug.labels,
+        created_at: bug.created_at.to_rfc3339(),
+        updated_at: bug.updated_at.to_rfc3339(),
+    })
+}
+
+#[tauri::command]
+pub fn create_bug(
+    title: String,
+    severity: String,
+    priority: Option<String>,
+    issue_id: Option<String>,
+    run_id: Option<String>,
+    state: State<AppState>,
+) -> Result<BugInfo, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let config = ProjectConfig::load(&layout.config_path()).map_err(|e| e.to_string())?;
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let sev: BugSeverity = severity.parse().map_err(|e: String| e)?;
+    let prefix = config.project.key_prefix_or_default();
+    let seq = db.next_bug_seq(prefix).map_err(|e| e.to_string())?;
+    let key = format!("BUG-{}-{}", prefix, seq);
+
+    let mut bug = Bug::new(key, &title, sev);
+    if let Some(p) = priority {
+        bug.priority = p.parse().map_err(|e: String| e)?;
+    }
+    bug.issue_id = issue_id;
+    bug.pipeline_run_id = run_id;
+
+    db.create_bug(&bug).map_err(|e| e.to_string())?;
+    Ok(bug_to_info(&bug))
+}
+
+#[tauri::command]
+pub fn update_bug(
+    key: String,
+    status: Option<String>,
+    severity: Option<String>,
+    fix_commit: Option<String>,
+    state: State<AppState>,
+) -> Result<BugInfo, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let mut bug = db
+        .get_bug(&key)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Bug not found: {}", key))?;
+
+    if let Some(s) = status {
+        bug.status = s.parse().map_err(|e: String| e)?;
+    }
+    if let Some(s) = severity {
+        bug.severity = s.parse().map_err(|e: String| e)?;
+    }
+    if let Some(fc) = fix_commit {
+        bug.fix_commit_sha = Some(fc);
+    }
+
+    db.update_bug(&bug).map_err(|e| e.to_string())?;
+    Ok(bug_to_info(&bug))
+}
+
+// ── TestCase commands ──
+
+#[tauri::command]
+pub fn list_test_cases(
+    test_type: Option<String>,
+    priority: Option<String>,
+    status: Option<String>,
+    run_id: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<TestCaseInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let cases = db
+        .query_test_cases(
+            test_type.as_deref(),
+            priority.as_deref(),
+            status.as_deref(),
+            None,
+            run_id.as_deref(),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(cases
+        .iter()
+        .map(|tc| TestCaseInfo {
+            id: tc.id.clone(),
+            key: tc.key.clone(),
+            title: tc.title.clone(),
+            test_type: tc.test_type.to_string(),
+            priority_level: tc.priority_level.to_string(),
+            status: tc.status.to_string(),
+            source_doc_id: tc.source_doc_id.clone(),
+            user_story_id: tc.user_story_id.clone(),
+            issue_id: tc.issue_id.clone(),
+            pipeline_run_id: tc.pipeline_run_id.clone(),
+            created_at: tc.created_at.to_rfc3339(),
+            updated_at: tc.updated_at.to_rfc3339(),
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_test_case(key: String, state: State<AppState>) -> Result<TestCaseFull, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let tc = db
+        .get_test_case(&key)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("TestCase not found: {}", key))?;
+
+    Ok(TestCaseFull {
+        id: tc.id,
+        key: tc.key,
+        title: tc.title,
+        description: tc.description,
+        test_type: tc.test_type.to_string(),
+        priority_level: tc.priority_level.to_string(),
+        status: tc.status.to_string(),
+        preconditions: tc.preconditions,
+        steps: tc.steps,
+        expected_result: tc.expected_result,
+        source_doc_id: tc.source_doc_id,
+        user_story_id: tc.user_story_id,
+        issue_id: tc.issue_id,
+        pipeline_run_id: tc.pipeline_run_id,
+        labels: tc.labels,
+        created_at: tc.created_at.to_rfc3339(),
+        updated_at: tc.updated_at.to_rfc3339(),
+    })
+}
+
+#[tauri::command]
+pub fn get_test_coverage(
+    run_id: Option<String>,
+    state: State<AppState>,
+) -> Result<TestCoverageSummary, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let cases = db
+        .query_test_cases(None, None, None, None, run_id.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    let total = cases.len();
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    let mut no_runs = 0usize;
+
+    for tc in &cases {
+        match db.latest_test_run(&tc.id).map_err(|e| e.to_string())? {
+            Some(tr) if tr.passed => passed += 1,
+            Some(_) => failed += 1,
+            None => no_runs += 1,
+        }
+    }
+
+    let pass_rate = if total > 0 {
+        (passed as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    Ok(TestCoverageSummary {
+        total,
+        passed,
+        failed,
+        no_runs,
+        pass_rate,
+    })
+}
+
+// ── UserStory commands ──
+
+#[tauri::command]
+pub fn list_user_stories(
+    status: Option<String>,
+    issue_id: Option<String>,
+    run_id: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<UserStoryInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let stories = db
+        .query_user_stories(status.as_deref(), issue_id.as_deref(), run_id.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    Ok(stories
+        .iter()
+        .map(|s| {
+            let verified = s.acceptance_criteria.iter().filter(|a| a.verified).count();
+            UserStoryInfo {
+                id: s.id.clone(),
+                key: s.key.clone(),
+                title: s.title.clone(),
+                persona: s.persona.clone(),
+                priority: s.priority.to_string(),
+                status: s.status.to_string(),
+                issue_id: s.issue_id.clone(),
+                pipeline_run_id: s.pipeline_run_id.clone(),
+                ac_count: s.acceptance_criteria.len(),
+                ac_verified: verified,
+                created_at: s.created_at.to_rfc3339(),
+                updated_at: s.updated_at.to_rfc3339(),
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_user_story(key: String, state: State<AppState>) -> Result<UserStoryFull, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let story = db
+        .get_user_story(&key)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("User story not found: {}", key))?;
+
+    Ok(UserStoryFull {
+        id: story.id,
+        key: story.key,
+        title: story.title,
+        description: story.description,
+        persona: story.persona,
+        goal: story.goal,
+        benefit: story.benefit,
+        priority: story.priority.to_string(),
+        status: story.status.to_string(),
+        source_doc_id: story.source_doc_id,
+        issue_id: story.issue_id,
+        pipeline_run_id: story.pipeline_run_id,
+        acceptance_criteria: story
+            .acceptance_criteria
+            .iter()
+            .map(|ac| AcceptanceCriterionInfo {
+                id: ac.id.clone(),
+                description: ac.description.clone(),
+                verified: ac.verified,
+                test_case_ids: ac.test_case_ids.clone(),
+            })
+            .collect(),
+        created_at: story.created_at.to_rfc3339(),
+        updated_at: story.updated_at.to_rfc3339(),
+    })
+}
+
+// ── Memory commands ──
+
+fn memory_to_info(m: &popsicle_core::memory::Memory) -> MemoryInfo {
+    MemoryInfo {
+        id: m.id,
+        memory_type: m.memory_type.to_string(),
+        summary: m.summary.clone(),
+        created: m.created.clone(),
+        layer: m.layer.to_string(),
+        refs: m.refs,
+        tags: m.tags.clone(),
+        files: m.files.clone(),
+        run: m.run.clone(),
+        stale: m.stale,
+        detail: m.detail.clone(),
+    }
+}
+
+#[tauri::command]
+pub fn list_memories(
+    layer: Option<String>,
+    memory_type: Option<String>,
+    state: State<AppState>,
+) -> Result<Vec<MemoryInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let path = layout.memories_path();
+    let memories = MemoryStore::load(&path).map_err(|e| e.to_string())?;
+
+    let layer_filter: Option<MemoryLayer> = layer
+        .as_deref()
+        .map(|s| s.parse().map_err(|e: String| e))
+        .transpose()?;
+
+    let type_filter: Option<MemoryType> = memory_type
+        .as_deref()
+        .map(|s| s.parse().map_err(|e: String| e))
+        .transpose()?;
+
+    let filtered: Vec<MemoryInfo> = memories
+        .iter()
+        .filter(|m| layer_filter.is_none_or(|l| m.layer == l))
+        .filter(|m| type_filter.is_none_or(|t| m.memory_type == t))
+        .map(memory_to_info)
+        .collect();
+
+    Ok(filtered)
+}
+
+#[tauri::command]
+pub fn get_memory_stats(state: State<AppState>) -> Result<MemoryStatsInfo, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let path = layout.memories_path();
+    let memories = MemoryStore::load(&path).map_err(|e| e.to_string())?;
+
+    Ok(MemoryStatsInfo {
+        line_count: MemoryStore::line_count(&memories),
+        max_lines: popsicle_core::memory::MAX_LINES,
+        total: memories.len(),
+        long_term: memories
+            .iter()
+            .filter(|m| m.layer == MemoryLayer::LongTerm)
+            .count(),
+        short_term: memories
+            .iter()
+            .filter(|m| m.layer == MemoryLayer::ShortTerm)
+            .count(),
+        bugs: memories
+            .iter()
+            .filter(|m| m.memory_type == MemoryType::Bug)
+            .count(),
+        decisions: memories
+            .iter()
+            .filter(|m| m.memory_type == MemoryType::Decision)
+            .count(),
+        patterns: memories
+            .iter()
+            .filter(|m| m.memory_type == MemoryType::Pattern)
+            .count(),
+        gotchas: memories
+            .iter()
+            .filter(|m| m.memory_type == MemoryType::Gotcha)
+            .count(),
+        stale: memories.iter().filter(|m| m.stale).count(),
+    })
+}
+
+#[tauri::command]
+pub fn get_memory(id: u32, state: State<AppState>) -> Result<MemoryInfo, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let path = layout.memories_path();
+    let memories = MemoryStore::load(&path).map_err(|e| e.to_string())?;
+
+    let memory = memories
+        .iter()
+        .find(|m| m.id == id)
+        .ok_or_else(|| format!("Memory #{} not found", id))?;
+
+    Ok(memory_to_info(memory))
 }

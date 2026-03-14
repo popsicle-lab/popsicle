@@ -412,8 +412,19 @@ fn transition_doc(
             .query_documents(None, None, Some(&doc.pipeline_run_id))
             .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-        let guard_result = guard::check_guard(guard_expr, &doc, &all_docs, &registry)
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        let pipeline_def = db
+            .get_pipeline_run(&doc.pipeline_run_id)
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .and_then(|run| find_pipeline(&run.pipeline_name).ok().flatten());
+
+        let guard_result = guard::check_guard(
+            guard_expr,
+            &doc,
+            &all_docs,
+            &registry,
+            pipeline_def.as_ref(),
+        )
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
         if !guard_result.passed {
             anyhow::bail!(

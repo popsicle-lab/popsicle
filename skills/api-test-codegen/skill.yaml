@@ -9,6 +9,10 @@ inputs:
   - from_skill: implementation
     artifact_type: impl-record
     required: false
+    relevance: medium
+    sections:
+      - Change Summary
+      - Files Changed
 
 artifacts:
   - type: api-test-report
@@ -33,6 +37,13 @@ workflow:
           action: revise
     completed:
       final: true
+
+prompts:
+  generating: |
+    Generate API integration test code from the approved API test spec. If
+    test-spec is not available, discover API endpoints from the codebase and
+    generate tests for critical integrations.
+    Full context: popsicle prompt api-test-codegen --run {run_id}
 
 hooks:
   on_enter: null

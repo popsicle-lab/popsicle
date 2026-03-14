@@ -1,5 +1,6 @@
+use crate::engine::markdown;
 use crate::error::{PopsicleError, Result};
-use crate::model::Document;
+use crate::model::{Document, PipelineDef};
 use crate::registry::SkillRegistry;
 use crate::storage::DocumentRow;
 
@@ -27,6 +28,7 @@ pub fn check_guard(
     doc: &Document,
     all_docs: &[DocumentRow],
     registry: &SkillRegistry,
+    pipeline: Option<&PipelineDef>,
 ) -> Result<GuardResult> {
     let parts: Vec<&str> = guard
         .split(';')
@@ -37,7 +39,7 @@ pub fn check_guard(
     if parts.len() > 1 {
         let mut failed = Vec::new();
         for part in &parts {
-            let result = check_single_guard(part, doc, all_docs, registry)?;
+            let result = check_single_guard(part, doc, all_docs, registry, pipeline)?;
             if !result.passed {
                 failed.push(result.message);
             }
@@ -56,7 +58,7 @@ pub fn check_guard(
         });
     }
 
-    check_single_guard(guard.trim(), doc, all_docs, registry)
+    check_single_guard(guard.trim(), doc, all_docs, registry, pipeline)
 }
 
 fn check_single_guard(
@@ -64,11 +66,12 @@ fn check_single_guard(
     doc: &Document,
     all_docs: &[DocumentRow],
     registry: &SkillRegistry,
+    pipeline: Option<&PipelineDef>,
 ) -> Result<GuardResult> {
     let guard = guard.trim();
 
     if guard == "upstream_approved" {
-        return check_upstream_approved(doc, all_docs, registry);
+        return check_upstream_approved(doc, all_docs, registry, pipeline);
     }
 
     if let Some(sections_str) = guard.strip_prefix("has_sections:") {
@@ -91,18 +94,31 @@ fn check_single_guard(
 }
 
 /// Check that all required upstream skill docs exist and are in a final state.
+///
+/// When `pipeline` is provided, required inputs whose `from_skill` is not
+/// present in any pipeline stage are skipped — the pipeline designer
+/// intentionally omitted that upstream, so it should not block progress.
 fn check_upstream_approved(
     doc: &Document,
     all_docs: &[DocumentRow],
     registry: &SkillRegistry,
+    pipeline: Option<&PipelineDef>,
 ) -> Result<GuardResult> {
     let skill = registry.get(&doc.skill_name)?;
+    let pipeline_skills: Option<Vec<&str>> = pipeline.map(|p| p.all_skill_names());
 
     let mut missing = Vec::new();
     let mut not_final = Vec::new();
 
     for input in &skill.inputs {
         if !input.required {
+            continue;
+        }
+
+        // Skip required inputs whose from_skill is not in the current pipeline
+        if let Some(ref skills) = pipeline_skills
+            && !skills.contains(&input.from_skill.as_str())
+        {
             continue;
         }
 
@@ -165,8 +181,8 @@ fn check_has_sections(doc: &Document, required: &[&str]) -> Result<GuardResult> 
         let header = format!("## {}", section);
         if let Some(pos) = doc.body.find(&header) {
             let after_header = &doc.body[pos + header.len()..];
-            let section_content = extract_section_content(after_header);
-            if is_template_placeholder(&section_content) {
+            let section_content = markdown::extract_section_content(after_header);
+            if markdown::is_template_placeholder(&section_content) {
                 empty_sections.push(section.to_string());
             }
         } else {
@@ -208,7 +224,7 @@ fn check_checklist_complete(doc: &Document, section: Option<&str>) -> Result<Gua
             match doc.body.find(&header) {
                 Some(pos) => {
                     let after_header = &doc.body[pos + header.len()..];
-                    extract_section_content(after_header)
+                    markdown::extract_section_content(after_header)
                 }
                 None => {
                     return Ok(GuardResult {
@@ -268,82 +284,9 @@ pub fn count_checkboxes(text: &str) -> (usize, usize) {
     (checked, unchecked)
 }
 
-/// Extract content between the current H2 header and the next H2 header.
-fn extract_section_content(after_header: &str) -> String {
-    let lines: Vec<&str> = after_header.lines().collect();
-    let mut content_lines = Vec::new();
-
-    for (i, line) in lines.iter().enumerate() {
-        if i == 0 {
-            continue; // skip the header line itself (empty after split)
-        }
-        if line.starts_with("## ") {
-            break;
-        }
-        content_lines.push(*line);
-    }
-
-    content_lines.join("\n").trim().to_string()
-}
-
-/// Heuristic: check if content looks like an unfilled template.
-fn is_template_placeholder(content: &str) -> bool {
-    let trimmed = content.trim();
-    if trimmed.is_empty() {
-        return true;
-    }
-
-    let placeholder_patterns = [
-        "...",
-        "[Name]",
-        "[Title]",
-        "Description...",
-        "Add detailed content here",
-        "Brief description",
-        "Describe ",
-        "TODO",
-        "TBD",
-    ];
-
-    let non_placeholder_lines: Vec<&str> = trimmed
-        .lines()
-        .filter(|l| {
-            let l = l.trim();
-            if l.is_empty() || l.starts_with('#') {
-                return false;
-            }
-            !placeholder_patterns.iter().any(|p| l.contains(p))
-        })
-        .collect();
-
-    non_placeholder_lines.is_empty()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_is_template_placeholder() {
-        assert!(is_template_placeholder(""));
-        assert!(is_template_placeholder("..."));
-        assert!(is_template_placeholder("Describe the purpose"));
-        assert!(is_template_placeholder("[Name]"));
-        assert!(!is_template_placeholder(
-            "We use Redis for caching with a 5-minute TTL."
-        ));
-        assert!(!is_template_placeholder(
-            "The system handles user authentication via JWT tokens."
-        ));
-    }
-
-    #[test]
-    fn test_extract_section_content() {
-        let text = "\n\nSome real content here.\nMore details.\n\n## Next Section\n\nOther stuff.";
-        let content = extract_section_content(text);
-        assert!(content.contains("Some real content here."));
-        assert!(!content.contains("Next Section"));
-    }
 
     #[test]
     fn test_has_sections_pass() {
@@ -564,6 +507,7 @@ mod tests {
             &doc,
             &docs,
             &registry,
+            None,
         )
         .unwrap();
         assert!(result.passed, "Compound should pass: {}", result.message);
@@ -594,6 +538,7 @@ mod tests {
             &doc,
             &docs,
             &registry,
+            None,
         )
         .unwrap();
         assert!(!result.passed);
@@ -627,5 +572,216 @@ workflow:
         let skill: crate::model::SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
         registry.register(skill);
         registry
+    }
+
+    fn make_impl_registry() -> SkillRegistry {
+        let impl_yaml = r#"
+name: implementation
+description: Code implementation
+version: "0.1.0"
+inputs:
+  - from_skill: rfc
+    artifact_type: rfc
+    required: true
+  - from_skill: adr
+    artifact_type: adr
+    required: true
+artifacts:
+  - type: impl-record
+    template: templates/impl-record.md
+    file_pattern: "{slug}.impl-record.md"
+workflow:
+  initial: planning
+  states:
+    planning:
+      transitions:
+        - to: coding
+          action: start
+          guard: "upstream_approved"
+    coding:
+      transitions:
+        - to: review
+          action: submit
+    review:
+      transitions:
+        - to: completed
+          action: approve
+    completed:
+      final: true
+"#;
+        let rfc_yaml = r#"
+name: rfc
+description: Technical RFC
+version: "0.1.0"
+artifacts:
+  - type: rfc
+    template: templates/rfc.md
+    file_pattern: "{slug}.rfc.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: accepted
+          action: accept
+    accepted:
+      final: true
+"#;
+        let adr_yaml = r#"
+name: adr
+description: Architecture Decision Record
+version: "0.1.0"
+artifacts:
+  - type: adr
+    template: templates/adr.md
+    file_pattern: "{slug}.adr.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: accepted
+          action: accept
+    accepted:
+      final: true
+"#;
+        let mut registry = SkillRegistry::new();
+        for yaml in [impl_yaml, rfc_yaml, adr_yaml] {
+            let skill: crate::model::SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
+            registry.register(skill);
+        }
+        registry
+    }
+
+    #[test]
+    fn test_upstream_approved_no_pipeline_fails_when_missing() {
+        let registry = make_impl_registry();
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl-record".into(),
+            title: "Test".into(),
+            status: "planning".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: String::new(),
+            file_path: std::path::PathBuf::new(),
+        };
+        let docs: Vec<DocumentRow> = vec![];
+
+        let result = check_guard("upstream_approved", &doc, &docs, &registry, None).unwrap();
+        assert!(
+            !result.passed,
+            "Should fail without pipeline: {}",
+            result.message
+        );
+        assert!(result.message.contains("Missing"));
+        assert!(result.message.contains("rfc"));
+        assert!(result.message.contains("adr"));
+    }
+
+    #[test]
+    fn test_upstream_approved_pipeline_skips_non_pipeline_skills() {
+        use crate::model::{PipelineDef, StageDef};
+
+        let registry = make_impl_registry();
+
+        // Pipeline that only has implementation — no rfc or adr stages
+        let pipeline = PipelineDef {
+            name: "impl-test".to_string(),
+            description: "Light pipeline".to_string(),
+            stages: vec![StageDef {
+                name: "implementation".to_string(),
+                skills: vec![],
+                skill: Some("implementation".to_string()),
+                description: "Impl".to_string(),
+                depends_on: vec![],
+            }],
+            keywords: vec![],
+            scale: Some("light".to_string()),
+        };
+
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl-record".into(),
+            title: "Test".into(),
+            status: "planning".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: String::new(),
+            file_path: std::path::PathBuf::new(),
+        };
+        let docs: Vec<DocumentRow> = vec![];
+
+        let result =
+            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline)).unwrap();
+        assert!(
+            result.passed,
+            "Should pass with pipeline that skips rfc/adr: {}",
+            result.message
+        );
+    }
+
+    #[test]
+    fn test_upstream_approved_pipeline_still_checks_pipeline_skills() {
+        use crate::model::{PipelineDef, StageDef};
+
+        let registry = make_impl_registry();
+
+        // Pipeline that includes rfc and adr stages — should still require their docs
+        let pipeline = PipelineDef {
+            name: "full-sdlc".to_string(),
+            description: "Full pipeline".to_string(),
+            stages: vec![
+                StageDef {
+                    name: "tech-design".to_string(),
+                    skills: vec!["rfc".to_string(), "adr".to_string()],
+                    skill: None,
+                    description: "Design".to_string(),
+                    depends_on: vec![],
+                },
+                StageDef {
+                    name: "implementation".to_string(),
+                    skills: vec![],
+                    skill: Some("implementation".to_string()),
+                    description: "Impl".to_string(),
+                    depends_on: vec!["tech-design".to_string()],
+                },
+            ],
+            keywords: vec![],
+            scale: Some("full".to_string()),
+        };
+
+        let doc = Document {
+            id: "d1".into(),
+            doc_type: "impl-record".into(),
+            title: "Test".into(),
+            status: "planning".into(),
+            skill_name: "implementation".into(),
+            pipeline_run_id: "r1".into(),
+            tags: vec![],
+            metadata: serde_yaml_ng::Value::Null,
+            created_at: None,
+            updated_at: None,
+            body: String::new(),
+            file_path: std::path::PathBuf::new(),
+        };
+        let docs: Vec<DocumentRow> = vec![];
+
+        let result =
+            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline)).unwrap();
+        assert!(
+            !result.passed,
+            "Should fail when pipeline includes rfc/adr but docs missing: {}",
+            result.message
+        );
+        assert!(result.message.contains("Missing"));
     }
 }

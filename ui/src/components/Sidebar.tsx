@@ -1,4 +1,4 @@
-import { LayoutDashboard, Puzzle, GitBranch, MessageCircle, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Puzzle, GitBranch, MessageCircle, ClipboardList, Bug, FlaskConical, BookOpen, Brain } from "lucide-react";
 import type { Page } from "../App";
 
 interface Props {
@@ -9,8 +9,12 @@ interface Props {
 const navItems = [
   { kind: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
   { kind: "issues" as const, label: "Issues", icon: ClipboardList },
+  { kind: "stories" as const, label: "User Stories", icon: BookOpen },
+  { kind: "testcases" as const, label: "Test Cases", icon: FlaskConical },
+  { kind: "bugs" as const, label: "Bugs", icon: Bug },
   { kind: "discussions" as const, label: "Discussions", icon: MessageCircle },
   { kind: "git" as const, label: "Git Tracking", icon: GitBranch },
+  { kind: "memories" as const, label: "Memories", icon: Brain },
   { kind: "skills" as const, label: "Skills", icon: Puzzle },
 ];
 

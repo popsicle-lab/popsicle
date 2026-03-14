@@ -10,6 +10,13 @@ import { DiscussionsView } from "./pages/DiscussionsView";
 import { DiscussionDetailView } from "./pages/DiscussionDetailView";
 import { IssuesView } from "./pages/IssuesView";
 import { IssueDetailView } from "./pages/IssueDetailView";
+import { BugsView } from "./pages/BugsView";
+import { BugDetailView } from "./pages/BugDetailView";
+import { TestCasesView } from "./pages/TestCasesView";
+import { TestCaseDetailView } from "./pages/TestCaseDetailView";
+import { StoriesView } from "./pages/StoriesView";
+import { StoryDetailView } from "./pages/StoryDetailView";
+import { MemoriesView } from "./pages/MemoriesView";
 import { ProjectPicker } from "./components/ProjectPicker";
 
 export type Page =
@@ -21,7 +28,14 @@ export type Page =
   | { kind: "discussions" }
   | { kind: "discussion"; discussionId: string }
   | { kind: "issues" }
-  | { kind: "issue"; issueKey: string };
+  | { kind: "issue"; issueKey: string }
+  | { kind: "bugs" }
+  | { kind: "bug"; bugKey: string }
+  | { kind: "testcases" }
+  | { kind: "testcase"; testCaseKey: string }
+  | { kind: "stories" }
+  | { kind: "story"; storyKey: string }
+  | { kind: "memories" };
 
 export default function App() {
   const { dir, setProjectDir } = useProjectDir();
@@ -105,6 +119,39 @@ export default function App() {
             issueKey={page.issueKey}
             setPage={setPage}
           />
+        )}
+        {page.kind === "bugs" && (
+          <BugsView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "bug" && (
+          <BugDetailView
+            key={`${page.bugKey}-${refreshKey}`}
+            bugKey={page.bugKey}
+            setPage={setPage}
+          />
+        )}
+        {page.kind === "testcases" && (
+          <TestCasesView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "testcase" && (
+          <TestCaseDetailView
+            key={`${page.testCaseKey}-${refreshKey}`}
+            testCaseKey={page.testCaseKey}
+            setPage={setPage}
+          />
+        )}
+        {page.kind === "stories" && (
+          <StoriesView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "story" && (
+          <StoryDetailView
+            key={`${page.storyKey}-${refreshKey}`}
+            storyKey={page.storyKey}
+            setPage={setPage}
+          />
+        )}
+        {page.kind === "memories" && (
+          <MemoriesView key={refreshKey} />
         )}
       </main>
     </div>

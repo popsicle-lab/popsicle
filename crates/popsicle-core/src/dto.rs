@@ -71,6 +71,9 @@ pub struct SkillInputInfo {
     pub from_skill: String,
     pub artifact_type: String,
     pub required: bool,
+    pub relevance: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sections: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -275,4 +278,191 @@ pub struct ActivityEvent {
     pub detail: Option<String>,
     pub doc_id: Option<String>,
     pub stage: Option<String>,
+}
+
+// ── Project context ──
+
+#[derive(Serialize)]
+pub struct ProjectContextInfo {
+    pub available: bool,
+    pub content: Option<String>,
+    pub path: Option<String>,
+}
+
+// ── Bug ──
+
+#[derive(Serialize)]
+pub struct BugInfo {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub severity: String,
+    pub priority: String,
+    pub status: String,
+    pub source: String,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct BugFull {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub description: String,
+    pub severity: String,
+    pub priority: String,
+    pub status: String,
+    pub steps_to_reproduce: Vec<String>,
+    pub expected_behavior: String,
+    pub actual_behavior: String,
+    pub environment: Option<String>,
+    pub stack_trace: Option<String>,
+    pub source: String,
+    pub related_test_case_id: Option<String>,
+    pub related_commit_sha: Option<String>,
+    pub fix_commit_sha: Option<String>,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+// ── TestCase ──
+
+#[derive(Serialize)]
+pub struct TestCaseInfo {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub test_type: String,
+    pub priority_level: String,
+    pub status: String,
+    pub source_doc_id: Option<String>,
+    pub user_story_id: Option<String>,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct TestCaseFull {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub description: String,
+    pub test_type: String,
+    pub priority_level: String,
+    pub status: String,
+    pub preconditions: Vec<String>,
+    pub steps: Vec<String>,
+    pub expected_result: String,
+    pub source_doc_id: Option<String>,
+    pub user_story_id: Option<String>,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub labels: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct TestRunInfo {
+    pub id: String,
+    pub test_case_id: String,
+    pub passed: bool,
+    pub duration_ms: Option<u64>,
+    pub error_message: Option<String>,
+    pub commit_sha: Option<String>,
+    pub run_at: String,
+}
+
+#[derive(Serialize)]
+pub struct TestCoverageSummary {
+    pub total: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub no_runs: usize,
+    pub pass_rate: f64,
+}
+
+// ── UserStory ──
+
+#[derive(Serialize)]
+pub struct UserStoryInfo {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub persona: String,
+    pub priority: String,
+    pub status: String,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub ac_count: usize,
+    pub ac_verified: usize,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct UserStoryFull {
+    pub id: String,
+    pub key: String,
+    pub title: String,
+    pub description: String,
+    pub persona: String,
+    pub goal: String,
+    pub benefit: String,
+    pub priority: String,
+    pub status: String,
+    pub source_doc_id: Option<String>,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
+    pub acceptance_criteria: Vec<AcceptanceCriterionInfo>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct AcceptanceCriterionInfo {
+    pub id: String,
+    pub description: String,
+    pub verified: bool,
+    pub test_case_ids: Vec<String>,
+}
+
+// ── Memory ──
+
+#[derive(Serialize)]
+pub struct MemoryInfo {
+    pub id: u32,
+    pub memory_type: String,
+    pub summary: String,
+    pub created: String,
+    pub layer: String,
+    pub refs: u32,
+    pub tags: Vec<String>,
+    pub files: Vec<String>,
+    pub run: Option<String>,
+    pub stale: bool,
+    pub detail: String,
+}
+
+#[derive(Serialize)]
+pub struct MemoryStatsInfo {
+    pub line_count: usize,
+    pub max_lines: usize,
+    pub total: usize,
+    pub long_term: usize,
+    pub short_term: usize,
+    pub bugs: usize,
+    pub decisions: usize,
+    pub patterns: usize,
+    pub gotchas: usize,
+    pub stale: usize,
 }

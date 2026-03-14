@@ -30,6 +30,18 @@ workflow:
     concluded:
       final: true
 
+prompts:
+  setup: |
+    Prepare an architecture debate. Review the PRD (or gather requirements directly
+    if the pipeline skips PRD). Identify 4-6 expert roles relevant to the technical
+    domain. Define the debate topic and constraints.
+    Full context: popsicle prompt arch-debate --state setup --run {run_id}
+  debating: |
+    Facilitate multi-role architecture debate. Roles propose solutions, challenge
+    assumptions, and evaluate trade-offs. Produce a decision matrix. Pause after
+    each phase for user input.
+    Full context: popsicle prompt arch-debate --state debating --run {run_id}
+
 hooks:
   on_enter: null
   on_artifact_created: null

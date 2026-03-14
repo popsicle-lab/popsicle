@@ -156,9 +156,9 @@ fn create_issue(
             if !labels.is_empty() {
                 println!("  Labels: {}", labels.join(", "));
             }
+            println!("\nStart with: popsicle issue start {}", key);
             if let Some(pipeline) = issue.issue_type.default_pipeline() {
-                println!("\nStart with: popsicle issue start {}", key);
-                println!("  (will use pipeline: {})", pipeline);
+                println!("  (default pipeline: {})", pipeline);
             }
         }
         OutputFormat::Json => {
@@ -309,15 +309,16 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         );
     }
 
-    let pipeline_name = issue.issue_type.default_pipeline().ok_or_else(|| {
+    let pipelines = helpers::load_pipelines(&cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let resolved = helpers::resolve_pipeline_for_issue(&issue, &pipelines).ok_or_else(|| {
         anyhow::anyhow!(
-            "Issue type '{}' has no default pipeline. Cannot auto-start.",
+            "Could not determine pipeline for issue type '{}'. Use `popsicle pipeline recommend` to pick one manually.",
             issue.issue_type
         )
     })?;
 
-    let pipeline_def =
-        helpers::find_pipeline(&cwd, pipeline_name).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let pipeline_def = helpers::find_pipeline(&cwd, &resolved.pipeline_name)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
     pipeline_def
         .validate()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -337,7 +338,10 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
     match format {
         OutputFormat::Text => {
             println!("Started issue: {} — {}", issue.key, issue.title);
-            println!("  Pipeline: {}", pipeline_name);
+            println!(
+                "  Pipeline: {} ({})",
+                resolved.pipeline_name, resolved.reason
+            );
             println!("  Run ID:   {}", run.id);
             println!("  Status:   {}", issue.status);
             println!("\nNext step:");
@@ -346,7 +350,8 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         OutputFormat::Json => {
             let result = serde_json::json!({
                 "key": issue.key,
-                "pipeline": pipeline_name,
+                "pipeline": resolved.pipeline_name,
+                "pipeline_reason": resolved.reason,
                 "run_id": run.id,
                 "status": issue.status.to_string(),
                 "next_command": format!("popsicle pipeline next --run {}", run.id),

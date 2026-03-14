@@ -19,11 +19,15 @@ pub struct NextStep {
     pub prompt: Option<String>,
     pub blocked_by: Vec<String>,
     pub requires_approval: bool,
+    /// Contextual hints for the user/agent (e.g., skipped upstream skills).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hints: Vec<String>,
 }
 
 impl Advisor {
     /// Compute all available next steps for a pipeline run.
     /// Takes existing documents into account for InProgress stages.
+    /// Generates hints when skills have upstream dependencies skipped by the pipeline.
     pub fn next_steps(
         pipeline_def: &PipelineDef,
         run: &PipelineRun,
@@ -31,6 +35,7 @@ impl Advisor {
         docs: &[DocumentRow],
     ) -> Vec<NextStep> {
         let mut steps = Vec::new();
+        let pipeline_skills = pipeline_def.all_skill_names();
 
         for stage in &pipeline_def.stages {
             let state = run
@@ -52,6 +57,8 @@ impl Advisor {
                                 registry,
                                 docs,
                                 run,
+                                pipeline_def,
+                                &pipeline_skills,
                             );
                         } else {
                             let description = registry
@@ -63,6 +70,9 @@ impl Advisor {
                                 .get(skill_name)
                                 .ok()
                                 .and_then(|s| s.prompts.get(&s.workflow.initial).cloned());
+
+                            let hints =
+                                Self::build_skill_hints(skill_name, registry, &pipeline_skills);
 
                             steps.push(NextStep {
                                 stage: stage.name.clone(),
@@ -76,6 +86,7 @@ impl Advisor {
                                 prompt,
                                 blocked_by: vec![],
                                 requires_approval: false,
+                                hints,
                             });
                         }
                     }
@@ -89,6 +100,8 @@ impl Advisor {
                             registry,
                             docs,
                             run,
+                            pipeline_def,
+                            &pipeline_skills,
                         );
                     }
                 }
@@ -115,6 +128,7 @@ impl Advisor {
                             prompt: None,
                             blocked_by: missing.clone(),
                             requires_approval: false,
+                            hints: vec![],
                         });
                     }
                 }
@@ -137,6 +151,31 @@ impl Advisor {
             .any(|s| s.action != "blocked")
     }
 
+    /// Build hints for a skill whose required upstream skills are not in the pipeline.
+    fn build_skill_hints(
+        skill_name: &str,
+        registry: &SkillRegistry,
+        pipeline_skills: &[&str],
+    ) -> Vec<String> {
+        let mut hints = Vec::new();
+        if let Ok(skill) = registry.get(skill_name) {
+            let skipped: Vec<&str> = skill
+                .inputs
+                .iter()
+                .filter(|i| i.required && !pipeline_skills.contains(&i.from_skill.as_str()))
+                .map(|i| i.from_skill.as_str())
+                .collect();
+            if !skipped.is_empty() {
+                hints.push(format!(
+                    "Pipeline skips [{}] — gather relevant context from the user or codebase directly",
+                    skipped.join(", ")
+                ));
+            }
+        }
+        hints
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn add_doc_steps(
         steps: &mut Vec<NextStep>,
         stage_name: &str,
@@ -144,6 +183,8 @@ impl Advisor {
         registry: &SkillRegistry,
         docs: &[DocumentRow],
         run: &PipelineRun,
+        pipeline_def: &PipelineDef,
+        pipeline_skills: &[&str],
     ) {
         let skill_docs: Vec<&DocumentRow> = docs
             .iter()
@@ -158,6 +199,39 @@ impl Advisor {
                 let actions = skill.available_actions(&doc.status);
                 for transition in actions {
                     let prompt = skill.prompts.get(&doc.status).cloned();
+                    let mut hints = Self::build_skill_hints(skill_name, registry, pipeline_skills);
+
+                    // Pre-check guard: if the transition has a guard with upstream_approved,
+                    // verify it would pass with pipeline-aware logic
+                    if let Some(ref guard_expr) = transition.guard
+                        && guard_expr.contains("upstream_approved")
+                    {
+                        let full_doc = crate::model::Document {
+                            id: doc.id.clone(),
+                            doc_type: doc.doc_type.clone(),
+                            title: doc.title.clone(),
+                            status: doc.status.clone(),
+                            skill_name: doc.skill_name.clone(),
+                            pipeline_run_id: doc.pipeline_run_id.clone(),
+                            tags: vec![],
+                            metadata: serde_yaml_ng::Value::Null,
+                            created_at: None,
+                            updated_at: None,
+                            body: String::new(),
+                            file_path: std::path::PathBuf::new(),
+                        };
+                        if let Ok(result) = super::guard::check_guard(
+                            "upstream_approved",
+                            &full_doc,
+                            docs,
+                            registry,
+                            Some(pipeline_def),
+                        ) && !result.passed
+                        {
+                            hints.push(format!("Guard will block: {}", result.message));
+                        }
+                    }
+
                     steps.push(NextStep {
                         stage: stage_name.to_string(),
                         skill: skill_name.to_string(),
@@ -173,6 +247,7 @@ impl Advisor {
                         prompt,
                         blocked_by: vec![],
                         requires_approval: transition.requires_approval,
+                        hints,
                     });
                 }
             }
@@ -242,6 +317,8 @@ prompts:
                     depends_on: vec!["domain".to_string()],
                 },
             ],
+            keywords: vec![],
+            scale: None,
         }
     }
 
@@ -300,6 +377,8 @@ prompts:
                 description: "Domain".to_string(),
                 depends_on: vec![],
             }],
+            keywords: vec![],
+            scale: None,
         };
         let mut run = PipelineRun::new(&pipeline, "Test");
         run.stage_states
@@ -380,6 +459,8 @@ prompts:
                 description: "Domain".to_string(),
                 depends_on: vec![],
             }],
+            keywords: vec![],
+            scale: None,
         };
         let run = PipelineRun::new(&pipeline, "Test");
         let docs = vec![DocumentRow {
