@@ -18,16 +18,27 @@ fn main() {
     collect_files(
         &workspace_root.join("skills"),
         &workspace_root.join("skills"),
-        ".popsicle/skills",
+        ".popsicle/modules/official/skills",
         &mut entries,
     );
 
     collect_files(
         &workspace_root.join("pipelines"),
         &workspace_root.join("pipelines"),
-        ".popsicle/pipelines",
+        ".popsicle/modules/official/pipelines",
         &mut entries,
     );
+
+    // Embed module.yaml for the official module
+    let module_yaml = workspace_root.join("module.yaml");
+    if module_yaml.exists() {
+        let abs = module_yaml.canonicalize().unwrap();
+        entries.push((
+            ".popsicle/modules/official/module.yaml".into(),
+            abs.display().to_string(),
+        ));
+        println!("cargo:rerun-if-changed={}", abs.display());
+    }
 
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 

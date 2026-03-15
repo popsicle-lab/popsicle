@@ -21,6 +21,7 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
+tempfile = "3"
 tauri = { version = "2", features = [], optional = true }
 tauri-plugin-shell = { version = "2", optional = true }
 notify = { version = "7", optional = true }

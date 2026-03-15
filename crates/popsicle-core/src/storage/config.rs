@@ -13,6 +13,8 @@ pub struct ProjectConfig {
     pub git: GitSection,
     #[serde(default)]
     pub agent: AgentSection,
+    #[serde(default)]
+    pub module: ModuleSection,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -54,6 +56,22 @@ impl Default for AgentSection {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModuleSection {
+    /// Active module name (defaults to "official").
+    pub name: Option<String>,
+    /// Where the module was installed from (e.g. "builtin", "github:user/repo").
+    pub source: Option<String>,
+    /// Installed module version.
+    pub version: Option<String>,
+}
+
+impl ModuleSection {
+    pub fn name_or_default(&self) -> &str {
+        self.name.as_deref().unwrap_or("official")
+    }
+}
+
 fn default_true() -> bool {
     true
 }
@@ -68,5 +86,13 @@ impl ProjectConfig {
             crate::error::PopsicleError::Storage(format!("Invalid config.toml: {}", e))
         })?;
         Ok(config)
+    }
+
+    pub fn save(&self, config_path: &Path) -> Result<()> {
+        let content = toml::to_string_pretty(self).map_err(|e| {
+            crate::error::PopsicleError::Storage(format!("Failed to serialize config: {}", e))
+        })?;
+        std::fs::write(config_path, content)?;
+        Ok(())
     }
 }

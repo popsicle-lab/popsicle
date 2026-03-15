@@ -6,7 +6,8 @@ It organizes the full software development lifecycle through composable **Skills
 
 ## Core Concepts
 
-- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `domain-analysis`, `arch-debate`, `rfc`)
+- **Module** — A self-contained distribution unit packaging a set of Skills and Pipelines together; one active module per project, upgradeable via CLI or binary update
+- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `domain-analysis`, `arch-debate`, `rfc-writer`)
 - **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages
 - **Document** — Artifacts produced by Skills, stored as YAML frontmatter + Markdown files for Git-friendliness
 - **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
@@ -97,6 +98,9 @@ cargo build -p popsicle-cli --features ui --release
 # Initialize a project (default: Claude Code agent)
 popsicle init
 
+# Install the spec-development module (skills + pipelines)
+popsicle module install github:curtiseng/popsclice-spec-development
+
 # Initialize for multiple agents
 popsicle init --agent claude,cursor
 
@@ -160,7 +164,7 @@ Generated files include the complete skill registry — agent names, artifact ty
 
 | Command | Description |
 |---------|-------------|
-| `popsicle init [--agent <targets>]` | Initialize project with built-in skills, pipelines, and agent instructions |
+| `popsicle init [--agent <targets>]` | Initialize project (idempotent); install a module separately |
 | `popsicle pipeline list` | List available pipeline templates |
 | `popsicle pipeline create <name>` | Create a custom pipeline template |
 | `popsicle pipeline run <pipeline> --title <t>` | Start a pipeline run |
@@ -170,6 +174,43 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle pipeline verify [--run <id>]` | Verify all stages complete and documents approved |
 | `popsicle pipeline archive [--run <id>]` | Archive a completed pipeline run |
 | `popsicle pipeline recommend --task <desc>` | Recommend pipeline based on task description |
+
+### Module Management
+
+| Command | Description |
+|---------|-------------|
+| `popsicle module list` | List installed modules (marks the active one) |
+| `popsicle module show [<name>]` | Show module details: skills, pipelines, version, source |
+| `popsicle module install <source>` | Install a module from local path or `github:user/repo[#ref][//subdir]` |
+| `popsicle module upgrade [--force]` | Upgrade active module (builtin: from binary; remote: re-fetch from source) |
+
+Examples:
+
+```bash
+# Show the current module
+popsicle module show
+
+# Install from a local directory
+popsicle module install /path/to/my-module
+
+# Install from GitHub
+popsicle module install github:myorg/custom-skills
+
+# Install a specific tag from a repo subdirectory
+popsicle module install github:myorg/mono-repo#v2.0//modules/security
+
+# Upgrade after updating the popsicle binary
+popsicle module upgrade
+
+# Force reinstall even if version matches
+popsicle module upgrade --force
+```
+
+Skill loading priority (later overrides earlier):
+
+1. `.popsicle/modules/<active>/skills/` — from the active module (lowest)
+2. `.popsicle/skills/` — project-local overrides
+3. `skills/` — workspace-level (highest, for development)
 
 ### Skills & Documents
 
@@ -272,16 +313,24 @@ Generated files include the complete skill registry — agent names, artifact ty
 
 All commands support `--format json` for machine consumption.
 
-## Built-in Skills
+## Official Module: `spec-development`
+
+Popsicle ships as a bare orchestration engine. Install the official module to get skills and pipelines:
+
+```bash
+popsicle module install github:curtiseng/popsclice-spec-development
+```
+
+### Skills (17)
 
 | Skill | Artifact Type | Description |
 |-------|---------------|-------------|
 | `domain-analysis` | domain-model | Domain boundary analysis and model definition |
 | `product-debate` | product-debate-record | Multi-persona product debate to explore options |
-| `prd` | prd | Product requirements document with quality scoring |
+| `prd-writer` | prd | Product requirements document with quality scoring |
 | `arch-debate` | arch-debate-record | Multi-persona architecture debate for technical decisions |
-| `rfc` | rfc | Technical RFC for design decisions and consensus building |
-| `adr` | adr | Architecture Decision Record |
+| `rfc-writer` | rfc | Technical RFC for design decisions and consensus building |
+| `adr-writer` | adr | Architecture Decision Record |
 | `priority-test-spec` | test-gate-report | Test priority classification (P0/P1/P2) |
 | `api-test-spec` | api-test-spec | API integration test specification (gRPC/HTTP) |
 | `e2e-test-spec` | e2e-test-spec | Functional end-to-end test specification |
@@ -294,42 +343,42 @@ All commands support `--format json` for machine consumption.
 | `bug-tracker` | bug-report | Bug tracking and issue management |
 | `test-report` | test-summary | Test report analysis and aggregation |
 
-## Built-in Pipelines
+### Pipelines (5)
 
-### `full-sdlc` — Full software development lifecycle (scale: full)
-
-```
-product-debate → prd → arch-debate → rfc + adr
-                  ↓                       ↓
-             ui-test-planning      test-planning (priority-test-spec + api-test-spec + e2e-test-spec)
-                  ↓                       ↓
-                  │              implementation
-                  ↓                    ↓
-                  └──→ test-codegen ←──┘
-                  (unit-test-codegen + api-test-codegen + e2e-test-codegen + ui-test-codegen)
-                            ↓
-                   quality (bug-tracker + test-report)
-```
-
-### `tech-sdlc` — Technical refactoring & migration (scale: standard)
+#### `full-sdlc` — Full software development lifecycle (scale: full)
 
 ```
-arch-debate → rfc + adr → test-planning → implementation → test-codegen → quality
+product-debate → prd-writer → arch-debate → rfc-writer + adr-writer
+                     ↓                            ↓
+                ui-test-planning      test-planning (priority-test-spec + api-test-spec + e2e-test-spec)
+                     ↓                            ↓
+                     │                   implementation
+                     ↓                         ↓
+                     └──→ test-codegen ←───────┘
+                     (unit-test-codegen + api-test-codegen + e2e-test-codegen + ui-test-codegen)
+                               ↓
+                      quality (bug-tracker + test-report)
 ```
 
-### `design-only` — Design & planning only (scale: planning)
+#### `tech-sdlc` — Technical refactoring & migration (scale: standard)
 
 ```
-product-debate → prd → arch-debate → rfc + adr
+arch-debate → rfc-writer + adr-writer → test-planning → implementation → test-codegen → quality
 ```
 
-### `impl-test` — Implementation & testing (scale: light)
+#### `design-only` — Design & planning only (scale: planning)
+
+```
+product-debate → prd-writer → arch-debate → rfc-writer + adr-writer
+```
+
+#### `impl-test` — Implementation & testing (scale: light)
 
 ```
 implementation → test-codegen → quality (bug-tracker + test-report)
 ```
 
-### `test-only` — Testing only (scale: minimal)
+#### `test-only` — Testing only (scale: minimal)
 
 ```
 test-planning → test-codegen → quality
@@ -390,6 +439,7 @@ Developer ──→                               ↑
 - **Memory-driven** — Cross-session memory with event-driven staleness, two-layer promotion, and 200-line budget
 - **Work item traceability** — Bugs, stories, and test cases linked across documents, pipeline runs, issues, and commits
 - **Scale-adaptive** — Pipeline recommender matches task complexity to the right workflow depth
+- **Modular distribution** — One active module per project; install from Git; `popsicle init` is idempotent
 - **Extensible** — Custom skills (`skill create`), pipelines (`pipeline create`), hooks for lifecycle events
 
 ### Project Layout (after `popsicle init`)
@@ -397,13 +447,18 @@ Developer ──→                               ↑
 ```
 your-project/
 ├── .popsicle/                    # Popsicle data (CLI reads from here)
-│   ├── skills/                   # Built-in + custom skill definitions
+│   ├── modules/                  # Installed modules (via `popsicle module install`)
+│   │   └── <module-name>/       # e.g. spec-development
+│   │       ├── module.yaml       # Module metadata (name, version)
+│   │       ├── skills/           # Module-provided skills
+│   │       └── pipelines/        # Module-provided pipelines
+│   ├── skills/                   # Project-local skill overrides
 │   ├── pipelines/                # Pipeline templates
 │   ├── artifacts/                # Documents organized by pipeline run
 │   ├── project-context.md        # Auto-scanned technical profile
 │   ├── memories.md               # Cross-session memory store (≤200 lines)
 │   ├── popsicle.db               # SQLite index (docs, bugs, stories, test cases, memories)
-│   └── config.toml               # Project configuration
+│   └── config.toml               # Project config (includes [module] section)
 ├── .claude/                      # Claude Code (--agent claude)
 │   ├── CLAUDE.md                 # Instructions + skill catalog
 │   └── skills/popsicle-*/        # Per-skill SKILL.md files

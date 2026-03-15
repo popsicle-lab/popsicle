@@ -5,9 +5,6 @@ pub enum PopsicleError {
     #[error("Project not initialized. Run `popsicle init` first.")]
     NotInitialized,
 
-    #[error("Project already initialized at {0}")]
-    AlreadyInitialized(String),
-
     #[error("Skill not found: {0}")]
     SkillNotFound(String),
 

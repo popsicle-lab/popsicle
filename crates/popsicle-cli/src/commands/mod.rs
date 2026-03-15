@@ -8,6 +8,7 @@ mod init;
 mod issue;
 mod memory;
 mod migrate;
+mod module;
 mod pipeline;
 mod prompt;
 mod skill;
@@ -67,6 +68,10 @@ pub enum Command {
     /// Import existing Markdown documents into a pipeline run
     Migrate(migrate::MigrateArgs),
 
+    /// Manage modules (self-contained skill & pipeline distributions)
+    #[command(subcommand)]
+    Module(module::ModuleCommand),
+
     /// Project context: view pipeline context or scan project for technical profile
     #[command(subcommand)]
     Context(context::ContextCommand),
@@ -104,6 +109,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Test(sub) => test::execute(sub, format),
         Command::Extract(sub) => extract::execute(sub, format),
         Command::Migrate(args) => migrate::execute(args, format),
+        Command::Module(sub) => module::execute(sub, format),
         Command::Context(sub) => context::execute(sub, format),
         Command::Memory(sub) => memory::execute(sub, format),
         Command::Prompt(args) => prompt::execute(args, format),
