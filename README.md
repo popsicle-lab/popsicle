@@ -182,7 +182,7 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle module list` | List installed modules (marks the active one) |
 | `popsicle module show [<name>]` | Show module details: skills, pipelines, version, source |
 | `popsicle module install <source>` | Install a module from local path or `github:user/repo[#ref][//subdir]` |
-| `popsicle module upgrade [--force]` | Upgrade active module (builtin: from binary; remote: re-fetch from source) |
+| `popsicle module upgrade [--force]` | Upgrade active module (re-fetch from recorded source) |
 
 Examples:
 
@@ -190,16 +190,16 @@ Examples:
 # Show the current module
 popsicle module show
 
+# Install the official spec-development module
+popsicle module install github:curtiseng/popsclice-spec-development
+
 # Install from a local directory
 popsicle module install /path/to/my-module
-
-# Install from GitHub
-popsicle module install github:myorg/custom-skills
 
 # Install a specific tag from a repo subdirectory
 popsicle module install github:myorg/mono-repo#v2.0//modules/security
 
-# Upgrade after updating the popsicle binary
+# Upgrade module to latest from source
 popsicle module upgrade
 
 # Force reinstall even if version matches
