@@ -52,37 +52,24 @@ pub fn execute(cmd: SkillCommand, format: &OutputFormat) -> anyhow::Result<()> {
 }
 
 fn load_registry(extra_dir: Option<PathBuf>) -> anyhow::Result<SkillRegistry> {
-    let mut registry = SkillRegistry::new();
-
-    // Load built-in skills from the popsicle binary's sibling `skills/` directory.
-    if let Ok(exe) = env::current_exe() {
-        // Try: <exe_dir>/../skills/ (for development layout)
-        if let Some(exe_dir) = exe.parent() {
-            let dev_skills = exe_dir
-                .parent()
-                .and_then(|p| p.parent())
-                .and_then(|p| p.parent())
-                .map(|p| p.join("skills"));
-            if let Some(dir) = dev_skills
-                && dir.is_dir()
-            {
-                let _ = SkillLoader::load_dir(&dir, &mut registry);
-            }
-        }
-    }
-
-    // Load from workspace root skills/ (for development)
     let cwd = env::current_dir()?;
-    let workspace_skills = cwd.join("skills");
-    if workspace_skills.is_dir() {
-        SkillLoader::load_dir(&workspace_skills, &mut registry)
-            .context("Loading workspace skills")?;
-    }
+    let mut registry =
+        popsicle_core::helpers::load_registry(&cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // Load project-local custom skills from .popsicle/skills/
-    let local_skills = cwd.join(".popsicle").join("skills");
-    if local_skills.is_dir() {
-        SkillLoader::load_dir(&local_skills, &mut registry).context("Loading project skills")?;
+    // Load built-in skills from the popsicle binary's sibling `skills/` directory (dev layout).
+    if let Ok(exe) = env::current_exe()
+        && let Some(exe_dir) = exe.parent()
+    {
+        let dev_skills = exe_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .map(|p| p.join("skills"));
+        if let Some(dir) = dev_skills
+            && dir.is_dir()
+        {
+            let _ = SkillLoader::load_dir(&dir, &mut registry);
+        }
     }
 
     if let Some(dir) = extra_dir {

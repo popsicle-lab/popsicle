@@ -2,7 +2,7 @@ pub mod config;
 mod file;
 mod index;
 
-pub use config::ProjectConfig;
+pub use config::{ModuleSection, ProjectConfig};
 pub use file::FileStorage;
 pub use index::{DocumentRow, IndexDb, PipelineRunRow};
 
@@ -50,6 +50,14 @@ impl ProjectLayout {
         self.root.join("memories.md")
     }
 
+    pub fn modules_dir(&self) -> PathBuf {
+        self.root.join("modules")
+    }
+
+    pub fn module_dir(&self, name: &str) -> PathBuf {
+        self.modules_dir().join(name)
+    }
+
     /// The artifacts directory for a specific pipeline run.
     pub fn run_dir(&self, run_slug: &str) -> PathBuf {
         self.artifacts_dir().join(run_slug)
@@ -68,14 +76,11 @@ impl ProjectLayout {
     }
 
     /// Initialize the project directory structure.
-    pub fn initialize(&self) -> Result<()> {
-        if self.is_initialized() {
-            return Err(PopsicleError::AlreadyInitialized(
-                self.root.display().to_string(),
-            ));
-        }
+    /// Returns `true` if this is a fresh initialization, `false` if already initialized.
+    pub fn initialize(&self) -> Result<bool> {
+        let first_time = !self.is_initialized();
         std::fs::create_dir_all(self.artifacts_dir())?;
         std::fs::create_dir_all(self.skills_dir())?;
-        Ok(())
+        Ok(first_time)
     }
 }

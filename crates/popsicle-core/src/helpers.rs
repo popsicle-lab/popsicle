@@ -3,15 +3,32 @@ use std::path::Path;
 use crate::engine::PipelineRecommender;
 use crate::model::{Issue, PipelineDef};
 use crate::registry::{PipelineLoader, SkillLoader, SkillRegistry};
-use crate::storage::ProjectLayout;
+use crate::storage::{ProjectConfig, ProjectLayout};
+
+/// Resolve the active module name from config, falling back to "official".
+fn active_module_name(project_dir: &Path) -> String {
+    let config_path = project_dir.join(".popsicle").join("config.toml");
+    ProjectConfig::load(&config_path)
+        .map(|c| c.module.name_or_default().to_string())
+        .unwrap_or_else(|_| "official".to_string())
+}
 
 /// Load a SkillRegistry from standard project directories.
+///
+/// Loading order (later overwrites earlier — HashMap insert semantics):
+/// 1. Active module skills (lowest priority)
+/// 2. Project-local `.popsicle/skills/` (user overrides)
+/// 3. Workspace `skills/` (highest priority, development)
 pub fn load_registry(project_dir: &Path) -> crate::error::Result<SkillRegistry> {
     let mut registry = SkillRegistry::new();
 
-    let workspace_skills = project_dir.join("skills");
-    if workspace_skills.is_dir() {
-        SkillLoader::load_dir(&workspace_skills, &mut registry)?;
+    let module_name = active_module_name(project_dir);
+    let module_skills = project_dir
+        .join(".popsicle/modules")
+        .join(&module_name)
+        .join("skills");
+    if module_skills.is_dir() {
+        SkillLoader::load_dir(&module_skills, &mut registry)?;
     }
 
     let local_skills = project_dir.join(".popsicle").join("skills");
@@ -19,16 +36,34 @@ pub fn load_registry(project_dir: &Path) -> crate::error::Result<SkillRegistry> 
         SkillLoader::load_dir(&local_skills, &mut registry)?;
     }
 
+    let workspace_skills = project_dir.join("skills");
+    if workspace_skills.is_dir() {
+        SkillLoader::load_dir(&workspace_skills, &mut registry)?;
+    }
+
     Ok(registry)
 }
 
 /// Load all pipeline definitions from standard directories.
+///
+/// Loading order (later entries with same name overwrite earlier):
+/// 1. Active module pipelines (lowest priority)
+/// 2. Project-local `.popsicle/pipelines/` (user overrides)
+/// 3. Workspace `pipelines/` (highest priority, development)
 pub fn load_pipelines(project_dir: &Path) -> crate::error::Result<Vec<PipelineDef>> {
-    let mut all = Vec::new();
-    for dir in [
-        project_dir.join("pipelines"),
+    let module_name = active_module_name(project_dir);
+
+    let dirs = [
+        project_dir
+            .join(".popsicle/modules")
+            .join(&module_name)
+            .join("pipelines"),
         project_dir.join(".popsicle").join("pipelines"),
-    ] {
+        project_dir.join("pipelines"),
+    ];
+
+    let mut all = Vec::new();
+    for dir in dirs {
         if dir.is_dir() {
             all.extend(PipelineLoader::load_dir(&dir)?);
         }

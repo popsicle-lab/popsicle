@@ -335,30 +335,22 @@ popsicle module install github:popsicle-dev/official
 
 内置 Module 编译进二进制作为离线 fallback，`popsicle init` 时解压到 `.popsicle/modules/official/`。
 
-### 未定决策：多 Module 共存时的 Skill 名字冲突
+### 决策：单活跃 Module
 
-当用户安装多个 Module 时，不同 Module 可能包含同名 Skill（如两个 Module 都有 `prd`）。由于 `SkillRegistry` 是扁平的，同名 Skill 会冲突。
+一个项目同一时刻只有一个活跃 Module，安装新 Module 即替换当前活跃 Module。`config.toml` 的 `[module]` 段记录当前活跃 Module 的名称、来源和版本。
 
-目前有两个候选策略，尚未做最终选择：
+**选择理由：**
 
-**策略 A：安装时冲突检测，拒绝安装**
+- **跨 Module 的 Pipeline 组合不存在。** Pipeline 只引用本 Module 内的 Skill，多 Module 共存的唯一场景是"在不同 Pipeline Run 中使用不同 Module 的 Pipeline"，这完全可以通过切换活跃 Module 实现
+- **Skill 级别的定制已有覆盖机制。** 用户可在 `.popsicle/skills/` 放置同名 Skill 覆盖 Module 中的默认行为，无需引入第二个 Module
+- **多 Module 共存是包管理器级别的复杂度**——依赖声明、名字冲突解析、缺失 Skill 降级策略——不是 Popsicle 应承担的
+- **如需组合不同 Module 的能力，正确做法是创建一个包含两套 Skill 的新 Module**，而非让引擎处理多 Module 共存
 
-```
-$ popsicle module install github:someone/game-dev
-Error: Skill name conflict — 'prd' already exists (from module 'official').
-```
+加载优先级（后加载覆盖先加载）：
 
-优点：简单、确定性强、不需要改运行时逻辑。
-缺点：限制了 Module 生态的灵活性，要求所有 Module 作者全局协调命名。
-
-**策略 B：一次只能激活一个 Module**
-
-一个项目同一时刻只有一个活跃 Module，切换 Module 相当于切换整套工作流。
-
-优点：彻底避免冲突，概念模型极简。
-缺点：无法组合不同 Module 的能力（如同时使用"通用开发"和"安全审计"模块）。
-
-在出现真实的多 Module 共存需求之前，暂不做最终决策。两种策略的实现成本都很低，可以根据实际使用模式再选择。
+1. `.popsicle/modules/<active>/skills/` — Module 提供（最低优先级）
+2. `.popsicle/skills/` — 用户自定义覆盖
+3. `workspace skills/` — 开发中的 Skill（最高优先级）
 
 ## 10. Domain Priming over Persona — 领域约束优于角色扮演
 

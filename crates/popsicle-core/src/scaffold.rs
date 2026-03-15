@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::error::Result;
+use crate::model::ModuleDef;
 
 struct EmbeddedFile {
     path: &'static str,
@@ -28,4 +29,67 @@ pub fn install_builtins(project_root: &Path) -> Result<Vec<String>> {
     }
 
     Ok(installed)
+}
+
+/// Return the version string embedded in the binary's official module.yaml.
+pub fn embedded_module_version() -> Option<String> {
+    BUILTIN_FILES
+        .iter()
+        .find(|f| f.path.ends_with("module.yaml"))
+        .and_then(|f| {
+            let def: ModuleDef = serde_yaml_ng::from_str(f.content).ok()?;
+            Some(def.version)
+        })
+}
+
+/// Result of an upgrade operation.
+pub struct UpgradeResult {
+    pub old_version: Option<String>,
+    pub new_version: String,
+    pub files_written: usize,
+}
+
+/// Delete the installed official module directory and re-extract all embedded files.
+/// Unlike `install_builtins`, this overwrites everything.
+/// Returns `None` if no files are embedded in the binary.
+pub fn upgrade_builtins(project_root: &Path) -> Result<Option<UpgradeResult>> {
+    if BUILTIN_FILES.is_empty() {
+        return Ok(None);
+    }
+
+    let module_dir = project_root
+        .join(".popsicle")
+        .join("modules")
+        .join("official");
+
+    let old_version = {
+        let manifest = module_dir.join("module.yaml");
+        if manifest.exists() {
+            ModuleDef::load(&manifest).ok().map(|d| d.version)
+        } else {
+            None
+        }
+    };
+
+    let new_version = embedded_module_version().unwrap_or_else(|| "0.0.0".to_string());
+
+    if module_dir.exists() {
+        std::fs::remove_dir_all(&module_dir)?;
+    }
+
+    let mut files_written = 0;
+    for file in BUILTIN_FILES {
+        let dest = project_root.join(file.path);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&dest, file.content)?;
+        files_written += 1;
+    }
+
+    Ok(Some(UpgradeResult {
+        old_version,
+        new_version,
+        files_written,
+    }))
 }

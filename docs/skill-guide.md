@@ -2,6 +2,8 @@
 
 This guide covers how to create Skills, connect them to Pipelines, and avoid common pitfalls.
 
+For packaging and distributing Skills as a Module, see [Module Development Guide](module-guide.md).
+
 ## Skill Anatomy
 
 A Skill is a directory with three files, each serving a distinct purpose:
@@ -146,10 +148,10 @@ stages:
   - name: domain
     skill: domain-analysis
   - name: product
-    skill: product-prd
-    depends_on: [domain]             # must align: product-prd has inputs from domain-analysis
+    skill: prd-writer
+    depends_on: [domain]             # must align: prd-writer has inputs from domain-analysis
 
-# product-prd/skill.yaml
+# prd-writer/skill.yaml
 inputs:
   - from_skill: domain-analysis     # matches the upstream stage's skill
     artifact_type: domain-model
@@ -161,8 +163,8 @@ A single stage can run multiple Skills in parallel:
 ```yaml
   - name: tech-design
     skills:
-      - tech-rfc
-      - tech-adr
+      - rfc-writer
+      - adr-writer
     depends_on: [product]
 ```
 
@@ -259,6 +261,18 @@ Before adding a Skill to a Pipeline:
 □ pipeline
   □ Stage added   With correct depends_on matching inputs
 ```
+
+## Skills and Modules
+
+Skills live inside Modules — a Module is the distribution unit that bundles related Skills and Pipelines. When developing Skills:
+
+- **Module Skill** (`my-module/skills/my-skill/`) — packaged with the Module, installed to `.popsicle/modules/<name>/skills/`
+- **Project-local Skill** (`.popsicle/skills/my-skill/`) — overrides a Module Skill with the same name
+- **Workspace Skill** (`skills/my-skill/`) — highest priority, for active development
+
+Loading priority: Module (lowest) → project-local → workspace (highest). Place a same-named Skill in `.popsicle/skills/` to override a Module default without forking the Module.
+
+See the [Module Development Guide](module-guide.md) for full details on Module structure, publishing, and the three-layer loading mechanism.
 
 ## Example: Creating a "security-review" Skill
 
@@ -402,3 +416,8 @@ This regenerates all Agent skill files, now including the new `security-review` 
 ## Design Principle
 
 **Separate concerns by file.** `skill.yaml` is pure orchestration config — the engine reads it. `guide.md` is pure writing guidance — the agent reads it. `template` is the document skeleton — the agent fills it in. If you find yourself putting prose in YAML or workflow logic in Markdown, you're mixing concerns.
+
+## What's Next
+
+- To package Skills into a distributable Module, see the [Module Development Guide](module-guide.md)
+- To understand the design philosophy behind Modules and Skills, see [Design Philosophy §9](design-philosophy.md)

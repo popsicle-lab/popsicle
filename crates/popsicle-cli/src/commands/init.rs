@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use popsicle_core::agent::{AgentInstaller, AgentTarget};
-use popsicle_core::registry::{SkillLoader, SkillRegistry};
+use popsicle_core::registry::SkillRegistry;
 use popsicle_core::scaffold;
 use popsicle_core::scanner::ProjectScanner;
 use popsicle_core::storage::{IndexDb, ProjectLayout};
@@ -37,7 +37,7 @@ pub fn execute(args: InitArgs, format: &OutputFormat) -> anyhow::Result<()> {
     };
 
     let layout = ProjectLayout::new(&project_root);
-    layout
+    let first_time = layout
         .initialize()
         .context("Failed to initialize project")?;
 
@@ -60,8 +60,10 @@ pub fn execute(args: InitArgs, format: &OutputFormat) -> anyhow::Result<()> {
         })
         .collect();
 
-    let default_config = format!(
-        r#"[project]
+    let config_path = layout.config_path();
+    if !config_path.exists() {
+        let default_config = format!(
+            r#"[project]
 # default_pipeline = "full-sdlc"
 key_prefix = "PROJ"
 
@@ -71,24 +73,32 @@ auto_track = true
 [agent]
 targets = [{}]
 "#,
-        targets
-            .iter()
-            .map(|t| format!("\"{}\"", t.name()))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    let config_path = layout.config_path();
-    if !config_path.exists() {
+            targets
+                .iter()
+                .map(|t| format!("\"{}\"", t.name()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         std::fs::write(&config_path, &default_config)?;
     }
 
-    // Install built-in skills first so agent instructions can reference them
-    let builtin_files = if !args.no_builtins {
-        scaffold::install_builtins(&project_root)
-            .context("Failed to install built-in skills and pipelines")?
-    } else {
-        vec![]
-    };
+    // For re-init (upgrade): upgrade builtins in-place.
+    // For fresh init: install builtins (skip existing).
+    let mut upgrade_info: Option<scaffold::UpgradeResult> = None;
+    let mut installed_count = 0;
+
+    if !args.no_builtins {
+        if first_time {
+            let installed = scaffold::install_builtins(&project_root)
+                .context("Failed to install built-in skills and pipelines")?;
+            installed_count = installed.len();
+        } else if let Some(result) = scaffold::upgrade_builtins(&project_root)
+            .context("Failed to upgrade built-in module")?
+        {
+            installed_count = result.files_written;
+            upgrade_info = Some(result);
+        }
+    }
 
     // Auto-scan project context if not yet generated
     let context_path = layout.project_context_path();
@@ -101,16 +111,9 @@ targets = [{}]
         false
     };
 
-    // Load all skills (built-in + any pre-existing) to generate agent instructions
-    let mut registry = SkillRegistry::new();
-    let skills_dir = project_root.join(".popsicle").join("skills");
-    if skills_dir.is_dir() {
-        let _ = SkillLoader::load_dir(&skills_dir, &mut registry);
-    }
-    let workspace_skills = project_root.join("skills");
-    if workspace_skills.is_dir() {
-        let _ = SkillLoader::load_dir(&workspace_skills, &mut registry);
-    }
+    // Load all skills (active module + project-local + workspace) for agent instructions.
+    let registry = popsicle_core::helpers::load_registry(&project_root)
+        .unwrap_or_else(|_| SkillRegistry::new());
     let skill_list = registry.list();
     let skill_refs: Vec<&popsicle_core::model::SkillDef> = skill_list.into_iter().collect();
 
@@ -121,12 +124,43 @@ targets = [{}]
         vec![]
     };
 
+    // If we upgraded, update [module] version in config.toml
+    if let Some(ref info) = upgrade_info
+        && let Ok(mut config) = popsicle_core::storage::ProjectConfig::load(&config_path)
+    {
+        config.module.version = Some(info.new_version.clone());
+        let _ = config.save(&config_path);
+    }
+
     match format {
         OutputFormat::Text => {
-            println!(
-                "Initialized Popsicle project at {}",
-                layout.dot_dir().display()
-            );
+            if first_time {
+                println!(
+                    "Initialized Popsicle project at {}",
+                    layout.dot_dir().display()
+                );
+            } else if let Some(ref info) = upgrade_info {
+                let old = info.old_version.as_deref().unwrap_or("unknown");
+                if old == info.new_version {
+                    println!(
+                        "Re-initialized Popsicle project at {} (module already at {})",
+                        layout.dot_dir().display(),
+                        info.new_version
+                    );
+                } else {
+                    println!(
+                        "Upgraded Popsicle project at {} (module {} -> {})",
+                        layout.dot_dir().display(),
+                        old,
+                        info.new_version
+                    );
+                }
+            } else {
+                println!(
+                    "Re-initialized Popsicle project at {}",
+                    layout.dot_dir().display()
+                );
+            }
             println!(
                 "  Agent targets: {}",
                 targets
@@ -135,11 +169,8 @@ targets = [{}]
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-            if !builtin_files.is_empty() {
-                println!(
-                    "  Built-in skills & pipelines: {} files",
-                    builtin_files.len()
-                );
+            if installed_count > 0 {
+                println!("  Built-in skills & pipelines: {} files", installed_count);
             }
             println!("  Skills registered: {}", skill_refs.len());
             if context_scanned {
@@ -159,13 +190,18 @@ targets = [{}]
         OutputFormat::Json => {
             let result = serde_json::json!({
                 "status": "ok",
+                "first_time": first_time,
                 "path": layout.dot_dir().display().to_string(),
                 "agent_targets": targets.iter().map(|t| t.name()).collect::<Vec<_>>(),
                 "skills_count": skill_refs.len(),
-                "builtin_files": builtin_files,
+                "builtin_files_count": installed_count,
                 "agent_files": agent_files,
                 "config": config_path.display().to_string(),
                 "project_context_scanned": context_scanned,
+                "upgrade": upgrade_info.as_ref().map(|i| serde_json::json!({
+                    "old_version": i.old_version,
+                    "new_version": i.new_version,
+                })),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
