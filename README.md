@@ -95,26 +95,17 @@ cargo build -p popsicle-cli --features ui --release
 ## Quick Start
 
 ```bash
-# Initialize a project (default: Claude Code agent)
-popsicle init
-
-# Install the spec-development module (skills + pipelines)
-popsicle module install github:curtiseng/popsclice-spec-development
-
-# Initialize for multiple agents
-popsicle init --agent claude,cursor
+# One-command setup: init + install module + scan context + generate agent instructions
+popsicle init --agent claude,cursor --module github:curtiseng/popsclice-spec-development
 
 # Install git post-commit hook for automatic tracking
 popsicle git init
 
-# Scan project to generate technical profile
-popsicle context scan
+# Create an issue and bind a specific pipeline
+popsicle issue create --type product --title "Add user authentication" --pipeline full-sdlc
 
-# Get pipeline recommendation for your task
-popsicle pipeline recommend --task "Add user authentication"
-
-# Start a development pipeline
-popsicle pipeline run full-sdlc --title "My Feature"
+# Start the issue (uses the bound pipeline, skips recommender)
+popsicle issue start PROJ-1
 
 # See what to do next
 popsicle pipeline next
@@ -128,6 +119,14 @@ popsicle extract test-cases --from-doc <doc-id> --type unit
 
 # Save a memory for future sessions
 popsicle memory save --type bug --summary "SQLite WAL mode required for concurrent access"
+```
+
+`popsicle init --module` combines project initialization, module installation, project context scanning, and agent instruction generation into a single command. You can also run them separately:
+
+```bash
+popsicle init                     # Initialize project structure
+popsicle module install <source>  # Install a module (auto-regenerates agent instructions)
+popsicle context scan --force     # Re-scan project context
 ```
 
 ## Agent Support
@@ -149,12 +148,14 @@ popsicle init
 # Cursor only
 popsicle init --agent cursor
 
-# Both agents
-popsicle init --agent claude,cursor
+# Both agents + module in one command
+popsicle init --agent claude,cursor --module github:curtiseng/popsclice-spec-development
 
 # Skip agent files entirely
 popsicle init --no-agent-files
 ```
+
+Agent instruction files are automatically regenerated whenever modules change — `popsicle module install` and `popsicle module upgrade` both trigger regeneration, so there is no need to re-run `popsicle init` after installing a module.
 
 Generated files include the complete skill registry — agent names, artifact types, input dependencies, workflow states, transitions, and guard conditions — so each agent knows the full development workflow without calling the CLI first.
 
@@ -164,7 +165,7 @@ Generated files include the complete skill registry — agent names, artifact ty
 
 | Command | Description |
 |---------|-------------|
-| `popsicle init [--agent <targets>]` | Initialize project (idempotent); install a module separately |
+| `popsicle init [--agent <targets>] [--module <source>]` | Initialize project (idempotent); optionally install a module in the same step |
 | `popsicle pipeline list` | List available pipeline templates |
 | `popsicle pipeline create <name>` | Create a custom pipeline template |
 | `popsicle pipeline run <pipeline> --title <t>` | Start a pipeline run |
@@ -181,8 +182,8 @@ Generated files include the complete skill registry — agent names, artifact ty
 |---------|-------------|
 | `popsicle module list` | List installed modules (marks the active one) |
 | `popsicle module show [<name>]` | Show module details: skills, pipelines, version, source |
-| `popsicle module install <source>` | Install a module from local path or `github:user/repo[#ref][//subdir]` |
-| `popsicle module upgrade [--force]` | Upgrade active module (re-fetch from recorded source) |
+| `popsicle module install <source>` | Install a module from local path or `github:user/repo[#ref][//subdir]`; auto-regenerates agent instructions |
+| `popsicle module upgrade [--force]` | Upgrade active module (re-fetch from recorded source); auto-regenerates agent instructions |
 
 Examples:
 
@@ -223,6 +224,25 @@ Skill loading priority (later overrides earlier):
 | `popsicle doc list [--skill/--status/--run]` | Query documents |
 | `popsicle doc show <id>` | View document content and metadata |
 | `popsicle doc transition <id> <action>` | Advance document through workflow (guards enforced) |
+
+### Issue Tracking
+
+| Command | Description |
+|---------|-------------|
+| `popsicle issue create --type <t> --title "<title>" [--pipeline <name>]` | Create an issue; use `--pipeline` to bind a specific pipeline (bypasses recommender) |
+| `popsicle issue list [--type/--status/--label]` | List issues with filters |
+| `popsicle issue show <key>` | Show issue details (pipeline binding, run info) |
+| `popsicle issue start <key>` | Start workflow — creates a pipeline run linked to the issue |
+| `popsicle issue update <key> [--status/--priority/--title]` | Update issue fields |
+
+When `--pipeline` is specified at creation, `issue start` uses that pipeline directly. Otherwise, the pipeline is chosen by the recommender (keyword match on title/description) or falls back to the issue type default:
+
+| Issue Type | Default Pipeline |
+|------------|-----------------|
+| `product` | `full-sdlc` |
+| `technical` | `tech-sdlc` |
+| `bug` | `test-only` |
+| `idea` | `design-only` |
 
 ### Bug Tracking
 
@@ -478,6 +498,7 @@ popsicle ui
 The Tauri desktop app provides read-only visualization:
 
 - **Dashboard** — Pipeline run overview, Git status bar, document statistics, quick actions with copyable commands
+- **Issues** — Issue list with type/status filters, pipeline binding indicator, create form with pipeline selector, detail view with progress tracking
 - **Pipeline View** — Stage DAG with status highlighting, documents and commits per stage, verification status, archive hint, Next Step Advisor
 - **Document Viewer** — Markdown rendering + metadata panel (type, status, skill, tags, timeline, linked commits)
 - **Discussions** — Conversational UI for multi-role review sessions with phase grouping, role color coding, participant sidebar, and message type differentiation (role statements, user input, pause points, phase summaries, decisions)

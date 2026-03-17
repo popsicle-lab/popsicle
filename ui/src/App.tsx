@@ -6,15 +6,11 @@ import { PipelineView } from "./pages/PipelineView";
 import { DocumentView } from "./pages/DocumentView";
 import { SkillsView } from "./pages/SkillsView";
 import { GitView } from "./pages/GitView";
-import { DiscussionsView } from "./pages/DiscussionsView";
 import { DiscussionDetailView } from "./pages/DiscussionDetailView";
 import { IssuesView } from "./pages/IssuesView";
 import { IssueDetailView } from "./pages/IssueDetailView";
-import { BugsView } from "./pages/BugsView";
 import { BugDetailView } from "./pages/BugDetailView";
-import { TestCasesView } from "./pages/TestCasesView";
 import { TestCaseDetailView } from "./pages/TestCaseDetailView";
-import { StoriesView } from "./pages/StoriesView";
 import { StoryDetailView } from "./pages/StoryDetailView";
 import { MemoriesView } from "./pages/MemoriesView";
 import { ProjectPicker } from "./components/ProjectPicker";
@@ -25,16 +21,12 @@ export type Page =
   | { kind: "document"; docId: string }
   | { kind: "skills" }
   | { kind: "git" }
-  | { kind: "discussions" }
-  | { kind: "discussion"; discussionId: string }
   | { kind: "issues" }
-  | { kind: "issue"; issueKey: string }
-  | { kind: "bugs" }
-  | { kind: "bug"; bugKey: string }
-  | { kind: "testcases" }
-  | { kind: "testcase"; testCaseKey: string }
-  | { kind: "stories" }
-  | { kind: "story"; storyKey: string }
+  | { kind: "issue"; issueKey: string; tab?: string }
+  | { kind: "discussion"; discussionId: string; fromIssue?: string }
+  | { kind: "bug"; bugKey: string; fromIssue?: string }
+  | { kind: "testcase"; testCaseKey: string; fromIssue?: string }
+  | { kind: "story"; storyKey: string; fromIssue?: string }
   | { kind: "memories" };
 
 export default function App() {
@@ -101,15 +93,6 @@ export default function App() {
         {page.kind === "git" && (
           <GitView key={refreshKey} setPage={setPage} />
         )}
-        {page.kind === "discussions" && (
-          <DiscussionsView key={refreshKey} setPage={setPage} />
-        )}
-        {page.kind === "discussion" && (
-          <DiscussionDetailView
-            key={`${page.discussionId}-${refreshKey}`}
-            discussionId={page.discussionId}
-          />
-        )}
         {page.kind === "issues" && (
           <IssuesView key={refreshKey} setPage={setPage} />
         )}
@@ -118,36 +101,39 @@ export default function App() {
             key={`${page.issueKey}-${refreshKey}`}
             issueKey={page.issueKey}
             setPage={setPage}
+            initialTab={page.tab as any}
           />
         )}
-        {page.kind === "bugs" && (
-          <BugsView key={refreshKey} setPage={setPage} />
+        {page.kind === "discussion" && (
+          <DiscussionDetailView
+            key={`${page.discussionId}-${refreshKey}`}
+            discussionId={page.discussionId}
+            setPage={setPage}
+            fromIssue={page.fromIssue}
+          />
         )}
         {page.kind === "bug" && (
           <BugDetailView
             key={`${page.bugKey}-${refreshKey}`}
             bugKey={page.bugKey}
             setPage={setPage}
+            fromIssue={page.fromIssue}
           />
-        )}
-        {page.kind === "testcases" && (
-          <TestCasesView key={refreshKey} setPage={setPage} />
         )}
         {page.kind === "testcase" && (
           <TestCaseDetailView
             key={`${page.testCaseKey}-${refreshKey}`}
             testCaseKey={page.testCaseKey}
             setPage={setPage}
+            fromIssue={page.fromIssue}
           />
-        )}
-        {page.kind === "stories" && (
-          <StoriesView key={refreshKey} setPage={setPage} />
         )}
         {page.kind === "story" && (
           <StoryDetailView
             key={`${page.storyKey}-${refreshKey}`}
             storyKey={page.storyKey}
             setPage={setPage}
+            fromIssue={page.fromIssue}
           />
         )}
         {page.kind === "memories" && (

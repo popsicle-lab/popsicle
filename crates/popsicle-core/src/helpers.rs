@@ -100,12 +100,22 @@ pub fn project_layout(project_dir: &Path) -> crate::error::Result<ProjectLayout>
 
 /// Resolve the best pipeline for an issue.
 ///
-/// Strategy: use PipelineRecommender on the issue title + description first.
-/// If no keyword matches, fall back to `IssueType::default_pipeline()`.
+/// Priority order:
+/// 1. Explicit `issue.pipeline` field (set via `--pipeline` at creation) — highest priority.
+/// 2. PipelineRecommender keyword match on title + description.
+/// 3. `IssueType::default_pipeline()` fallback.
 pub fn resolve_pipeline_for_issue(
     issue: &Issue,
     pipelines: &[PipelineDef],
 ) -> Option<ResolvedPipeline> {
+    if let Some(ref name) = issue.pipeline {
+        return Some(ResolvedPipeline {
+            pipeline_name: name.clone(),
+            reason: format!("Explicitly bound pipeline '{}'", name),
+            source: PipelineSource::Explicit,
+        });
+    }
+
     let task_text = if issue.description.is_empty() {
         issue.title.clone()
     } else {
@@ -142,6 +152,8 @@ pub struct ResolvedPipeline {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PipelineSource {
+    /// User explicitly specified `--pipeline` at issue creation.
+    Explicit,
     Recommender,
     IssueTypeDefault,
 }

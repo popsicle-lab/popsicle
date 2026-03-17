@@ -595,6 +595,7 @@ fn issue_to_info(i: &Issue) -> IssueInfo {
         issue_type: i.issue_type.to_string(),
         priority: i.priority.to_string(),
         status: i.status.to_string(),
+        pipeline: i.pipeline.clone(),
         pipeline_run_id: i.pipeline_run_id.clone(),
         labels: i.labels.clone(),
         created_at: i.created_at.to_rfc3339(),
@@ -639,6 +640,7 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueFull, Strin
         issue_type: issue.issue_type.to_string(),
         priority: issue.priority.to_string(),
         status: issue.status.to_string(),
+        pipeline: issue.pipeline,
         pipeline_run_id: issue.pipeline_run_id,
         labels: issue.labels,
         created_at: issue.created_at.to_rfc3339(),
@@ -652,6 +654,7 @@ pub fn create_issue(
     title: String,
     description: Option<String>,
     priority: Option<String>,
+    pipeline: Option<String>,
     labels: Option<Vec<String>>,
     state: State<AppState>,
 ) -> Result<IssueInfo, String> {
@@ -667,6 +670,11 @@ pub fn create_issue(
         .parse()
         .map_err(|e: String| e)?;
 
+    if let Some(ref name) = pipeline {
+        helpers::find_pipeline(&dir, name)
+            .map_err(|_| format!("Pipeline template not found: {}", name))?;
+    }
+
     let prefix = config.project.key_prefix_or_default();
     let seq = db.next_issue_seq(prefix).map_err(|e| e.to_string())?;
     let key = format!("{}-{}", prefix, seq);
@@ -674,6 +682,7 @@ pub fn create_issue(
     let mut issue = Issue::new(key, &title, it);
     issue.description = description.unwrap_or_default();
     issue.priority = pr;
+    issue.pipeline = pipeline;
     issue.labels = labels.unwrap_or_default();
 
     db.create_issue(&issue).map_err(|e| e.to_string())?;

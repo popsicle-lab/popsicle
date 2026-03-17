@@ -7,6 +7,7 @@ import type { Page } from "../App";
 interface Props {
   testCaseKey: string;
   setPage: (p: Page) => void;
+  fromIssue?: string;
 }
 
 const typeColors: Record<string, string> = {
@@ -22,7 +23,7 @@ const priorityColors: Record<string, string> = {
   p2: "bg-yellow-500/20 text-yellow-300",
 };
 
-export function TestCaseDetailView({ testCaseKey, setPage }: Props) {
+export function TestCaseDetailView({ testCaseKey, setPage, fromIssue }: Props) {
   const [tc, setTc] = useState<TestCaseFull | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,13 +39,22 @@ export function TestCaseDetailView({ testCaseKey, setPage }: Props) {
     );
   if (!tc) return <div className="text-[var(--text-secondary)]">Loading...</div>;
 
+  const handleBack = () => {
+    if (fromIssue) {
+      setPage({ kind: "issue", issueKey: fromIssue, tab: "tests" });
+    } else {
+      setPage({ kind: "issues" });
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       <button
-        onClick={() => setPage({ kind: "testcases" })}
+        onClick={handleBack}
         className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
       >
-        <ArrowLeft size={16} /> Back to Test Cases
+        <ArrowLeft size={16} />
+        {fromIssue ? `Back to ${fromIssue}` : "Back to Issues"}
       </button>
 
       <div className="flex items-start gap-4">

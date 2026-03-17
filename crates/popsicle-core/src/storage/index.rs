@@ -122,6 +122,7 @@ impl IndexDb {
                 issue_type TEXT NOT NULL,
                 priority TEXT NOT NULL DEFAULT 'medium',
                 status TEXT NOT NULL DEFAULT 'backlog',
+                pipeline TEXT,
                 pipeline_run_id TEXT,
                 labels TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
@@ -234,6 +235,17 @@ impl IndexDb {
             CREATE INDEX IF NOT EXISTS idx_ac_story ON acceptance_criteria(user_story_id);
             ",
         )?;
+
+        // Migration: add `pipeline` column to existing issues tables
+        let has_pipeline_col: bool = self
+            .conn
+            .prepare("SELECT pipeline FROM issues LIMIT 0")
+            .is_ok();
+        if !has_pipeline_col {
+            self.conn
+                .execute_batch("ALTER TABLE issues ADD COLUMN pipeline TEXT;")?;
+        }
+
         Ok(())
     }
 
@@ -742,8 +754,8 @@ impl IndexDb {
         let labels_json = serde_json::to_string(&issue.labels)
             .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
         self.conn.execute(
-            "INSERT INTO issues (id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO issues (id, key, title, description, issue_type, priority, status, pipeline, pipeline_run_id, labels, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 issue.id,
                 issue.key,
@@ -752,6 +764,7 @@ impl IndexDb {
                 issue.issue_type.to_string(),
                 issue.priority.to_string(),
                 issue.status.to_string(),
+                issue.pipeline,
                 issue.pipeline_run_id,
                 labels_json,
                 issue.created_at.to_rfc3339(),
@@ -765,12 +778,13 @@ impl IndexDb {
         let labels_json = serde_json::to_string(&issue.labels)
             .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
         self.conn.execute(
-            "UPDATE issues SET title=?1, description=?2, priority=?3, status=?4, pipeline_run_id=?5, labels=?6, updated_at=?7 WHERE id=?8",
+            "UPDATE issues SET title=?1, description=?2, priority=?3, status=?4, pipeline=?5, pipeline_run_id=?6, labels=?7, updated_at=?8 WHERE id=?9",
             params![
                 issue.title,
                 issue.description,
                 issue.priority.to_string(),
                 issue.status.to_string(),
+                issue.pipeline,
                 issue.pipeline_run_id,
                 labels_json,
                 chrono::Utc::now().to_rfc3339(),
@@ -782,7 +796,7 @@ impl IndexDb {
 
     pub fn get_issue(&self, id_or_key: &str) -> Result<Option<Issue>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at
+            "SELECT id, key, title, description, issue_type, priority, status, pipeline, pipeline_run_id, labels, created_at, updated_at
              FROM issues WHERE id = ?1 OR key = ?1",
         )?;
         let mut rows = stmt.query_map(params![id_or_key], |row| {
@@ -794,10 +808,11 @@ impl IndexDb {
                 issue_type: row.get(4)?,
                 priority: row.get(5)?,
                 status: row.get(6)?,
-                pipeline_run_id: row.get(7)?,
-                labels: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                pipeline: row.get(7)?,
+                pipeline_run_id: row.get(8)?,
+                labels: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
             })
         })?;
         match rows.next() {
@@ -808,7 +823,7 @@ impl IndexDb {
 
     pub fn find_issue_by_run_id(&self, run_id: &str) -> Result<Option<Issue>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at
+            "SELECT id, key, title, description, issue_type, priority, status, pipeline, pipeline_run_id, labels, created_at, updated_at
              FROM issues WHERE pipeline_run_id = ?1",
         )?;
         let mut rows = stmt.query_map(params![run_id], |row| {
@@ -820,10 +835,11 @@ impl IndexDb {
                 issue_type: row.get(4)?,
                 priority: row.get(5)?,
                 status: row.get(6)?,
-                pipeline_run_id: row.get(7)?,
-                labels: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                pipeline: row.get(7)?,
+                pipeline_run_id: row.get(8)?,
+                labels: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
             })
         })?;
         match rows.next() {
@@ -838,7 +854,7 @@ impl IndexDb {
         status: Option<&str>,
         label: Option<&str>,
     ) -> Result<Vec<Issue>> {
-        let mut sql = "SELECT id, key, title, description, issue_type, priority, status, pipeline_run_id, labels, created_at, updated_at FROM issues WHERE 1=1".to_string();
+        let mut sql = "SELECT id, key, title, description, issue_type, priority, status, pipeline, pipeline_run_id, labels, created_at, updated_at FROM issues WHERE 1=1".to_string();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(t) = issue_type {
@@ -867,10 +883,11 @@ impl IndexDb {
                 issue_type: row.get(4)?,
                 priority: row.get(5)?,
                 status: row.get(6)?,
-                pipeline_run_id: row.get(7)?,
-                labels: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                pipeline: row.get(7)?,
+                pipeline_run_id: row.get(8)?,
+                labels: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
             })
         })?;
 
@@ -1528,6 +1545,7 @@ struct IssueRow {
     issue_type: String,
     priority: String,
     status: String,
+    pipeline: Option<String>,
     pipeline_run_id: Option<String>,
     labels: String,
     created_at: String,
@@ -1563,6 +1581,7 @@ fn issue_from_row(row: IssueRow) -> Result<Issue> {
         issue_type,
         priority,
         status,
+        pipeline: row.pipeline,
         pipeline_run_id: row.pipeline_run_id,
         labels,
         created_at,

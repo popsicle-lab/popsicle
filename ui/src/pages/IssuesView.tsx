@@ -1,13 +1,28 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   listIssues,
+  listPipelines,
   createIssue,
   getIssueProgress,
+  listUserStories,
+  listTestCases,
+  listBugs,
+  listDiscussions,
   type IssueInfo,
   type IssueProgress,
+  type PipelineInfo,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
-import { ClipboardList, ArrowRight, Plus, X } from "lucide-react";
+import {
+  ClipboardList,
+  ArrowRight,
+  Plus,
+  X,
+  BookOpen,
+  FlaskConical,
+  Bug,
+  MessageCircle,
+} from "lucide-react";
 import type { Page } from "../App";
 
 interface Props {
@@ -28,9 +43,19 @@ const priorityColors: Record<string, string> = {
   low: "text-gray-400",
 };
 
+interface IssueCounts {
+  stories: number;
+  tests: number;
+  bugs: number;
+  discussions: number;
+}
+
 export function IssuesView({ setPage }: Props) {
   const [issues, setIssues] = useState<IssueInfo[]>([]);
-  const [progressMap, setProgressMap] = useState<Record<string, IssueProgress>>({});
+  const [progressMap, setProgressMap] = useState<
+    Record<string, IssueProgress>
+  >({});
+  const [countsMap, setCountsMap] = useState<Record<string, IssueCounts>>({});
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreate, setShowCreate] = useState(false);
@@ -43,19 +68,49 @@ export function IssuesView({ setPage }: Props) {
     })
       .then((list) => {
         setIssues(list);
+
         const active = list.filter((i) => i.pipeline_run_id);
         Promise.all(
           active.map((i) =>
             getIssueProgress(i.key)
               .then((p) => [i.key, p] as const)
-              .catch(() => null),
-          ),
+              .catch(() => null)
+          )
         ).then((results) => {
           const map: Record<string, IssueProgress> = {};
           for (const r of results) {
             if (r) map[r[0]] = r[1];
           }
           setProgressMap(map);
+        });
+
+        Promise.all(
+          list.map(async (issue) => {
+            const runId = issue.pipeline_run_id ?? undefined;
+            const [stories, tests, bugs, discussions] = await Promise.all([
+              listUserStories({ issueId: issue.id }).catch(() => []),
+              listTestCases({ runId }).catch(() => []),
+              listBugs({ issueId: issue.id }).catch(() => []),
+              runId
+                ? listDiscussions({ runId }).catch(() => [])
+                : Promise.resolve([]),
+            ]);
+            return [
+              issue.key,
+              {
+                stories: stories.length,
+                tests: tests.length,
+                bugs: bugs.length,
+                discussions: discussions.length,
+              },
+            ] as const;
+          })
+        ).then((results) => {
+          const map: Record<string, IssueCounts> = {};
+          for (const [key, counts] of results) {
+            map[key] = counts;
+          }
+          setCountsMap(map);
         });
       })
       .catch((e) => setError(e?.toString()));
@@ -164,6 +219,7 @@ export function IssuesView({ setPage }: Props) {
           <div className="divide-y divide-[var(--border)]">
             {issues.map((issue) => {
               const prog = progressMap[issue.key];
+              const entityCounts = countsMap[issue.key];
               return (
                 <button
                   key={issue.id}
@@ -183,25 +239,55 @@ export function IssuesView({ setPage }: Props) {
                       <TypeBadge type={issue.issue_type} />
                       <StatusBadge status={issue.status} />
                     </div>
-                    <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
+                    <div className="text-xs text-[var(--text-secondary)] mt-1 flex items-center gap-3">
                       <span className={priorityColors[issue.priority] || ""}>
                         {issue.priority}
                       </span>
+                      {issue.pipeline && (
+                        <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 text-[10px] font-medium">
+                          {issue.pipeline}
+                        </span>
+                      )}
                       {prog && prog.current_stage && (
                         <span className="text-[var(--accent-purple)]">
                           {prog.current_stage}
                         </span>
                       )}
-                      {issue.labels.length > 0 && (
-                        <span>{issue.labels.join(", ")}</span>
-                      )}
                       <span>
                         {new Date(issue.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    {prog && prog.stages_total > 0 && (
-                      <IssueProgressBar progress={prog} />
-                    )}
+
+                    {/* Entity counts + progress */}
+                    <div className="flex items-center gap-3 mt-1.5">
+                      {entityCounts && (
+                        <div className="flex items-center gap-2">
+                          <EntityBadge
+                            icon={BookOpen}
+                            count={entityCounts.stories}
+                            color="text-blue-400"
+                          />
+                          <EntityBadge
+                            icon={FlaskConical}
+                            count={entityCounts.tests}
+                            color="text-green-400"
+                          />
+                          <EntityBadge
+                            icon={Bug}
+                            count={entityCounts.bugs}
+                            color="text-red-400"
+                          />
+                          <EntityBadge
+                            icon={MessageCircle}
+                            count={entityCounts.discussions}
+                            color="text-purple-400"
+                          />
+                        </div>
+                      )}
+                      {prog && prog.stages_total > 0 && (
+                        <IssueProgressBar progress={prog} />
+                      )}
+                    </div>
                   </div>
                   <ArrowRight
                     size={16}
@@ -214,6 +300,24 @@ export function IssuesView({ setPage }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+function EntityBadge({
+  icon: Icon,
+  count,
+  color,
+}: {
+  icon: typeof BookOpen;
+  count: number;
+  color: string;
+}) {
+  if (count === 0) return null;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[11px] ${color}`}>
+      <Icon size={11} />
+      {count}
+    </span>
   );
 }
 
@@ -254,7 +358,7 @@ function IssueProgressBar({ progress }: { progress: IssueProgress }) {
   const stagePct =
     progress.stages_total > 0
       ? Math.round(
-          (progress.stages_completed / progress.stages_total) * 100,
+          (progress.stages_completed / progress.stages_total) * 100
         )
       : 0;
   const color =
@@ -265,21 +369,16 @@ function IssueProgressBar({ progress }: { progress: IssueProgress }) {
         : "var(--accent)";
 
   return (
-    <div className="flex items-center gap-2 mt-1.5">
-      <div className="flex-1 h-1 bg-[var(--bg-tertiary)] rounded-full overflow-hidden max-w-[200px]">
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1 bg-[var(--bg-tertiary)] rounded-full overflow-hidden max-w-[140px]">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${stagePct}%`, background: color }}
         />
       </div>
       <span className="text-[10px] font-mono text-[var(--text-secondary)]">
-        {progress.stages_completed}/{progress.stages_total} stages
+        {progress.stages_completed}/{progress.stages_total}
       </span>
-      {progress.checklist_total > 0 && (
-        <span className="text-[10px] font-mono text-[var(--text-secondary)]">
-          {progress.checklist_checked}/{progress.checklist_total} checks
-        </span>
-      )}
     </div>
   );
 }
@@ -294,27 +393,41 @@ function CreateIssueForm({
   const [title, setTitle] = useState("");
   const [issueType, setIssueType] = useState("product");
   const [priority, setPriority] = useState("medium");
+  const [pipeline, setPipeline] = useState("");
   const [description, setDescription] = useState("");
+  const [pipelines, setPipelines] = useState<PipelineInfo[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listPipelines().then(setPipelines).catch(() => {});
+  }, []);
 
   const submit = async () => {
     if (!title.trim()) return;
     setSubmitting(true);
-    setError(null);
+    setFormError(null);
     try {
       await createIssue({
         issueType,
         title: title.trim(),
         description: description.trim() || undefined,
         priority,
+        pipeline: pipeline || undefined,
       });
       onCreated();
     } catch (e: unknown) {
-      setError(e?.toString() ?? "Unknown error");
+      setFormError(e?.toString() ?? "Unknown error");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const defaultPipelines: Record<string, string> = {
+    product: "full-sdlc",
+    technical: "tech-sdlc",
+    bug: "test-only",
+    idea: "design-only",
   };
 
   return (
@@ -329,9 +442,9 @@ function CreateIssueForm({
         </button>
       </div>
 
-      {error && (
+      {formError && (
         <div className="text-red-400 text-sm bg-red-500/10 p-2 rounded">
-          {error}
+          {formError}
         </div>
       )}
 
@@ -379,6 +492,29 @@ function CreateIssueForm({
             </select>
           </div>
         </div>
+      </div>
+
+      <div>
+        <label className="block text-xs text-[var(--text-secondary)] mb-1">
+          Pipeline
+          <span className="ml-1 text-[var(--text-secondary)]/60">
+            (optional — overrides auto-recommendation)
+          </span>
+        </label>
+        <select
+          value={pipeline}
+          onChange={(e) => setPipeline(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--accent)]"
+        >
+          <option value="">
+            Auto — {defaultPipelines[issueType] || "recommender"}
+          </option>
+          {pipelines.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name} — {p.description} ({p.stages.length} stages)
+            </option>
+          ))}
+        </select>
       </div>
 
       <div>

@@ -22,6 +22,9 @@ pub enum IssueCommand {
         /// Priority: critical, high, medium, low
         #[arg(short, long, default_value = "medium")]
         priority: String,
+        /// Bind a specific pipeline template (skips recommender on start)
+        #[arg(long)]
+        pipeline: Option<String>,
         /// Labels (can repeat)
         #[arg(short, long)]
         label: Vec<String>,
@@ -74,8 +77,17 @@ pub fn execute(cmd: IssueCommand, format: &OutputFormat) -> anyhow::Result<()> {
             title,
             description,
             priority,
+            pipeline,
             label,
-        } => create_issue(&issue_type, &title, &description, &priority, &label, format),
+        } => create_issue(
+            &issue_type,
+            &title,
+            &description,
+            &priority,
+            pipeline.as_deref(),
+            &label,
+            format,
+        ),
         IssueCommand::List {
             issue_type,
             status,
@@ -119,6 +131,7 @@ fn create_issue(
     title: &str,
     description: &str,
     priority_str: &str,
+    pipeline: Option<&str>,
     labels: &[String],
     format: &OutputFormat,
 ) -> anyhow::Result<()> {
@@ -133,6 +146,12 @@ fn create_issue(
     let config = load_config(&layout)?;
     let db = IndexDb::open(&layout.db_path())?;
 
+    if let Some(name) = pipeline {
+        let cwd = env::current_dir()?;
+        helpers::find_pipeline(&cwd, name)
+            .map_err(|_| anyhow::anyhow!("Pipeline template not found: {}", name))?;
+    }
+
     let prefix = config.project.key_prefix_or_default();
     let seq = db
         .next_issue_seq(prefix)
@@ -142,10 +161,16 @@ fn create_issue(
     let mut issue = Issue::new(key.clone(), title, issue_type);
     issue.description = description.to_string();
     issue.priority = priority;
+    issue.pipeline = pipeline.map(|s| s.to_string());
     issue.labels = labels.to_vec();
 
     db.create_issue(&issue)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    let effective_pipeline = issue
+        .pipeline
+        .as_deref()
+        .or_else(|| issue.issue_type.default_pipeline());
 
     match format {
         OutputFormat::Text => {
@@ -153,13 +178,15 @@ fn create_issue(
             println!("  Title: {}", title);
             println!("  Type: {}", issue.issue_type);
             println!("  Priority: {}", issue.priority);
+            if let Some(ref p) = issue.pipeline {
+                println!("  Pipeline: {} (explicit)", p);
+            } else if let Some(p) = effective_pipeline {
+                println!("  Pipeline: {} (default for {})", p, issue.issue_type);
+            }
             if !labels.is_empty() {
                 println!("  Labels: {}", labels.join(", "));
             }
             println!("\nStart with: popsicle issue start {}", key);
-            if let Some(pipeline) = issue.issue_type.default_pipeline() {
-                println!("  (default pipeline: {})", pipeline);
-            }
         }
         OutputFormat::Json => {
             let result = serde_json::json!({
@@ -169,8 +196,9 @@ fn create_issue(
                 "issue_type": issue.issue_type.to_string(),
                 "priority": issue.priority.to_string(),
                 "status": issue.status.to_string(),
+                "pipeline": issue.pipeline,
+                "effective_pipeline": effective_pipeline,
                 "labels": labels,
-                "default_pipeline": issue.issue_type.default_pipeline(),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
@@ -220,6 +248,7 @@ fn list_issues(
                         "issue_type": i.issue_type.to_string(),
                         "priority": i.priority.to_string(),
                         "status": i.status.to_string(),
+                        "pipeline": i.pipeline,
                         "pipeline_run_id": i.pipeline_run_id,
                         "labels": i.labels,
                         "created_at": i.created_at.to_rfc3339(),
@@ -255,6 +284,9 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
             println!("  Type:     {}", issue.issue_type);
             println!("  Priority: {}", issue.priority);
             println!("  Status:   {}", issue.status);
+            if let Some(ref p) = issue.pipeline {
+                println!("  Pipeline: {} (bound)", p);
+            }
             if !issue.labels.is_empty() {
                 println!("  Labels:   {}", issue.labels.join(", "));
             }
@@ -262,7 +294,7 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 println!("  Description:\n    {}", issue.description);
             }
             if let Some(run) = &run_info {
-                println!("  Pipeline:  {} ({})", run.pipeline_name, run.id);
+                println!("  Run:      {} ({})", run.pipeline_name, run.id);
             }
             println!("  Created:  {}", issue.created_at.format("%Y-%m-%d %H:%M"));
             println!("  Updated:  {}", issue.updated_at.format("%Y-%m-%d %H:%M"));
@@ -276,6 +308,7 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 "issue_type": issue.issue_type.to_string(),
                 "priority": issue.priority.to_string(),
                 "status": issue.status.to_string(),
+                "pipeline": issue.pipeline,
                 "pipeline_run_id": issue.pipeline_run_id,
                 "labels": issue.labels,
                 "pipeline_run": run_info.as_ref().map(|r| serde_json::json!({

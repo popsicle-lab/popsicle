@@ -6,7 +6,7 @@ use popsicle_core::agent::{AgentInstaller, AgentTarget};
 use popsicle_core::registry::SkillRegistry;
 use popsicle_core::scaffold;
 use popsicle_core::scanner::ProjectScanner;
-use popsicle_core::storage::{IndexDb, ProjectLayout};
+use popsicle_core::storage::{IndexDb, ProjectConfig, ProjectLayout};
 
 use crate::OutputFormat;
 
@@ -20,6 +20,10 @@ pub struct InitArgs {
     /// Options: claude, cursor. Default: claude
     #[arg(short, long, value_delimiter = ',', default_value = "claude")]
     agent: Vec<String>,
+
+    /// Install a module during init (local path or github:user/repo[#ref][//subdir])
+    #[arg(short, long)]
+    module: Option<String>,
 
     /// Skip installing agent instruction files
     #[arg(long)]
@@ -80,6 +84,11 @@ targets = [{}]
                 .join(", ")
         );
         std::fs::write(&config_path, &default_config)?;
+    } else {
+        // Re-init: update agent targets in existing config
+        let mut config = ProjectConfig::load(&config_path).unwrap_or_default();
+        config.agent.targets = targets.iter().map(|t| t.name().to_string()).collect();
+        let _ = config.save(&config_path);
     }
 
     // For re-init (upgrade): upgrade builtins in-place.
@@ -98,6 +107,14 @@ targets = [{}]
             installed_count = result.files_written;
             upgrade_info = Some(result);
         }
+    }
+
+    // Install external module if --module is specified
+    let mut module_installed = None;
+    if let Some(ref module_source) = args.module {
+        let info = super::module::install_module_from_source(&layout, module_source)
+            .context("Failed to install module")?;
+        module_installed = Some(info);
     }
 
     // Auto-scan project context if not yet generated
@@ -126,7 +143,7 @@ targets = [{}]
 
     // If we upgraded, update [module] version in config.toml
     if let Some(ref info) = upgrade_info
-        && let Ok(mut config) = popsicle_core::storage::ProjectConfig::load(&config_path)
+        && let Ok(mut config) = ProjectConfig::load(&config_path)
     {
         config.module.version = Some(info.new_version.clone());
         let _ = config.save(&config_path);
@@ -172,6 +189,14 @@ targets = [{}]
             if installed_count > 0 {
                 println!("  Built-in skills & pipelines: {} files", installed_count);
             }
+            if let Some(ref mi) = module_installed {
+                println!(
+                    "  Module installed: {} v{} (from {})",
+                    mi.name,
+                    mi.version,
+                    args.module.as_deref().unwrap_or("?")
+                );
+            }
             println!("  Skills registered: {}", skill_refs.len());
             if context_scanned {
                 println!(
@@ -201,6 +226,11 @@ targets = [{}]
                 "upgrade": upgrade_info.as_ref().map(|i| serde_json::json!({
                     "old_version": i.old_version,
                     "new_version": i.new_version,
+                })),
+                "module_installed": module_installed.as_ref().map(|mi| serde_json::json!({
+                    "name": mi.name,
+                    "version": mi.version,
+                    "source": args.module,
                 })),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);

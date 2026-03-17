@@ -7,6 +7,7 @@ import type { Page } from "../App";
 interface Props {
   bugKey: string;
   setPage: (p: Page) => void;
+  fromIssue?: string;
 }
 
 const severityColors: Record<string, string> = {
@@ -17,7 +18,7 @@ const severityColors: Record<string, string> = {
   trivial: "bg-gray-500/20 text-gray-300",
 };
 
-export function BugDetailView({ bugKey, setPage }: Props) {
+export function BugDetailView({ bugKey, setPage, fromIssue }: Props) {
   const [bug, setBug] = useState<BugFull | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,13 +34,22 @@ export function BugDetailView({ bugKey, setPage }: Props) {
     );
   if (!bug) return <div className="text-[var(--text-secondary)]">Loading...</div>;
 
+  const handleBack = () => {
+    if (fromIssue) {
+      setPage({ kind: "issue", issueKey: fromIssue, tab: "bugs" });
+    } else {
+      setPage({ kind: "issues" });
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       <button
-        onClick={() => setPage({ kind: "bugs" })}
+        onClick={handleBack}
         className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
       >
-        <ArrowLeft size={16} /> Back to Bugs
+        <ArrowLeft size={16} />
+        {fromIssue ? `Back to ${fromIssue}` : "Back to Issues"}
       </button>
 
       <div className="flex items-start gap-4">

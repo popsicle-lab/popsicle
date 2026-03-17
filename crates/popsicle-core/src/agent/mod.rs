@@ -123,9 +123,17 @@ fn build_skill_command(skill: &SkillDef) -> String {
     }
 
     // CLI commands section (auto-generated)
+    s.push_str("\n## Prerequisites\n\n");
+    s.push_str("An active pipeline run MUST exist before executing this skill. ");
+    s.push_str("If `popsicle pipeline status` shows no active run, you MUST first ");
+    s.push_str(
+        "create an Issue (`popsicle issue create`) then start it (`popsicle issue start <key>`). ",
+    );
+    s.push_str("NEVER execute this skill outside of a pipeline run.\n");
+
     s.push_str("\n## Commands\n\n");
     s.push_str("```bash\n");
-    s.push_str("# Check if this skill is the current step\n");
+    s.push_str("# Verify an active pipeline run exists and this skill is the current step\n");
     s.push_str("popsicle pipeline next --format json\n\n");
     s.push_str("# Create the document\n");
     s.push_str(&format!(
@@ -198,38 +206,103 @@ if [ -x "./popsicle" ]; then POPSICLE=./popsicle; else POPSICLE=popsicle; fi
 
 Then use `$POPSICLE` in place of `popsicle` for all commands.
 
-## Before Starting Any Task
+## ⛔ MANDATORY: Before Starting ANY Development Task
+
+You MUST follow this checklist before writing ANY code or making ANY changes.
+No exceptions — not for "small" fixes, not for low-level modules, not for "just one line".
+
+### Step 1: Check for an active pipeline run
+
+```bash
+popsicle pipeline status --format json
+```
+
+If an active pipeline run exists → skip to **Step 4**.
+
+### Step 2: If NO active pipeline run — find or create an Issue first
+
+An Issue is REQUIRED before any pipeline run can start. Do NOT create a pipeline run directly.
+
+**2a. Check for an existing issue:**
+
+```bash
+popsicle issue list --format json
+```
+
+If the user's task matches an existing issue → skip to **Step 3**.
+
+**2b. If no matching issue exists — create one:**
+
+Determine the issue type from the user's request:
+- New feature / user-facing change → `product` (maps to `full-sdlc` pipeline)
+- Refactoring / migration / internal improvement → `technical` (maps to `tech-sdlc` pipeline)
+- Bug fix → `bug` (maps to `test-only` pipeline)
+- Exploration / research → `idea` (maps to `design-only` pipeline)
+
+```bash
+popsicle issue create --type <product|technical|bug|idea> --title "<concise title>" --description "<what and why>" [--pipeline <name>]
+```
+
+Use `--pipeline <name>` to explicitly bind a pipeline template. When specified, `issue start` will use this pipeline directly, bypassing the recommender. Available pipelines can be listed with `popsicle pipeline list`. If the user explicitly asks for a specific workflow (e.g. "run full process" → `--pipeline full-sdlc`), always use `--pipeline`.
+
+Show the created issue key to the user before proceeding.
+
+### Step 3: Start the Issue (creates a pipeline run automatically)
+
+```bash
+popsicle issue start <ISSUE-KEY>
+```
+
+This automatically creates the appropriate pipeline run linked to the issue. Do NOT use `popsicle pipeline run` directly — always go through `issue start` so the issue-pipeline association is preserved.
+
+**Exception — quick mode for trivial changes:** For single-line fixes, typos, or config tweaks where creating an issue would be excessive overhead, you may use:
+
+```bash
+popsicle pipeline quick --title "<description>"
+```
+
+But when in doubt, create an issue. It is always better to have traceability than to skip it.
+
+### Step 4: Follow the pipeline
 
 ```bash
 popsicle pipeline next --format json
 ```
 
+Execute the suggested action. NEVER skip pipeline steps or write code outside of a pipeline run.
+
 ## Key Commands
+
+### Issue (start here)
+
+- `popsicle issue create --type <t> --title "<title>" --description "<desc>" [--pipeline <name>]` — create a new issue (use `--pipeline` to bind a specific pipeline)
+- `popsicle issue list --format json` — list all issues
+- `popsicle issue show <key> --format json` — show issue details
+- `popsicle issue start <key>` — start workflow (creates pipeline run linked to issue)
+
+### Pipeline
 
 - `popsicle pipeline next --format json` — what to do next (with CLI command + guide)
 - `popsicle pipeline status` — current pipeline state
+- `popsicle pipeline recommend --task "<desc>"` — recommend pipeline for task
+- `popsicle pipeline quick --title "<t>"` — quick single-stage run for trivial changes only
+
+### Document & Git
+
 - `popsicle context --format json` — all documents for current run
 - `popsicle doc create <skill> --title "<t>" --run <id>` — create document
 - `popsicle doc transition <id> <action>` — advance workflow (guards enforced)
 - `popsicle git link --doc <id> --stage <s>` — link commit to document
 
-## Issue Tracking
-
-- `popsicle issue list --format json` — list all issues
-- `popsicle issue show <key> --format json` — show issue details
-- `popsicle issue start <key>` — start the workflow for an issue
-
-When the user says "start PROJ-1" or "release requirement PROJ-1":
-1. Run `popsicle issue start <key>` to create the pipeline run
-2. Then run `popsicle pipeline next --format json` to get the first step
-
 ## Workflow Rules
 
-1. Always check `popsicle pipeline next` before starting work
-2. Guards enforce upstream document approval before downstream work proceeds
-3. Fill document sections with real content — template placeholders are rejected
-4. Link commits to documents with `popsicle git link`
-5. Transitions marked `requires_approval` (e.g. discussion conclude, doc approve): do NOT run the command with `--confirm` for the user. You must STOP, show the user the suggested command, and ask them to review and run it themselves in their terminal. No exception.
+1. **NEVER write code without an active pipeline run** — no exceptions
+2. **Issue → Pipeline → Skill** — always follow this order; do NOT create pipeline runs directly, use `issue start`
+3. Always check `popsicle pipeline next` before starting work on a step
+4. Guards enforce upstream document approval before downstream work proceeds
+5. Fill document sections with real content — template placeholders are rejected
+6. Link commits to documents with `popsicle git link`
+7. Transitions marked `requires_approval` (e.g. discussion conclude, doc approve): do NOT run the command with `--confirm` for the user. You must STOP, show the user the suggested command, and ask them to review and run it themselves in their terminal. No exception.
 
 ## Memory Management
 
@@ -494,6 +567,21 @@ description: Check what to do next in the Popsicle pipeline. Use when starting w
 Check what to do next in the Popsicle pipeline and follow the recommended action.
 
 Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
+
+## Step 1: Ensure a pipeline run exists
+
+```bash
+popsicle pipeline status --format json
+```
+
+If no active pipeline run exists, do NOT proceed. First create an issue and start it:
+
+```bash
+popsicle issue create --type <product|technical|bug|idea> --title "<title>" --description "<desc>"
+popsicle issue start <ISSUE-KEY>
+```
+
+## Step 2: Get next action
 
 ```bash
 popsicle pipeline next --format json

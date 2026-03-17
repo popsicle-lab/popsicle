@@ -7,9 +7,10 @@ import type { Page } from "../App";
 interface Props {
   storyKey: string;
   setPage: (p: Page) => void;
+  fromIssue?: string;
 }
 
-export function StoryDetailView({ storyKey, setPage }: Props) {
+export function StoryDetailView({ storyKey, setPage, fromIssue }: Props) {
   const [story, setStory] = useState<UserStoryFull | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,13 +29,22 @@ export function StoryDetailView({ storyKey, setPage }: Props) {
   const verified = story.acceptance_criteria.filter((ac) => ac.verified).length;
   const total = story.acceptance_criteria.length;
 
+  const handleBack = () => {
+    if (fromIssue) {
+      setPage({ kind: "issue", issueKey: fromIssue, tab: "stories" });
+    } else {
+      setPage({ kind: "issues" });
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       <button
-        onClick={() => setPage({ kind: "stories" })}
+        onClick={handleBack}
         className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
       >
-        <ArrowLeft size={16} /> Back to User Stories
+        <ArrowLeft size={16} />
+        {fromIssue ? `Back to ${fromIssue}` : "Back to Issues"}
       </button>
 
       <div className="flex items-start gap-4">

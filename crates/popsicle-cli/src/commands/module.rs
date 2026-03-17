@@ -206,6 +206,48 @@ fn install_module(source: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .ensure_initialized()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
+    let info = install_module_from_source(&layout, source)?;
+
+    regenerate_agent_files(&project_dir, &layout)?;
+
+    match format {
+        OutputFormat::Text => {
+            println!("Installed module '{}'", info.name);
+            println!("  Version: {}", info.version);
+            println!("  Source: {}", source);
+            println!("  Path: {}", info.path.display());
+            if let Some(desc) = &info.description {
+                println!("  Description: {}", desc);
+            }
+            println!("  Agent instructions: regenerated");
+        }
+        OutputFormat::Json => {
+            let result = serde_json::json!({
+                "status": "ok",
+                "name": info.name,
+                "version": info.version,
+                "source": source,
+                "path": info.path.display().to_string(),
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+    }
+
+    Ok(())
+}
+
+pub(super) struct ModuleInstallInfo {
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub path: std::path::PathBuf,
+}
+
+/// Core module installation logic, reusable from `init` and `module install`.
+pub(super) fn install_module_from_source(
+    layout: &ProjectLayout,
+    source: &str,
+) -> anyhow::Result<ModuleInstallInfo> {
     let resolved = resolve_source(source)?;
     let source_path = resolved.path();
 
@@ -231,31 +273,39 @@ fn install_module(source: &str, format: &OutputFormat) -> anyhow::Result<()> {
     }
     copy_dir_recursive(source_path, &target_dir)?;
 
-    update_config_module(&layout, &def, source)?;
+    update_config_module(layout, &def, source)?;
 
-    match format {
-        OutputFormat::Text => {
-            println!("Installed module '{}'", def.name);
-            println!("  Version: {}", def.version);
-            println!("  Source: {}", source);
-            println!("  Path: {}", target_dir.display());
-            if let Some(desc) = &def.description {
-                println!("  Description: {}", desc);
-            }
-        }
-        OutputFormat::Json => {
-            let result = serde_json::json!({
-                "status": "ok",
-                "name": def.name,
-                "version": def.version,
-                "source": source,
-                "path": target_dir.display().to_string(),
-            });
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-    }
+    Ok(ModuleInstallInfo {
+        name: def.name,
+        version: def.version,
+        description: def.description,
+        path: target_dir,
+    })
+}
 
-    Ok(())
+/// Regenerate agent instruction files based on current registry and config.
+pub(super) fn regenerate_agent_files(
+    project_dir: &Path,
+    layout: &ProjectLayout,
+) -> anyhow::Result<Vec<String>> {
+    use popsicle_core::agent::{AgentInstaller, AgentTarget};
+
+    let config = ProjectConfig::load(&layout.config_path()).unwrap_or_default();
+    let targets: Vec<AgentTarget> = config
+        .agent
+        .targets
+        .iter()
+        .filter_map(|s| AgentTarget::parse(s))
+        .collect();
+
+    let registry =
+        popsicle_core::helpers::load_registry(project_dir).unwrap_or_else(|_| SkillRegistry::new());
+    let skill_list = registry.list();
+    let skill_refs: Vec<&popsicle_core::model::SkillDef> = skill_list.into_iter().collect();
+
+    let files = AgentInstaller::install(project_dir, &targets, &skill_refs)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    Ok(files)
 }
 
 fn upgrade_module(force: bool, format: &OutputFormat) -> anyhow::Result<()> {
@@ -311,6 +361,8 @@ fn upgrade_module(force: bool, format: &OutputFormat) -> anyhow::Result<()> {
         config.module.version = Some(result.new_version.clone());
         let _ = config.save(&layout.config_path());
 
+        regenerate_agent_files(&project_dir, &layout)?;
+
         match format {
             OutputFormat::Text => {
                 let old = result.old_version.as_deref().unwrap_or("unknown");
@@ -325,6 +377,7 @@ fn upgrade_module(force: bool, format: &OutputFormat) -> anyhow::Result<()> {
                         old, result.new_version, result.files_written
                     );
                 }
+                println!("  Agent instructions: regenerated");
             }
             OutputFormat::Json => {
                 let json = serde_json::json!({

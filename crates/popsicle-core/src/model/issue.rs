@@ -10,6 +10,8 @@ pub struct Issue {
     pub issue_type: IssueType,
     pub priority: Priority,
     pub status: IssueStatus,
+    /// Explicitly chosen pipeline template name (bypasses recommender).
+    pub pipeline: Option<String>,
     pub pipeline_run_id: Option<String>,
     pub labels: Vec<String>,
     pub created_at: DateTime<Utc>,
@@ -141,6 +143,7 @@ impl Issue {
             issue_type,
             priority: Priority::Medium,
             status: IssueStatus::Backlog,
+            pipeline: None,
             pipeline_run_id: None,
             labels: Vec::new(),
             created_at: now,

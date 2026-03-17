@@ -252,6 +252,7 @@ export interface IssueInfo {
   issue_type: string;
   priority: string;
   status: string;
+  pipeline: string | null;
   pipeline_run_id: string | null;
   labels: string[];
   created_at: string;
@@ -279,6 +280,7 @@ export async function createIssue(params: {
   title: string;
   description?: string;
   priority?: string;
+  pipeline?: string;
   labels?: string[];
 }): Promise<IssueInfo> {
   return invoke("create_issue", params);

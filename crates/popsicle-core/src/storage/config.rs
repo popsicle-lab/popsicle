@@ -46,12 +46,15 @@ impl Default for GitSection {
 pub struct AgentSection {
     #[serde(default = "default_true")]
     pub install_instructions: bool,
+    #[serde(default)]
+    pub targets: Vec<String>,
 }
 
 impl Default for AgentSection {
     fn default() -> Self {
         Self {
             install_instructions: true,
+            targets: vec![],
         }
     }
 }

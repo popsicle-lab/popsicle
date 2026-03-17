@@ -22,10 +22,14 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
+import type { Page } from "../App";
 
 interface Props {
   discussionId: string;
+  setPage: (p: Page) => void;
+  fromIssue?: string;
 }
 
 const roleColors = [
@@ -64,7 +68,7 @@ function groupByPhase(messages: DiscussionMessageInfo[]) {
   return phases;
 }
 
-export function DiscussionDetailView({ discussionId }: Props) {
+export function DiscussionDetailView({ discussionId, setPage, fromIssue }: Props) {
   const [disc, setDisc] = useState<DiscussionFull | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(
@@ -97,9 +101,25 @@ export function DiscussionDetailView({ discussionId }: Props) {
     });
   };
 
+  const handleBack = () => {
+    if (fromIssue) {
+      setPage({ kind: "issue", issueKey: fromIssue, tab: "discussions" });
+    } else {
+      setPage({ kind: "issues" });
+    }
+  };
+
   return (
     <div className="flex gap-6 h-full">
       <div className="flex-1 min-w-0 space-y-4">
+        <button
+          onClick={handleBack}
+          className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          <ArrowLeft size={16} />
+          {fromIssue ? `Back to ${fromIssue}` : "Back to Issues"}
+        </button>
+
         <div className="flex items-center gap-3">
           <MessageCircle size={24} className="text-[var(--accent)]" />
           <h2 className="text-2xl font-bold">{disc.topic}</h2>
