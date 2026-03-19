@@ -96,7 +96,7 @@ cargo build -p popsicle-cli --features ui --release
 
 ```bash
 # One-command setup: init + install module + scan context + generate agent instructions
-popsicle init --agent claude,cursor --module github:popsicle-lab/popsclice-spec-development
+popsicle init --agent claude,cursor --module github:popsicle-lab/popsicle-spec-development
 
 # Install git post-commit hook for automatic tracking
 popsicle git init
@@ -149,7 +149,7 @@ popsicle init
 popsicle init --agent cursor
 
 # Both agents + module in one command
-popsicle init --agent claude,cursor --module github:curtiseng/popsclice-spec-development
+popsicle init --agent claude,cursor --module github:popsicle-lab/popsicle-spec-development
 
 # Skip agent files entirely
 popsicle init --no-agent-files
@@ -192,7 +192,7 @@ Examples:
 popsicle module show
 
 # Install the official spec-development module
-popsicle module install github:curtiseng/popsclice-spec-development
+popsicle module install github:popsicle-lab/popsicle-spec-development
 
 # Install from a local directory
 popsicle module install /path/to/my-module
