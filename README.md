@@ -96,7 +96,7 @@ cargo build -p popsicle-cli --features ui --release
 
 ```bash
 # One-command setup: init + install module + scan context + generate agent instructions
-popsicle init --agent claude,cursor --module github:curtiseng/popsclice-spec-development
+popsicle init --agent claude,cursor --module github:popsicle-lab/popsclice-spec-development
 
 # Install git post-commit hook for automatic tracking
 popsicle git init
