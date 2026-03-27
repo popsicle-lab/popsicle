@@ -20,6 +20,8 @@ import {
   Puzzle,
   ListChecks,
   ClipboardList,
+  BookOpen,
+  Hash,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -163,6 +165,36 @@ export function DocumentView({ docId, setPage }: Props) {
                   </div>
                 </MetaRow>
               )}
+
+              {/* Document Index: Summary & Semantic Tags */}
+              <div className="pt-2 border-t border-[var(--border)]">
+                <MetaRow icon={<BookOpen size={14} />} label="Summary">
+                  {doc.summary ? (
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                      {doc.summary}
+                    </p>
+                  ) : (
+                    <span className="text-xs text-[var(--text-secondary)] italic opacity-60">
+                      Not summarized yet
+                    </span>
+                  )}
+                </MetaRow>
+              </div>
+              {doc.doc_tags.length > 0 && (
+                <MetaRow icon={<Hash size={14} />} label="Semantic Tags">
+                  <div className="flex flex-wrap gap-1">
+                    {doc.doc_tags.map((t) => (
+                      <span
+                        key={t}
+                        className="text-xs bg-[var(--accent)]/10 text-[var(--accent)] px-1.5 py-0.5 rounded"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </MetaRow>
+              )}
+
               {doc.created_at && (
                 <MetaRow icon={<Clock size={14} />} label="Created">
                   <span className="text-xs text-[var(--text-secondary)]">

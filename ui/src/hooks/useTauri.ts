@@ -76,6 +76,21 @@ export interface DocFull extends DocInfo {
   tags: string[];
   body: string;
   file_path: string;
+  summary: string;
+  doc_tags: string[];
+}
+
+export interface SearchDocResult {
+  id: string;
+  doc_type: string;
+  title: string;
+  status: string;
+  skill_name: string;
+  pipeline_run_id: string;
+  file_path: string;
+  summary: string;
+  doc_tags: string[];
+  bm25_score: number;
 }
 
 export interface NextStepInfo {
@@ -141,6 +156,16 @@ export async function listDocuments(filters?: {
 
 export async function getDocument(docId: string): Promise<DocFull> {
   return invoke("get_document", { docId });
+}
+
+export async function searchDocuments(filters: {
+  query: string;
+  status?: string;
+  skill?: string;
+  excludeRun?: string;
+  limit?: number;
+}): Promise<SearchDocResult[]> {
+  return invoke("search_documents", filters);
 }
 
 export async function getNextSteps(runId: string): Promise<NextStepInfo[]> {

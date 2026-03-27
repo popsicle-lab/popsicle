@@ -247,6 +247,8 @@ pub fn get_document(doc_id: String, state: State<AppState>) -> Result<DocFull, S
     let doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
         .map_err(|e| e.to_string())?;
 
+    let doc_tags: Vec<String> = serde_json::from_str(&doc_row.doc_tags).unwrap_or_default();
+
     Ok(DocFull {
         id: doc.id,
         doc_type: doc.doc_type,
@@ -259,6 +261,8 @@ pub fn get_document(doc_id: String, state: State<AppState>) -> Result<DocFull, S
         file_path: doc_row.file_path.clone(),
         created_at: doc_row.created_at.clone(),
         updated_at: doc_row.updated_at.clone(),
+        summary: doc_row.summary.clone(),
+        doc_tags,
     })
 }
 
@@ -583,6 +587,51 @@ pub fn get_discussion(
         created_at: disc.created_at.to_rfc3339(),
         concluded_at: disc.concluded_at.map(|t| t.to_rfc3339()),
     })
+}
+
+// ── Document search ──
+
+#[tauri::command]
+pub fn search_documents(
+    query: String,
+    status: Option<String>,
+    skill: Option<String>,
+    exclude_run: Option<String>,
+    limit: Option<usize>,
+    state: State<AppState>,
+) -> Result<Vec<SearchDocResult>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let results = db
+        .search_documents(
+            &query,
+            status.as_deref(),
+            skill.as_deref(),
+            exclude_run.as_deref(),
+            limit.unwrap_or(20),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(results
+        .into_iter()
+        .map(|(row, score)| {
+            let tags: Vec<String> = serde_json::from_str(&row.doc_tags).unwrap_or_default();
+            SearchDocResult {
+                id: row.id,
+                doc_type: row.doc_type,
+                title: row.title,
+                status: row.status,
+                skill_name: row.skill_name,
+                pipeline_run_id: row.pipeline_run_id,
+                file_path: row.file_path,
+                summary: row.summary,
+                doc_tags: tags,
+                bm25_score: score,
+            }
+        })
+        .collect())
 }
 
 // ── Issue commands ──

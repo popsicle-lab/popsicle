@@ -18,7 +18,12 @@ pub struct PromptArgs {
     /// Pipeline run ID — if provided, injects upstream documents as context
     #[arg(short, long)]
     run: Option<String>,
+    /// Inject historical related documents from other pipeline runs (requires --run)
+    #[arg(long, default_value_t = false)]
+    related: bool,
 }
+
+use popsicle_core::storage::DocumentRow;
 
 pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
     let registry = load_registry()?;
@@ -34,7 +39,7 @@ pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
 
     let project_context = load_project_context();
 
-    let memories = load_ranked_memories();
+    let memories = load_ranked_memories(skill, args.run.as_deref(), &registry);
 
     let assembled = if let Some(ref run_id) = args.run {
         build_input_context(&args.skill, run_id, &registry)?
@@ -42,12 +47,29 @@ pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
         None
     };
 
+    let historical_refs = if args.related {
+        if let Some(ref run_id) = args.run {
+            load_historical_refs(skill, run_id)?
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // Attention-optimized ordering:
     //   1. Project context (background, lowest relevance — front of prompt)
     //   2. Project memories (accumulated experience — low relevance)
-    //   3. Input context (low→med→high from upstream skills)
-    //   4. Prompt instruction (highest attention — end of prompt)
-    let full_prompt = build_full_prompt(&project_context, &memories, &assembled, &base_prompt);
+    //   3. Historical references (cross-run related docs — low-medium relevance)
+    //   4. Input context (low→med→high from upstream skills)
+    //   5. Prompt instruction (highest attention — end of prompt)
+    let full_prompt = build_full_prompt(
+        &project_context,
+        &memories,
+        &historical_refs,
+        &assembled,
+        &base_prompt,
+    );
 
     match format {
         OutputFormat::Text => {
@@ -85,6 +107,22 @@ pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
                     })
                     .collect()
             });
+            let hist_refs_json: Option<Vec<_>> = historical_refs.as_ref().map(|refs| {
+                refs.iter()
+                    .map(|d| {
+                        serde_json::json!({
+                            "id": d.id,
+                            "title": d.title,
+                            "doc_type": d.doc_type,
+                            "status": d.status,
+                            "summary": d.summary,
+                            "file_path": d.file_path,
+                            "skill_name": d.skill_name,
+                            "pipeline_run_id": d.pipeline_run_id,
+                        })
+                    })
+                    .collect()
+            });
             let result = serde_json::json!({
                 "skill": skill.name,
                 "state": state,
@@ -92,6 +130,7 @@ pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
                 "full_prompt": full_prompt,
                 "project_context": project_context,
                 "memories": memory_summaries,
+                "historical_refs": hist_refs_json,
                 "input_context": assembled.as_ref().map(|a| &a.full_text),
                 "context_parts": context_parts,
                 "available_states": skill.prompts.keys().collect::<Vec<_>>(),
@@ -113,8 +152,47 @@ fn load_project_context() -> Option<String> {
         .filter(|s| !s.trim().is_empty())
 }
 
+/// Build context tags from the current skill's inputs and name.
+fn build_context_tags(skill: &popsicle_core::model::SkillDef) -> Vec<String> {
+    let mut tags = Vec::new();
+    tags.push(skill.name.clone());
+    for input in &skill.inputs {
+        tags.push(input.from_skill.clone());
+        tags.push(input.artifact_type.clone());
+    }
+    tags
+}
+
+/// Build context files from the current run's documents in the index.
+fn build_context_files(run_id: &str) -> Vec<String> {
+    let cwd = match env::current_dir() {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let layout = ProjectLayout::new(&cwd);
+    if !layout.is_initialized() {
+        return Vec::new();
+    }
+    let db = match IndexDb::open(&layout.db_path()) {
+        Ok(db) => db,
+        Err(_) => return Vec::new(),
+    };
+    db.query_documents(None, None, Some(run_id))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|d| d.file_path)
+        .collect()
+}
+
 /// Load memories from `.popsicle/memories.md`, auto-expire stale short-term entries, and rank.
-fn load_ranked_memories() -> Option<Vec<Memory>> {
+///
+/// Uses the current skill's inputs and run documents to build context for
+/// tag/file matching, so that relevant memories are ranked higher.
+fn load_ranked_memories(
+    skill: &popsicle_core::model::SkillDef,
+    run_id: Option<&str>,
+    _registry: &SkillRegistry,
+) -> Option<Vec<Memory>> {
     let cwd = env::current_dir().ok()?;
     let layout = ProjectLayout::new(&cwd);
     let path = layout.memories_path();
@@ -138,11 +216,20 @@ fn load_ranked_memories() -> Option<Vec<Memory>> {
         );
     }
 
-    let ranked: Vec<Memory> =
-        memory::rank_memories(&memories, &[], &[], memory::DEFAULT_INJECT_LIMIT)
-            .into_iter()
-            .cloned()
-            .collect();
+    let context_tags = build_context_tags(skill);
+    let context_files = run_id
+        .map(build_context_files)
+        .unwrap_or_default();
+
+    let ranked: Vec<Memory> = memory::rank_memories(
+        &memories,
+        &context_tags,
+        &context_files,
+        memory::DEFAULT_INJECT_LIMIT,
+    )
+    .into_iter()
+    .cloned()
+    .collect();
     if ranked.is_empty() {
         None
     } else {
@@ -164,10 +251,37 @@ fn format_memories_section(memories: &[Memory]) -> String {
     lines.join("\n")
 }
 
+/// Format historical references as a prompt section.
+fn format_historical_refs_section(refs: &[DocumentRow]) -> String {
+    let mut lines = vec![
+        "## Historical References (from previous runs)".to_string(),
+        String::new(),
+        "以下是项目中可能相关的历史设计文档，如需详细内容请读取对应文件：".to_string(),
+        String::new(),
+    ];
+    for doc in refs {
+        lines.push(format!(
+            "- **[{}] {}** ({}) — {}",
+            doc.doc_type.to_uppercase(),
+            doc.title,
+            doc.status,
+            doc.file_path,
+        ));
+        if !doc.summary.is_empty() {
+            let preview: String = doc.summary.lines().next().unwrap_or("").to_string();
+            if !preview.is_empty() {
+                lines.push(format!("  {}", preview));
+            }
+        }
+    }
+    lines.join("\n")
+}
+
 /// Assemble the final prompt with attention-optimized ordering.
 fn build_full_prompt(
     project_context: &Option<String>,
     memories: &Option<Vec<Memory>>,
+    historical_refs: &Option<Vec<DocumentRow>>,
     assembled: &Option<popsicle_core::engine::AssembledContext>,
     base_prompt: &str,
 ) -> String {
@@ -179,6 +293,12 @@ fn build_full_prompt(
 
     if let Some(mems) = memories {
         sections.push(format_memories_section(mems));
+    }
+
+    if let Some(refs) = historical_refs
+        && !refs.is_empty()
+    {
+        sections.push(format_historical_refs_section(refs));
     }
 
     if let Some(ctx) = assembled {
@@ -194,6 +314,60 @@ fn build_full_prompt(
 
     sections.push(base_prompt.trim().to_string());
     sections.join("\n\n---\n\n")
+}
+
+/// Load historical related documents from other pipeline runs using FTS5 search.
+fn load_historical_refs(
+    skill: &popsicle_core::model::SkillDef,
+    run_id: &str,
+) -> anyhow::Result<Option<Vec<DocumentRow>>> {
+    let cwd = env::current_dir()?;
+    let layout = ProjectLayout::new(&cwd);
+    if !layout.is_initialized() {
+        return Ok(None);
+    }
+
+    let db = IndexDb::open(&layout.db_path())?;
+
+    // Build FTS5 query from skill tags
+    let mut query_terms = vec![skill.name.clone()];
+    for input in &skill.inputs {
+        query_terms.push(input.from_skill.clone());
+        query_terms.push(input.artifact_type.clone());
+    }
+
+    // Also include the run title if available
+    if let Ok(Some(run)) = db.get_pipeline_run(run_id) {
+        for word in run.title.split_whitespace() {
+            let cleaned = word
+                .to_lowercase()
+                .replace(|c: char| !c.is_alphanumeric(), "");
+            if cleaned.len() >= 3 {
+                query_terms.push(cleaned);
+            }
+        }
+    }
+
+    let fts_query = query_terms
+        .iter()
+        .map(|t| format!("\"{}\"", t))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+
+    if fts_query.is_empty() {
+        return Ok(None);
+    }
+
+    let results = db
+        .search_documents(&fts_query, None, None, Some(run_id), 5)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    if results.is_empty() {
+        return Ok(None);
+    }
+
+    let docs: Vec<DocumentRow> = results.into_iter().map(|(doc, _)| doc).collect();
+    Ok(Some(docs))
 }
 
 /// Build context from upstream skill documents using selective injection.
@@ -337,14 +511,14 @@ mod tests {
 
     #[test]
     fn test_build_full_prompt_no_context() {
-        let result = build_full_prompt(&None, &None, &None, "Do the thing.");
+        let result = build_full_prompt(&None, &None, &None, &None, "Do the thing.");
         assert_eq!(result, "Do the thing.");
     }
 
     #[test]
     fn test_build_full_prompt_project_context_only() {
         let pc = Some("## Tech Stack\n- Rust".to_string());
-        let result = build_full_prompt(&pc, &None, &None, "Do the thing.");
+        let result = build_full_prompt(&pc, &None, &None, &None, "Do the thing.");
         assert!(result.starts_with("## Project Context (background)"));
         assert!(result.contains("## Tech Stack\n- Rust"));
         assert!(result.ends_with("Do the thing."));
@@ -362,7 +536,7 @@ mod tests {
             }],
             full_text: "### [Primary] prd — PRD [approved]\n\nPRD body".into(),
         });
-        let result = build_full_prompt(&None, &None, &assembled, "Do the thing.");
+        let result = build_full_prompt(&None, &None, &None, &assembled, "Do the thing.");
         assert!(!result.contains("Project Context"));
         assert!(result.contains("## Input Context (from upstream skills)"));
         assert!(result.contains("PRD body"));
@@ -389,7 +563,7 @@ mod tests {
             parts: vec![],
             full_text: "upstream docs".into(),
         });
-        let result = build_full_prompt(&pc, &mems, &assembled, "instruction");
+        let result = build_full_prompt(&pc, &mems, &None, &assembled, "instruction");
 
         let pc_pos = result.find("Project Context").unwrap();
         let mem_pos = result.find("Project Memories").unwrap();
@@ -415,9 +589,77 @@ mod tests {
             stale: false,
             detail: String::new(),
         }]);
-        let result = build_full_prompt(&None, &mems, &None, "Do the thing.");
+        let result = build_full_prompt(&None, &mems, &None, &None, "Do the thing.");
         assert!(result.contains("## Project Memories"));
         assert!(result.contains("[PATTERN] Always use serde(default)"));
         assert!(result.ends_with("Do the thing."));
+    }
+
+    #[test]
+    fn test_build_full_prompt_with_historical_refs() {
+        let refs = Some(vec![DocumentRow {
+            id: "doc-1".into(),
+            doc_type: "rfc".into(),
+            title: "Auth RFC".into(),
+            status: "approved".into(),
+            skill_name: "rfc-writer".into(),
+            pipeline_run_id: "run-old".into(),
+            file_path: ".popsicle/artifacts/run-old/auth-rfc.md".into(),
+            created_at: None,
+            updated_at: None,
+            summary: "Authentication design document".into(),
+            doc_tags: "[\"rfc\", \"auth\"]".into(),
+        }]);
+        let result = build_full_prompt(&None, &None, &refs, &None, "Do the thing.");
+        assert!(result.contains("Historical References"));
+        assert!(result.contains("Auth RFC"));
+        assert!(result.contains("auth-rfc.md"));
+        assert!(result.ends_with("Do the thing."));
+    }
+
+    #[test]
+    fn test_build_full_prompt_five_section_ordering() {
+        let pc = Some("background".to_string());
+        let mems = Some(vec![Memory {
+            id: 1,
+            memory_type: MemoryType::Bug,
+            summary: "bug memory".into(),
+            created: "2026-03-14".into(),
+            layer: MemoryLayer::LongTerm,
+            refs: 0,
+            tags: vec![],
+            files: vec![],
+            run: None,
+            stale: false,
+            detail: String::new(),
+        }]);
+        let refs = Some(vec![DocumentRow {
+            id: "doc-1".into(),
+            doc_type: "rfc".into(),
+            title: "Old RFC".into(),
+            status: "approved".into(),
+            skill_name: "rfc-writer".into(),
+            pipeline_run_id: "run-old".into(),
+            file_path: "old.md".into(),
+            created_at: None,
+            updated_at: None,
+            summary: "old summary".into(),
+            doc_tags: "[]".into(),
+        }]);
+        let assembled = Some(AssembledContext {
+            parts: vec![],
+            full_text: "upstream docs".into(),
+        });
+        let result = build_full_prompt(&pc, &mems, &refs, &assembled, "instruction");
+
+        let pc_pos = result.find("Project Context").unwrap();
+        let mem_pos = result.find("Project Memories").unwrap();
+        let hist_pos = result.find("Historical References").unwrap();
+        let ic_pos = result.find("Input Context").unwrap();
+        let inst_pos = result.find("instruction").unwrap();
+        assert!(pc_pos < mem_pos);
+        assert!(mem_pos < hist_pos);
+        assert!(hist_pos < ic_pos);
+        assert!(ic_pos < inst_pos);
     }
 }

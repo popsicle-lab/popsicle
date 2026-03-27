@@ -107,6 +107,51 @@ pub fn extract_summary(body: &str) -> String {
     parts.join("\n\n")
 }
 
+/// Common stop words to filter out from tag extraction.
+const STOP_WORDS: &[&str] = &[
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by",
+    "from", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does",
+    "did", "will", "would", "could", "should", "may", "might", "shall", "can", "this", "that",
+    "these", "those", "it", "its", "not", "no", "nor", "so", "if", "then", "than", "too", "very",
+    "just", "about", "above", "after", "before", "between", "into", "through", "during", "each",
+    "all", "both", "some", "such", "only", "other", "new", "old", "more", "most", "any",
+];
+
+/// Extract semantic tags from a Markdown document body.
+///
+/// Uses a rule-based approach: extracts keywords from H2 headings and
+/// filters out common stop words. Also includes the skill_name and doc_type
+/// as tags when provided.
+pub fn extract_tags(body: &str, skill_name: &str, doc_type: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+
+    if !skill_name.is_empty() {
+        tags.push(skill_name.to_string());
+    }
+    if !doc_type.is_empty() {
+        tags.push(doc_type.to_string());
+    }
+
+    for line in body.lines() {
+        if line.starts_with("## ") {
+            let heading = line.trim_start_matches("## ");
+            for word in heading.split_whitespace() {
+                let cleaned = word
+                    .to_lowercase()
+                    .replace(|c: char| !c.is_alphanumeric() && c != '-', "");
+                if cleaned.len() >= 3
+                    && !STOP_WORDS.contains(&cleaned.as_str())
+                    && !tags.contains(&cleaned)
+                {
+                    tags.push(cleaned);
+                }
+            }
+        }
+    }
+
+    tags
+}
+
 /// Replace or insert an H2 section in a Markdown document.
 ///
 /// If the section exists, replaces its content (or appends when `append` is true).
@@ -285,5 +330,53 @@ mod tests {
         let result = upsert_section(doc, "Architecture", "- Layered", false);
         assert!(result.contains("## Architecture"));
         assert!(result.contains("- Layered"));
+    }
+
+    #[test]
+    fn test_extract_tags_basic() {
+        let body = "## Authentication Design\n\nContent.\n\n## Token Refresh Strategy\n\nMore.\n";
+        let tags = extract_tags(body, "rfc-writer", "rfc");
+        assert!(tags.contains(&"rfc-writer".to_string()));
+        assert!(tags.contains(&"rfc".to_string()));
+        assert!(tags.contains(&"authentication".to_string()));
+        assert!(tags.contains(&"design".to_string()));
+        assert!(tags.contains(&"token".to_string()));
+        assert!(tags.contains(&"refresh".to_string()));
+        assert!(tags.contains(&"strategy".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tags_filters_stop_words() {
+        let body = "## The Design of a New System\n\nContent.\n";
+        let tags = extract_tags(body, "", "");
+        assert!(!tags.contains(&"the".to_string()));
+        assert!(!tags.contains(&"of".to_string()));
+        assert!(!tags.contains(&"a".to_string()));
+        assert!(tags.contains(&"design".to_string()));
+        assert!(tags.contains(&"system".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tags_filters_short_words() {
+        let body = "## UI UX and API Design\n\nContent.\n";
+        let tags = extract_tags(body, "", "");
+        assert!(!tags.contains(&"ui".to_string()));
+        assert!(!tags.contains(&"ux".to_string()));
+        assert!(tags.contains(&"api".to_string()));
+        assert!(tags.contains(&"design".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tags_no_duplicates() {
+        let body = "## Design Overview\n\n## Design Details\n\n";
+        let tags = extract_tags(body, "", "");
+        let design_count = tags.iter().filter(|t| *t == "design").count();
+        assert_eq!(design_count, 1);
+    }
+
+    #[test]
+    fn test_extract_tags_empty_body() {
+        let tags = extract_tags("", "my-skill", "prd");
+        assert_eq!(tags, vec!["my-skill", "prd"]);
     }
 }

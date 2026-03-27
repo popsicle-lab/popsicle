@@ -246,19 +246,62 @@ impl IndexDb {
                 .execute_batch("ALTER TABLE issues ADD COLUMN pipeline TEXT;")?;
         }
 
+        // Migration: add `summary` and `doc_tags` columns to documents table
+        let has_summary_col: bool = self
+            .conn
+            .prepare("SELECT summary FROM documents LIMIT 0")
+            .is_ok();
+        if !has_summary_col {
+            self.conn.execute_batch(
+                "ALTER TABLE documents ADD COLUMN summary TEXT DEFAULT '';
+                 ALTER TABLE documents ADD COLUMN doc_tags TEXT DEFAULT '[]';",
+            )?;
+        }
+
+        // FTS5 virtual table for full-text search on documents
+        self.conn.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+                title,
+                summary,
+                doc_tags,
+                content=documents,
+                content_rowid=rowid
+            );
+
+            CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
+                INSERT INTO documents_fts(rowid, title, summary, doc_tags)
+                VALUES (new.rowid, new.title, new.summary, new.doc_tags);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+                INSERT INTO documents_fts(documents_fts, rowid, title, summary, doc_tags)
+                VALUES ('delete', old.rowid, old.title, old.summary, old.doc_tags);
+                INSERT INTO documents_fts(rowid, title, summary, doc_tags)
+                VALUES (new.rowid, new.title, new.summary, new.doc_tags);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+                INSERT INTO documents_fts(documents_fts, rowid, title, summary, doc_tags)
+                VALUES ('delete', old.rowid, old.title, old.summary, old.doc_tags);
+            END;",
+        )?;
+
         Ok(())
     }
 
     /// Upsert a document's metadata into the index.
     pub fn upsert_document(&self, doc: &Document) -> Result<()> {
+        let tags_json = serde_json::to_string(&doc.tags).unwrap_or_else(|_| "[]".to_string());
         self.conn.execute(
-            "INSERT INTO documents (id, doc_type, title, status, skill_name, pipeline_run_id, file_path, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            "INSERT INTO documents (id, doc_type, title, status, skill_name, pipeline_run_id, file_path, created_at, updated_at, summary, doc_tags)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(id) DO UPDATE SET
                 status = excluded.status,
                 title = excluded.title,
                 file_path = excluded.file_path,
-                updated_at = excluded.updated_at",
+                updated_at = excluded.updated_at,
+                summary = CASE WHEN excluded.summary != '' THEN excluded.summary ELSE documents.summary END,
+                doc_tags = CASE WHEN excluded.doc_tags != '[]' THEN excluded.doc_tags ELSE documents.doc_tags END",
             params![
                 doc.id,
                 doc.doc_type,
@@ -269,9 +312,99 @@ impl IndexDb {
                 doc.file_path.display().to_string(),
                 doc.created_at.map(|t| t.to_rfc3339()),
                 doc.updated_at.map(|t| t.to_rfc3339()),
+                doc.summary,
+                tags_json,
             ],
         )?;
         Ok(())
+    }
+
+    /// Update summary and tags for a document.
+    pub fn update_document_summary(
+        &self,
+        doc_id: &str,
+        summary: &str,
+        tags: &[String],
+    ) -> Result<()> {
+        let tags_json = serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string());
+        self.conn.execute(
+            "UPDATE documents SET summary = ?1, doc_tags = ?2 WHERE id = ?3",
+            params![summary, tags_json, doc_id],
+        )?;
+        Ok(())
+    }
+
+    /// Full-text search across documents using FTS5.
+    ///
+    /// Returns documents matching the query, optionally filtered by status,
+    /// skill, and excluding a specific pipeline run.
+    pub fn search_documents(
+        &self,
+        query: &str,
+        status_filter: Option<&str>,
+        skill_filter: Option<&str>,
+        exclude_run: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<(DocumentRow, f64)>> {
+        let mut sql = String::from(
+            "SELECT d.id, d.doc_type, d.title, d.status, d.skill_name, d.pipeline_run_id,
+                    d.file_path, d.created_at, d.updated_at,
+                    COALESCE(d.summary, '') AS summary, COALESCE(d.doc_tags, '[]') AS doc_tags,
+                    bm25(documents_fts) AS rank
+             FROM documents_fts
+             JOIN documents d ON d.rowid = documents_fts.rowid
+             WHERE documents_fts MATCH ?1",
+        );
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        param_values.push(Box::new(query.to_string()));
+
+        if let Some(s) = status_filter {
+            sql.push_str(&format!(" AND d.status = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(s.to_string()));
+        }
+        if let Some(s) = skill_filter {
+            sql.push_str(&format!(" AND d.skill_name = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(s.to_string()));
+        }
+        if let Some(r) = exclude_run {
+            sql.push_str(&format!(
+                " AND d.pipeline_run_id != ?{}",
+                param_values.len() + 1
+            ));
+            param_values.push(Box::new(r.to_string()));
+        }
+
+        sql.push_str(&format!(" ORDER BY rank LIMIT ?{}", param_values.len() + 1));
+        param_values.push(Box::new(limit as i64));
+
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_refs.as_slice(), |row| {
+            let rank: f64 = row.get(11)?;
+            Ok((
+                DocumentRow {
+                    id: row.get(0)?,
+                    doc_type: row.get(1)?,
+                    title: row.get(2)?,
+                    status: row.get(3)?,
+                    skill_name: row.get(4)?,
+                    pipeline_run_id: row.get(5)?,
+                    file_path: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                    summary: row.get(9)?,
+                    doc_tags: row.get(10)?,
+                },
+                rank,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
     }
 
     /// Query documents by optional filters.
@@ -281,7 +414,7 @@ impl IndexDb {
         status: Option<&str>,
         run_id: Option<&str>,
     ) -> Result<Vec<DocumentRow>> {
-        let mut sql = "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, file_path, created_at, updated_at FROM documents WHERE 1=1".to_string();
+        let mut sql = "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags FROM documents WHERE 1=1".to_string();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(s) = skill {
@@ -316,6 +449,8 @@ impl IndexDb {
                 file_path: row.get(6)?,
                 created_at: row.get(7)?,
                 updated_at: row.get(8)?,
+                summary: row.get(9)?,
+                doc_tags: row.get(10)?,
             })
         })?;
 
@@ -1820,6 +1955,8 @@ pub struct DocumentRow {
     pub file_path: String,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub summary: String,
+    pub doc_tags: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1847,6 +1984,7 @@ mod tests {
             skill_name: skill.to_string(),
             pipeline_run_id: run_id.to_string(),
             tags: vec![],
+            summary: String::new(),
             metadata: serde_yaml_ng::Value::Null,
             created_at: Some(chrono::Utc::now()),
             updated_at: Some(chrono::Utc::now()),
@@ -1994,5 +2132,211 @@ mod tests {
         let links = db.query_commit_links(Some("run-1"), None, None).unwrap();
         assert_eq!(links[0].review_status, ReviewStatus::Passed);
         assert_eq!(links[0].review_summary.as_deref(), Some("LGTM"));
+    }
+
+    #[test]
+    fn test_update_document_summary() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let doc = make_doc("d1", "rfc-writer", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        db.update_document_summary("d1", "This is a summary", &["rfc".into(), "auth".into()])
+            .unwrap();
+
+        let docs = db.query_documents(None, None, Some("run-1")).unwrap();
+        assert_eq!(docs[0].summary, "This is a summary");
+        assert_eq!(docs[0].doc_tags, r#"["rfc","auth"]"#);
+    }
+
+    #[test]
+    fn test_upsert_preserves_existing_summary() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let mut doc = make_doc("d1", "rfc-writer", "run-1");
+        doc.summary = "Original summary".to_string();
+        doc.tags = vec!["original".to_string()];
+        db.upsert_document(&doc).unwrap();
+
+        // Upsert again with empty summary — should preserve existing
+        let mut doc2 = make_doc("d1", "rfc-writer", "run-1");
+        doc2.status = "review".to_string();
+        db.upsert_document(&doc2).unwrap();
+
+        let docs = db.query_documents(None, None, Some("run-1")).unwrap();
+        assert_eq!(docs[0].status, "review");
+        assert_eq!(docs[0].summary, "Original summary");
+    }
+
+    #[test]
+    fn test_search_documents_fts5() {
+        let db = IndexDb::open_in_memory().unwrap();
+
+        let mut doc1 = make_doc("d1", "rfc-writer", "run-1");
+        doc1.title = "JWT Authentication RFC".to_string();
+        db.upsert_document(&doc1).unwrap();
+        db.update_document_summary(
+            "d1",
+            "Design for JWT-based user authentication",
+            &["rfc".into(), "auth".into(), "jwt".into()],
+        )
+        .unwrap();
+
+        let mut doc2 = make_doc("d2", "prd-writer", "run-1");
+        doc2.title = "Payment Gateway PRD".to_string();
+        db.upsert_document(&doc2).unwrap();
+        db.update_document_summary(
+            "d2",
+            "Product requirements for payment processing",
+            &["prd".into(), "payment".into()],
+        )
+        .unwrap();
+
+        // Search for auth-related docs
+        let results = db
+            .search_documents("authentication", None, None, None, 10)
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id, "d1");
+
+        // Search for payment-related docs
+        let results = db
+            .search_documents("payment", None, None, None, 10)
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id, "d2");
+    }
+
+    #[test]
+    fn test_search_documents_exclude_run() {
+        let db = IndexDb::open_in_memory().unwrap();
+
+        let mut doc1 = make_doc("d1", "rfc-writer", "run-1");
+        doc1.title = "Auth RFC".to_string();
+        db.upsert_document(&doc1).unwrap();
+        db.update_document_summary("d1", "auth design", &["auth".into()])
+            .unwrap();
+
+        let mut doc2 = make_doc("d2", "rfc-writer", "run-2");
+        doc2.title = "Auth V2 RFC".to_string();
+        db.upsert_document(&doc2).unwrap();
+        db.update_document_summary("d2", "auth v2 design", &["auth".into()])
+            .unwrap();
+
+        // Exclude run-2, should only find run-1
+        let results = db
+            .search_documents("auth", None, None, Some("run-2"), 10)
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.pipeline_run_id, "run-1");
+    }
+
+    #[test]
+    fn test_search_documents_no_results() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let doc = make_doc("d1", "rfc-writer", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        let results = db
+            .search_documents("nonexistent", None, None, None, 10)
+            .unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_document_summary_and_tags_in_query() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let doc = make_doc("d1", "rfc-writer", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        // Before summary update
+        let docs = db.query_documents(None, None, Some("run-1")).unwrap();
+        assert_eq!(docs[0].summary, "");
+        assert_eq!(docs[0].doc_tags, "[]");
+
+        // After summary update
+        db.update_document_summary("d1", "my summary", &["tag1".into()])
+            .unwrap();
+        let docs = db.query_documents(None, None, Some("run-1")).unwrap();
+        assert_eq!(docs[0].summary, "my summary");
+        assert!(docs[0].doc_tags.contains("tag1"));
+    }
+
+    #[test]
+    fn test_llm_summary_overwrites_rule_based() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let doc = make_doc("d1", "rfc-writer", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        // Simulate rule-based fallback
+        db.update_document_summary("d1", "rule-based summary", &["rule-tag".into()])
+            .unwrap();
+        let docs = db.query_documents(None, None, None).unwrap();
+        assert_eq!(docs[0].summary, "rule-based summary");
+
+        // Simulate LLM overwrite
+        db.update_document_summary(
+            "d1",
+            "LLM-generated high quality summary of the JWT auth RFC",
+            &["jwt".into(), "authentication".into(), "security".into()],
+        )
+        .unwrap();
+        let docs = db.query_documents(None, None, None).unwrap();
+        assert_eq!(
+            docs[0].summary,
+            "LLM-generated high quality summary of the JWT auth RFC"
+        );
+        assert!(docs[0].doc_tags.contains("jwt"));
+        assert!(docs[0].doc_tags.contains("authentication"));
+    }
+
+    #[test]
+    fn test_fts_search_finds_llm_summary_content() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let doc = make_doc("d1", "rfc-writer", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        db.update_document_summary(
+            "d1",
+            "This RFC describes the JWT-based authentication flow including token refresh and session management",
+            &["jwt".into(), "authentication".into(), "session".into()],
+        )
+        .unwrap();
+
+        // Search by summary content
+        let results = db
+            .search_documents("authentication token refresh", None, None, None, 10)
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id, "d1");
+
+        // Search by LLM-generated tag
+        let results = db
+            .search_documents("session", None, None, None, 10)
+            .unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_summary_preserved_on_upsert_without_summary() {
+        let db = IndexDb::open_in_memory().unwrap();
+        let doc = make_doc("d1", "rfc-writer", "run-1");
+        db.upsert_document(&doc).unwrap();
+
+        // Write LLM summary
+        db.update_document_summary(
+            "d1",
+            "LLM summary that should survive upsert",
+            &["preserved".into()],
+        )
+        .unwrap();
+
+        // Re-upsert the document (simulating status change via doc transition)
+        let mut doc2 = make_doc("d1", "rfc-writer", "run-1");
+        doc2.status = "approved".to_string();
+        db.upsert_document(&doc2).unwrap();
+
+        // Summary should be preserved since Document.summary is empty
+        let docs = db.query_documents(None, None, None).unwrap();
+        assert_eq!(docs[0].summary, "LLM summary that should survive upsert");
+        assert!(docs[0].doc_tags.contains("preserved"));
     }
 }

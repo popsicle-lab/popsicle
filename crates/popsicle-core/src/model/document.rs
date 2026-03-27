@@ -17,6 +17,9 @@ pub struct Document {
     pub pipeline_run_id: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Auto-generated summary for document indexing (not persisted in frontmatter).
+    #[serde(skip)]
+    pub summary: String,
     #[serde(default)]
     pub metadata: serde_yaml_ng::Value,
     #[serde(default)]
@@ -52,6 +55,7 @@ impl Document {
             skill_name: skill_name.into(),
             pipeline_run_id: pipeline_run_id.into(),
             tags: Vec::new(),
+            summary: String::new(),
             metadata: serde_yaml_ng::Value::Null,
             created_at: Some(now),
             updated_at: Some(now),

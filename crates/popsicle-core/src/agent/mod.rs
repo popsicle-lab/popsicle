@@ -292,7 +292,24 @@ Execute the suggested action. NEVER skip pipeline steps or write code outside of
 - `popsicle context --format json` — all documents for current run
 - `popsicle doc create <skill> --title "<t>" --run <id>` — create document
 - `popsicle doc transition <id> <action>` — advance workflow (guards enforced)
+- `popsicle doc summarize <id> --generate-prompt` — get LLM prompt for summarization
+- `popsicle doc summarize <id> --summary "..." --tags "a,b,c"` — write LLM-generated summary/tags
+- `popsicle context search <query>` — search documents across all runs (FTS5)
 - `popsicle git link --doc <id> --stage <s>` — link commit to document
+
+## Document Summarization (after approve)
+
+When a document reaches a final state (e.g. approved), Popsicle auto-generates a rule-based summary as fallback. For higher quality, generate an LLM-powered summary immediately after approve:
+
+```bash
+# Step 1: Get the summarize prompt
+popsicle doc summarize <doc-id> --generate-prompt --format json
+
+# Step 2: Use the returned prompt to call your LLM, then write results back
+popsicle doc summarize <doc-id> --summary "LLM-generated summary" --tags "tag1,tag2,tag3"
+```
+
+This overwrites the rule-based summary with a higher-quality LLM version, improving cross-run document search accuracy.
 
 ## Workflow Rules
 

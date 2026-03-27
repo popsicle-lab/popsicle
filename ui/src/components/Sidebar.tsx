@@ -4,6 +4,7 @@ import {
   GitBranch,
   ClipboardList,
   Brain,
+  Search,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -20,6 +21,7 @@ const navItems: {
 }[] = [
   { kind: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { kind: "issues", label: "Issues", icon: ClipboardList },
+  { kind: "search", label: "Doc Search", icon: Search },
   { kind: "git", label: "Git Tracking", icon: GitBranch },
   { kind: "memories", label: "Memories", icon: Brain },
   { kind: "skills", label: "Skills", icon: Puzzle },

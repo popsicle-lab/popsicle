@@ -13,6 +13,7 @@ import { BugDetailView } from "./pages/BugDetailView";
 import { TestCaseDetailView } from "./pages/TestCaseDetailView";
 import { StoryDetailView } from "./pages/StoryDetailView";
 import { MemoriesView } from "./pages/MemoriesView";
+import { SearchView } from "./pages/SearchView";
 import { ProjectPicker } from "./components/ProjectPicker";
 
 export type Page =
@@ -27,7 +28,8 @@ export type Page =
   | { kind: "bug"; bugKey: string; fromIssue?: string }
   | { kind: "testcase"; testCaseKey: string; fromIssue?: string }
   | { kind: "story"; storyKey: string; fromIssue?: string }
-  | { kind: "memories" };
+  | { kind: "memories" }
+  | { kind: "search" };
 
 export default function App() {
   const { dir, setProjectDir } = useProjectDir();
@@ -138,6 +140,9 @@ export default function App() {
         )}
         {page.kind === "memories" && (
           <MemoriesView key={refreshKey} />
+        )}
+        {page.kind === "search" && (
+          <SearchView key={refreshKey} setPage={setPage} />
         )}
       </main>
     </div>

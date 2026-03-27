@@ -30,6 +30,7 @@ pub fn run() {
             commands::get_pipeline_status,
             commands::list_documents,
             commands::get_document,
+            commands::search_documents,
             commands::get_next_steps,
             commands::get_prompt,
             commands::verify_pipeline_run,

@@ -18,6 +18,9 @@ pub enum ContextCommand {
 
     /// Update a section in project-context.md (for agent-driven deep analysis)
     Update(UpdateArgs),
+
+    /// Search documents across all pipeline runs using full-text search
+    Search(SearchArgs),
 }
 
 #[derive(clap::Args)]
@@ -38,6 +41,24 @@ pub struct ScanArgs {
 }
 
 #[derive(clap::Args)]
+pub struct SearchArgs {
+    /// Search query (FTS5 syntax supported)
+    query: String,
+    /// Filter by document status (e.g. approved, accepted)
+    #[arg(long)]
+    status: Option<String>,
+    /// Filter by skill name
+    #[arg(long)]
+    skill: Option<String>,
+    /// Exclude documents from this pipeline run
+    #[arg(long)]
+    exclude_run: Option<String>,
+    /// Maximum number of results
+    #[arg(short, long, default_value_t = 10)]
+    limit: usize,
+}
+
+#[derive(clap::Args)]
 pub struct UpdateArgs {
     /// H2 section name to update (e.g. "Architecture Patterns")
     #[arg(long)]
@@ -55,6 +76,7 @@ pub fn execute(cmd: ContextCommand, format: &OutputFormat) -> anyhow::Result<()>
         ContextCommand::Show(args) => execute_show(args, format),
         ContextCommand::Scan(args) => execute_scan(args, format),
         ContextCommand::Update(args) => execute_update(args, format),
+        ContextCommand::Search(args) => execute_search(args, format),
     }
 }
 
@@ -293,6 +315,81 @@ fn execute_update(args: UpdateArgs, format: &OutputFormat) -> anyhow::Result<()>
                 "path": context_path.display().to_string(),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+    }
+
+    Ok(())
+}
+
+// ── search ──
+
+fn execute_search(args: SearchArgs, format: &OutputFormat) -> anyhow::Result<()> {
+    let cwd = env::current_dir()?;
+    let layout = ProjectLayout::new(&cwd);
+    layout
+        .ensure_initialized()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    let db = IndexDb::open(&layout.db_path())?;
+    let results = db
+        .search_documents(
+            &args.query,
+            args.status.as_deref(),
+            args.skill.as_deref(),
+            args.exclude_run.as_deref(),
+            args.limit,
+        )
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    match format {
+        OutputFormat::Text => {
+            if results.is_empty() {
+                println!("No documents found matching '{}'.", args.query);
+                return Ok(());
+            }
+            println!(
+                "{:<38} {:<12} {:<15} {:<12} TITLE",
+                "ID", "TYPE", "SKILL", "STATUS"
+            );
+            println!("{}", "-".repeat(100));
+            for (doc, rank) in &results {
+                println!(
+                    "{:<38} {:<12} {:<15} {:<12} {} (score: {:.2})",
+                    doc.id, doc.doc_type, doc.skill_name, doc.status, doc.title, rank
+                );
+                if !doc.summary.is_empty() {
+                    let preview: String = doc
+                        .summary
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .chars()
+                        .take(80)
+                        .collect();
+                    println!("  {}", preview);
+                }
+            }
+            println!("\n{} result(s).", results.len());
+        }
+        OutputFormat::Json => {
+            let json_results: Vec<_> = results
+                .iter()
+                .map(|(doc, rank)| {
+                    serde_json::json!({
+                        "id": doc.id,
+                        "doc_type": doc.doc_type,
+                        "title": doc.title,
+                        "status": doc.status,
+                        "skill_name": doc.skill_name,
+                        "pipeline_run_id": doc.pipeline_run_id,
+                        "file_path": doc.file_path,
+                        "summary": doc.summary,
+                        "doc_tags": doc.doc_tags,
+                        "bm25_score": rank,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&json_results)?);
         }
     }
 

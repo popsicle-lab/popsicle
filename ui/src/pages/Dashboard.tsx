@@ -32,6 +32,7 @@ import {
   Package,
   StickyNote,
   Layers,
+  Search,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -277,8 +278,9 @@ export function Dashboard({ setPage }: Props) {
             command="popsicle pipeline next"
           />
           <QuickAction
-            label="Import existing docs"
-            command="popsicle migrate --skill domain-analysis docs/"
+            label="Search historical docs"
+            command='popsicle context search "authentication"'
+            icon={<Search size={12} />}
           />
         </div>
       </div>

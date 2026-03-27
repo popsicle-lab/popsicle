@@ -214,6 +214,7 @@ impl Advisor {
                             skill_name: doc.skill_name.clone(),
                             pipeline_run_id: doc.pipeline_run_id.clone(),
                             tags: vec![],
+                            summary: String::new(),
                             metadata: serde_yaml_ng::Value::Null,
                             created_at: None,
                             updated_at: None,
@@ -356,6 +357,8 @@ prompts:
             file_path: "test.md".to_string(),
             created_at: None,
             updated_at: None,
+            summary: String::new(),
+            doc_tags: "[]".to_string(),
         }];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
@@ -394,6 +397,8 @@ prompts:
             file_path: "test.md".to_string(),
             created_at: None,
             updated_at: None,
+            summary: String::new(),
+            doc_tags: "[]".to_string(),
         }];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
@@ -473,6 +478,8 @@ prompts:
             file_path: "test.md".to_string(),
             created_at: None,
             updated_at: None,
+            summary: String::new(),
+            doc_tags: "[]".to_string(),
         }];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);

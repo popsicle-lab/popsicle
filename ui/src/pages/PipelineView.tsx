@@ -4,14 +4,17 @@ import {
   getNextSteps,
   getCommitLinks,
   verifyPipelineRun,
+  searchDocuments,
   type PipelineStatusFull,
   type NextStepInfo,
   type CommitLinkInfo,
   type VerifyResult,
+  type SearchDocResult,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   ChevronRight,
+  ChevronDown,
   Copy,
   Check,
   FileText,
@@ -22,6 +25,8 @@ import {
   ShieldAlert,
   Archive,
   Zap,
+  BookOpen,
+  Hash,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -35,6 +40,7 @@ export function PipelineView({ runId, setPage }: Props) {
   const [steps, setSteps] = useState<NextStepInfo[]>([]);
   const [commits, setCommits] = useState<CommitLinkInfo[]>([]);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
+  const [relatedDocs, setRelatedDocs] = useState<SearchDocResult[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,6 +55,16 @@ export function PipelineView({ runId, setPage }: Props) {
         setSteps(ns);
         setCommits(cl);
         setVerify(v);
+        if (s.title) {
+          searchDocuments({
+            query: s.title,
+            status: "approved",
+            excludeRun: runId,
+            limit: 5,
+          })
+            .then(setRelatedDocs)
+            .catch(() => {});
+        }
       })
       .catch((e) => setError(e?.toString()));
   }, [runId]);
@@ -219,6 +235,11 @@ export function PipelineView({ runId, setPage }: Props) {
         </div>
       </div>
 
+      {/* Historical References */}
+      {relatedDocs.length > 0 && (
+        <HistoricalRefsCard docs={relatedDocs} setPage={setPage} />
+      )}
+
       {/* Next Steps Advisor */}
       {actionable.length > 0 && (
         <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
@@ -288,6 +309,78 @@ function MiniChecklistBar({
       <span className="text-[10px] font-mono shrink-0" style={{ color }}>
         {checked}/{total}
       </span>
+    </div>
+  );
+}
+
+function HistoricalRefsCard({
+  docs,
+  setPage,
+}: {
+  docs: SearchDocResult[];
+  setPage: (p: Page) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors rounded-xl"
+      >
+        <div className="flex items-center gap-2">
+          <BookOpen size={16} className="text-[var(--accent-purple)]" />
+          <h3 className="font-medium text-sm">
+            Historical References ({docs.length})
+          </h3>
+          <span className="text-xs text-[var(--text-secondary)]">
+            Related documents from other runs
+          </span>
+        </div>
+        {expanded ? (
+          <ChevronDown size={16} className="text-[var(--text-secondary)]" />
+        ) : (
+          <ChevronRight size={16} className="text-[var(--text-secondary)]" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="divide-y divide-[var(--border)]">
+          {docs.map((doc) => (
+            <button
+              key={doc.id}
+              onClick={() => setPage({ kind: "document", docId: doc.id })}
+              className="w-full px-4 py-3 hover:bg-[var(--bg-tertiary)] transition-colors text-left"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <FileText size={12} />
+                <span className="text-sm font-medium">{doc.title}</span>
+                <StatusBadge status={doc.status} />
+                <code className="text-xs bg-[var(--bg-tertiary)] px-1.5 py-0.5 rounded text-[var(--text-secondary)]">
+                  {doc.doc_type}
+                </code>
+              </div>
+              {doc.summary && (
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-1.5 line-clamp-2 pl-5">
+                  {doc.summary}
+                </p>
+              )}
+              <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)] pl-5">
+                <span>{doc.skill_name}</span>
+                <span className="font-mono">
+                  run:{doc.pipeline_run_id.slice(0, 8)}
+                </span>
+                {doc.doc_tags.length > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <Hash size={10} />
+                    {doc.doc_tags.slice(0, 4).join(", ")}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

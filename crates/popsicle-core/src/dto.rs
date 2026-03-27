@@ -158,6 +158,22 @@ pub struct DocFull {
     pub file_path: String,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub summary: String,
+    pub doc_tags: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct SearchDocResult {
+    pub id: String,
+    pub doc_type: String,
+    pub title: String,
+    pub status: String,
+    pub skill_name: String,
+    pub pipeline_run_id: String,
+    pub file_path: String,
+    pub summary: String,
+    pub doc_tags: Vec<String>,
+    pub bm25_score: f64,
 }
 
 #[derive(Serialize)]

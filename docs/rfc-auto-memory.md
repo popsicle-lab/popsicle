@@ -118,17 +118,36 @@ Agent 触发写入 → 短期记忆 → 评估 → 提升为长期 / 遗忘
 `popsicle prompt --run <id>` 时自动注入相关记忆：
 
 ```
-注入优先级 = type_weight × recency_weight × match_score
+注入优先级 = type_weight × layer_weight × match_score × stale_penalty
 ```
 
 - **type_weight**：PATTERN=1.0, BUG=0.8, DECISION=0.6, GOTCHA=0.5
-- **recency_weight**：最近 3 个 run 的记忆 1.0，3-10 个 run 0.5，更早 0.2
-- **match_score**：基于 tags 交集和 Files 与当前变更文件的重叠度
+- **layer_weight**：LongTerm=1.0, ShortTerm=0.7
+- **match_score**：`1.0 + tag_overlap + file_overlap`，基于 tags 交集计数和 Files 与当前变更文件的路径重叠计数
+- **stale_penalty**：stale=0.5, 正常=1.0
 
-注入上限：top-10 条，仅注入 summary 行（非 detail），以 `[Project Memories]` 块形式放在 prompt 最前部（low relevance 位置）：
+> **实现说明**：原设计中的 `recency_weight`（按 pipeline run 序号衰减）在实现中简化为 `layer_weight`（按 short-term / long-term 区分）。理由：短期记忆天然代表近期经验，长期记忆代表经过验证的持久经验，layer 区分已隐含 recency 语义且实现更简单。
+
+#### 5. Context-Aware Injection
+
+`rank_memories` 的 tag/file 匹配需要接收当前工作上下文才能生效。`popsicle prompt` 在调用 `rank_memories` 时应构建 context 向量：
+
+**context_tags 来源**（按优先级合并）：
+1. 当前 skill 名称（如 `implementation`）
+2. 当前 skill 的 `inputs` 中所有 `from_skill` 名称（如 `rfc-writer`, `arch-debate`）
+3. 当前 skill 的 `inputs` 中所有 `artifact_type`（如 `rfc`, `adr`）
+
+**context_files 来源**：
+1. 当前 run 中已有文档的 `file_path`（从 IndexDb 查询）
+
+这样，当 Agent 执行 `implementation` skill 时，与 `rfc`、`adr` 相关的 bug/decision 记忆会被优先注入。
+
+注入上限：top-10 条，仅注入 summary 行（非 detail），以 `## Project Memories` 块形式放在 Project Context 之后、Input Context 之前：
 
 ```
-[Project Memories — 以下是项目积累的经验，请在工作中注意避免已知问题]
+## Project Memories
+
+以下是项目积累的经验，请在工作中注意避免已知问题：
 - [BUG] Context injection 排序不确定性 → 改用 BTreeMap
 - [PATTERN] Rust serde 默认值：新增 YAML 字段必须 #[serde(default)]
 - [DECISION] prompt 组装顺序：上下文在前，指令在后
@@ -191,22 +210,14 @@ Agent Skill（Cursor `.mdc` / Claude Code `CLAUDE.md`）中定义触发指导：
 
 #### prompt 注入集成
 
-在 `assemble_input_context` 中新增记忆源，作为最低 relevance 的上下文注入：
+记忆作为独立的 context 源在 `prompt.rs` 的 `build_full_prompt` 中组装，而非传入 `assemble_input_context`。这保持了 `assemble_input_context` 的单一职责（只处理上游文档），同时让 prompt 组装层控制完整的注意力排序：
 
-```rust
-// engine/context.rs 中扩展
-pub struct ContextInput {
-    // ... 现有字段
-}
-
-pub struct MemoryContext {
-    pub memories: Vec<MemorySummary>,  // top-N 条匹配的记忆摘要
-}
-
-pub fn assemble_input_context(
-    inputs: Vec<ContextInput>,
-    memories: Option<MemoryContext>,  // 新增参数
-) -> AssembledContext
+```
+Prompt 组装顺序（attention 优化）：
+  1. Project Context (background)     ← 最低注意力
+  2. Project Memories                  ← 低注意力
+  3. Input Context (upstream docs)     ← 按 relevance 排序
+  4. Prompt 指令                       ← 最高注意力
 ```
 
 ## Rationale and Alternatives
@@ -256,20 +267,23 @@ pub fn assemble_input_context(
 
 ## Open Questions
 
-- Questions to resolve during the RFC process:
-  - 记忆的 ID 应该用什么格式？自增数字（简单）还是基于内容的 slug（可读）？
-  - `popsicle memory gc` 是否应该在 `popsicle prompt` 时自动触发，还是必须手动运行？
-  - 记忆注入应该在 `assemble_input_context` 内部处理，还是作为独立的 context 源在 `prompt.rs` 中组装？
+- Resolved during RFC process:
+  - ~~记忆的 ID 应该用什么格式？~~ → **自增数字**，简单且 CLI 友好
+  - ~~`popsicle memory gc` 是否应该在 `popsicle prompt` 时自动触发？~~ → **`popsicle prompt` 自动触发 `expire_short_term`（过期清理），`gc`（删除 stale）仍需手动**
+  - ~~记忆注入应该在 `assemble_input_context` 内部处理，还是独立组装？~~ → **独立组装**，在 `prompt.rs` 的 `build_full_prompt` 中拼接，保持 `assemble_input_context` 单一职责
 
-- Questions to resolve during implementation:
-  - Refs 计数如何追踪——Agent 如何报告"我引用了这条记忆"？需要 `popsicle memory ref <id>` 命令吗？
-  - stale 检测的 git diff 阈值（50%）是否合理，需要实验调优
-  - 200 行上限是否足够？需要在实际使用中验证
+- Resolved during implementation:
+  - ~~stale 检测的 git diff 阈值~~ → **50 行变更**（`STALE_CHANGE_THRESHOLD = 50`），通过 `popsicle memory check-stale` 触发
+
+- Open:
+  - Refs 计数追踪机制尚未实现——Agent 如何报告"我引用了这条记忆"仍待设计
+  - 200 行上限是否足够，需要在实际使用中验证
 
 ## Implementation Plan
 
-- [ ] Phase 1 — 存储层：`memories.md` 文件格式解析/序列化，`Memory` 数据模型
-- [ ] Phase 2 — CLI 命令：`save`、`list`、`show`、`delete`、`promote`、`stale`、`gc`、`stats`
-- [ ] Phase 3 — 注入集成：在 `popsicle prompt` 中注入匹配的记忆摘要
+- [x] Phase 1 — 存储层：`memories.md` 文件格式解析/序列化，`Memory` 数据模型
+- [x] Phase 2 — CLI 命令：`save`、`list`、`show`、`delete`、`promote`、`stale`、`gc`、`check-stale`、`stats`
+- [x] Phase 3 — 注入集成：在 `popsicle prompt` 中注入匹配的记忆摘要
 - [ ] Phase 4 — Agent Skill：生成 Cursor `.mdc` 和 Claude Code 的记忆触发指导
-- [ ] Phase 5 — 生命周期自动化：短期遗忘、stale 检测、容量告警
+- [x] Phase 5 — 生命周期自动化：短期遗忘（`expire_short_term`）、stale 检测（`check-stale`）、容量告警
+- [ ] Phase 6 — Context-Aware Scoring：`popsicle prompt` 传入当前 skill 的 tags/files 给 `rank_memories`
