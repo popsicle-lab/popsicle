@@ -217,9 +217,7 @@ fn load_ranked_memories(
     }
 
     let context_tags = build_context_tags(skill);
-    let context_files = run_id
-        .map(build_context_files)
-        .unwrap_or_default();
+    let context_files = run_id.map(build_context_files).unwrap_or_default();
 
     let ranked: Vec<Memory> = memory::rank_memories(
         &memories,

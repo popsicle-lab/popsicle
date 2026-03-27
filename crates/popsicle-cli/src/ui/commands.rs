@@ -296,6 +296,7 @@ pub fn get_next_steps(run_id: String, state: State<AppState>) -> Result<Vec<Next
             prompt: s.prompt.clone(),
             blocked_by: s.blocked_by.clone(),
             requires_approval: s.requires_approval,
+            context_command: s.context_command.clone(),
         })
         .collect())
 }

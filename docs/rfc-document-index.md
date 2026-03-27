@@ -45,67 +45,50 @@ ALTER TABLE documents ADD COLUMN summary TEXT DEFAULT '';
 ALTER TABLE documents ADD COLUMN doc_tags TEXT DEFAULT '[]';
 ```
 
-- **summary**：3-5 行自然语言摘要，由 `engine::markdown::extract_summary()` 生成
-- **doc_tags**：JSON 数组格式的语义标签，从文档 H2 标题和 frontmatter 中提取
+- **summary**：3-5 句 LLM 生成的自然语言摘要
+- **doc_tags**：JSON 数组格式的 LLM 生成语义标签
 
 `DocumentRow` 和 `Document` 模型同步扩展。
 
-#### 2. 摘要/标签生成
-
-摘要和标签生成采用**两级策略**：规则提取作为即时 fallback，LLM 生成作为高质量覆盖。
-
-##### 2a. 规则提取（自动 fallback）
-
-**触发时机**：文档进入 final 状态时自动触发（在 `doc transition` 的 `is_final` 分支中）。
-
-**摘要生成**：复用现有 `engine::markdown::extract_summary()`，提取首段 + H2 目录。
-
-**标签提取**（纯规则，不依赖 LLM）：
-1. 文档的 `skill_name`（如 `rfc-writer`）
-2. 文档的 `doc_type`（如 `rfc`）
-3. 所有 H2 标题的关键词（去除常见停用词）
-4. frontmatter 中的 tags 字段（如果有）
-
-##### 2b. Agent 驱动的 LLM 生成（高质量覆盖）
+#### 2. 摘要/标签生成（Agent 驱动 LLM）
 
 Popsicle 遵循**依赖反转**原则：不直接调用 LLM API，而是提供工具让 Agent（Cursor / Claude Code）驱动 LLM 生成。
 
 **设计理念**：
 - Popsicle 是纯 CLI 工具，不引入 HTTP client 或 LLM SDK 依赖
 - Agent 已经拥有 LLM 调用能力，Popsicle 只需提供 prompt 生成和结果写入接口
-- 规则提取保证即使 Agent 不调用 LLM，文档也有基本的索引能力
+- 纯规则提取准确率过低，不作为 fallback，必须通过 LLM 生成
 
-**工作流程**（approve 后立即执行）：
+**工作流程**（approve 后由 `doc transition` 输出 `[ACTION REQUIRED]` 触发）：
 
 ```
-doc approve
+doc transition <id> approve --confirm
     │
-    ├─ 自动执行规则提取 → 写入 summary + tags（fallback）
-    │
-    └─ Agent 执行 LLM 增强流程：
+    └─ 输出 llm_summarize 指令（JSON: llm_summarize 字段）
          │
-         ├─ popsicle doc summarize <id> --generate-prompt
+         ├─ Agent 执行 step1: popsicle doc summarize <id> --generate-prompt --format json
          │   → 输出包含文档内容的结构化 prompt
          │
          ├─ Agent 将 prompt 发送给 LLM，获取 JSON 响应
+         │   → {"summary": "...", "tags": ["tag1", "tag2", ...]}
          │
-         └─ popsicle doc summarize <id> --summary "..." --tags "a,b,c"
-             → 覆盖规则提取的结果
+         └─ Agent 执行 step2: popsicle doc summarize <id> --summary "..." --tags "a,b,c"
+             → 写入 summary + tags 到索引
 ```
 
 **CLI 接口**：
 
 ```bash
-# Mode 1: 规则提取（默认，批量）
-popsicle doc summarize              # 当前 run 所有未摘要文档
-popsicle doc summarize <doc-id>     # 指定文档
-
-# Mode 2: 生成 LLM prompt
+# 生成 LLM prompt（单个文档）
 popsicle doc summarize <doc-id> --generate-prompt
 popsicle doc summarize <doc-id> --generate-prompt --format json
 
-# Mode 3: 直接写入 LLM 结果
+# 写入 LLM 生成的结果
 popsicle doc summarize <doc-id> --summary "LLM 生成的摘要" --tags "tag1,tag2,tag3"
+
+# 批量查看未摘要文档（输出每个文档的 prompt 指令）
+popsicle doc summarize                    # 当前 run 所有未摘要文档
+popsicle doc summarize --run <run-id>     # 指定 run
 ```
 
 **`--generate-prompt` 输出格式**（JSON）：
@@ -212,14 +195,11 @@ Prompt 组装顺序：
 #### 新增 CLI 命令
 
 ```bash
-# 为文档生成/更新摘要和标签（规则提取）
-popsicle doc summarize              # 当前 run 所有未摘要文档
-popsicle doc summarize <doc-id>     # 指定文档
-
-# Agent 驱动 LLM 生成
+# LLM 摘要生成
 popsicle doc summarize <doc-id> --generate-prompt              # 输出 LLM prompt（text）
 popsicle doc summarize <doc-id> --generate-prompt --format json # 输出 LLM prompt（JSON）
 popsicle doc summarize <doc-id> --summary "..." --tags "a,b,c" # 写入 LLM 结果
+popsicle doc summarize                                         # 批量查看未摘要文档
 
 # 跨 run 文档搜索
 popsicle context search <query>                    # 全文搜索
@@ -305,14 +285,13 @@ popsicle prompt <skill> --run <id> --related       # 启用跨 run 文档注入
 ## Open Questions
 
 - FTS5 对中文分词的支持有限（默认 unicode61 tokenizer 按空格/标点分词），是否需要引入 `simple` tokenizer 或自定义分词？当前 spec 文档以英文为主，中文支持作为后续优化。
-- ~~`popsicle doc summarize` 的标签提取质量是否足够？~~ **已解决**：采用两级策略——规则提取作为 fallback，Agent 驱动 LLM 生成作为高质量覆盖。通过 `--generate-prompt` 和 `--summary/--tags` 接口实现依赖反转。
+- ~~`popsicle doc summarize` 的标签提取质量是否足够？~~ **已解决**：纯规则提取准确率过低，已移除。改为纯 LLM 生成，通过 Agent 驱动的依赖反转模式（`--generate-prompt` + `--summary/--tags`）实现。
 - `--related` 的默认行为：是否应该在有 `--run` 时默认启用，还是必须显式指定？
 
 ## Implementation Plan
 
 - [x] Phase 1 — Schema 迁移：documents 表加 summary + doc_tags 列
-- [x] Phase 2a — 规则摘要/标签生成：`popsicle doc summarize` 命令 + approve 自动触发
-- [x] Phase 2b — Agent 驱动 LLM 生成：`--generate-prompt` + `--summary/--tags` 接口
+- [x] Phase 2 — Agent 驱动 LLM 摘要生成：`--generate-prompt` + `--summary/--tags` 接口（规则提取已移除，准确率不足）
 - [x] Phase 3 — FTS5 索引：虚拟表 + 同步触发器 + `search_documents` 方法
 - [x] Phase 4 — CLI 入口：`popsicle context search` 命令
 - [x] Phase 5 — Prompt 集成：`--related` flag + Historical References 注入

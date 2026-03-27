@@ -3,7 +3,6 @@ use std::env;
 use anyhow::Context;
 use popsicle_core::engine::guard;
 use popsicle_core::engine::hooks::{self, HookContext, HookEvent};
-use popsicle_core::engine::markdown;
 use popsicle_core::helpers;
 use popsicle_core::model::{Document, IssueStatus, PipelineDef, StageState};
 use popsicle_core::registry::SkillRegistry;
@@ -490,12 +489,19 @@ fn transition_doc(
     let hook_result = hooks::run_hook(&skill.hooks, hook_event, &hook_ctx)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // Auto-generate summary and tags when document reaches a final state
-    let auto_summary = if is_final {
-        let summary = markdown::extract_summary(&doc.body);
-        let tags = markdown::extract_tags(&doc.body, &doc.skill_name, &doc.doc_type);
-        let _ = db.update_document_summary(&doc.id, &summary, &tags);
-        Some((summary.len(), tags))
+    // When document reaches final state, output LLM summarize instructions
+    let llm_summarize = if is_final {
+        Some(serde_json::json!({
+            "action": "llm_summarize",
+            "description": "Generate summary and tags with LLM for document index",
+            "step1_generate_prompt": format!(
+                "popsicle doc summarize {} --generate-prompt --format json", doc.id
+            ),
+            "step2_write_result": format!(
+                "popsicle doc summarize {} --summary \"<LLM summary>\" --tags \"<comma,separated,tags>\"",
+                doc.id
+            ),
+        }))
     } else {
         None
     };
@@ -519,11 +525,15 @@ fn transition_doc(
                     println!("    {}", result.stdout.trim());
                 }
             }
-            if let Some((len, ref tags)) = auto_summary {
+            if llm_summarize.is_some() {
+                println!("  [ACTION REQUIRED] Generate summary with LLM:");
                 println!(
-                    "  Auto-summarized: {} chars, tags=[{}]",
-                    len,
-                    tags.join(", ")
+                    "    Step 1: popsicle doc summarize {} --generate-prompt --format json",
+                    doc.id
+                );
+                println!(
+                    "    Step 2: popsicle doc summarize {} --summary \"<LLM output>\" --tags \"<LLM tags>\"",
+                    doc.id
                 );
             }
         }
@@ -536,10 +546,7 @@ fn transition_doc(
                 "title": doc.title,
                 "is_final": is_final,
                 "stage_update": stage_update,
-                "auto_summary": auto_summary.as_ref().map(|(len, tags)| serde_json::json!({
-                    "summary_length": len,
-                    "tags": tags,
-                })),
+                "llm_summarize": llm_summarize,
                 "hook": hook_result.as_ref().map(|r| serde_json::json!({
                     "event": r.event.to_string(),
                     "success": r.success,
@@ -551,23 +558,6 @@ fn transition_doc(
     }
 
     Ok(())
-}
-
-/// Generate summary and tags for a single document and persist to the index.
-fn generate_and_store_summary(
-    db: &IndexDb,
-    doc_row: &popsicle_core::storage::DocumentRow,
-) -> anyhow::Result<(String, Vec<String>)> {
-    let doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    let summary = markdown::extract_summary(&doc.body);
-    let tags = markdown::extract_tags(&doc.body, &doc_row.skill_name, &doc_row.doc_type);
-
-    db.update_document_summary(&doc_row.id, &summary, &tags)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    Ok((summary, tags))
 }
 
 /// Build a prompt that an LLM can use to generate a high-quality summary and tags.
@@ -646,18 +636,12 @@ fn summarize_doc(
         let doc_row = find_doc_row(&db, doc_id)?;
 
         let summary = direct_summary.unwrap_or("").to_string();
-        let tags: Vec<String> = if let Some(tags_str) = direct_tags {
-            tags_str
-                .split(',')
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
-                .collect()
-        } else {
-            // If only --summary is given, keep rule-based tags as supplement
-            let doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
-            markdown::extract_tags(&doc.body, &doc_row.skill_name, &doc_row.doc_type)
-        };
+        let tags: Vec<String> = direct_tags
+            .unwrap_or("")
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
 
         db.update_document_summary(doc_id, &summary, &tags)
             .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -678,7 +662,6 @@ fn summarize_doc(
                     "title": doc_row.title,
                     "summary_length": summary.len(),
                     "tags": tags,
-                    "mode": "direct",
                     "status": "ok",
                 });
                 println!("{}", serde_json::to_string_pretty(&result)?);
@@ -687,7 +670,7 @@ fn summarize_doc(
         return Ok(());
     }
 
-    // Mode 3: default — rule-based extraction (existing behavior)
+    // Mode 3: default (no flags) — batch generate prompts for unsummarized docs
     let target_docs: Vec<popsicle_core::storage::DocumentRow> = if let Some(doc_id) = id {
         let all = db
             .query_documents(None, None, None)
@@ -710,24 +693,21 @@ fn summarize_doc(
         return Ok(());
     }
 
-    let mut results = Vec::new();
+    let mut prompts = Vec::new();
     for doc_row in &target_docs {
-        match generate_and_store_summary(&db, doc_row) {
-            Ok((summary, tags)) => {
-                results.push(serde_json::json!({
-                    "id": doc_row.id,
+        match FileStorage::read_document(std::path::Path::new(&doc_row.file_path)) {
+            Ok(doc) => {
+                let prompt = build_summarize_prompt(doc_row, &doc.body);
+                prompts.push(serde_json::json!({
+                    "doc_id": doc_row.id,
                     "title": doc_row.title,
-                    "summary_length": summary.len(),
-                    "tags": tags,
-                    "mode": "rule",
-                    "status": "ok",
+                    "prompt": prompt,
                 }));
             }
             Err(e) => {
-                results.push(serde_json::json!({
-                    "id": doc_row.id,
+                prompts.push(serde_json::json!({
+                    "doc_id": doc_row.id,
                     "title": doc_row.title,
-                    "status": "error",
                     "error": e.to_string(),
                 }));
             }
@@ -736,30 +716,27 @@ fn summarize_doc(
 
     match format {
         OutputFormat::Text => {
-            for r in &results {
-                let status = r["status"].as_str().unwrap_or("?");
-                let title = r["title"].as_str().unwrap_or("?");
-                let id_val = r["id"].as_str().unwrap_or("?");
-                if status == "ok" {
-                    let tags = r["tags"]
-                        .as_array()
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        })
-                        .unwrap_or_default();
-                    println!("Summarized '{}' ({}): tags=[{}]", title, id_val, tags);
+            println!("{} document(s) need LLM summarization.\n", prompts.len());
+            for p in &prompts {
+                let title = p["title"].as_str().unwrap_or("?");
+                let doc_id = p["doc_id"].as_str().unwrap_or("?");
+                if p.get("error").is_some() {
+                    println!("  [ERROR] '{}' ({}): {}", title, doc_id, p["error"]);
                 } else {
-                    let err = r["error"].as_str().unwrap_or("unknown");
-                    println!("Failed '{}' ({}): {}", title, id_val, err);
+                    println!("  '{}' ({}):", title, doc_id);
+                    println!(
+                        "    popsicle doc summarize {} --generate-prompt --format json",
+                        doc_id
+                    );
+                    println!(
+                        "    popsicle doc summarize {} --summary \"...\" --tags \"...\"",
+                        doc_id
+                    );
                 }
             }
-            println!("\n{} document(s) processed.", results.len());
         }
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&results)?);
+            println!("{}", serde_json::to_string_pretty(&prompts)?);
         }
     }
 

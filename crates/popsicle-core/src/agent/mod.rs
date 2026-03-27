@@ -135,6 +135,11 @@ fn build_skill_command(skill: &SkillDef) -> String {
     s.push_str("```bash\n");
     s.push_str("# Verify an active pipeline run exists and this skill is the current step\n");
     s.push_str("popsicle pipeline next --format json\n\n");
+    s.push_str("# Get enriched prompt with historical references and project context\n");
+    s.push_str(&format!(
+        "popsicle prompt {} --run <run-id> --related --format json\n\n",
+        skill.name
+    ));
     s.push_str("# Create the document\n");
     s.push_str(&format!(
         "popsicle doc create {} --title \"<title>\" --run <run-id>\n\n",
@@ -271,6 +276,14 @@ popsicle pipeline next --format json
 
 Execute the suggested action. NEVER skip pipeline steps or write code outside of a pipeline run.
 
+**When `context_command` is present** (action = `create`):
+
+1. Run the `context_command` first — it returns an enriched prompt with project context, memories, historical references, and upstream documents.
+2. Use the `full_prompt` from the JSON output as the writing instruction for the new document.
+3. Then run the `cli_command` to create the document.
+
+This ensures every new document benefits from cross-run historical context and accumulated project memories.
+
 ## Key Commands
 
 ### Issue (start here)
@@ -297,19 +310,23 @@ Execute the suggested action. NEVER skip pipeline steps or write code outside of
 - `popsicle context search <query>` — search documents across all runs (FTS5)
 - `popsicle git link --doc <id> --stage <s>` — link commit to document
 
-## Document Summarization (after approve)
+## Document Summarization (MANDATORY after approve)
 
-When a document reaches a final state (e.g. approved), Popsicle auto-generates a rule-based summary as fallback. For higher quality, generate an LLM-powered summary immediately after approve:
+When `popsicle doc transition` outputs `[ACTION REQUIRED]` (text mode) or a `llm_summarize` field (JSON mode), you **MUST** immediately execute the LLM summarize workflow. Without this step, the document will NOT be indexed for cross-run search.
+
+1. Run `step1_generate_prompt` — this outputs a structured prompt with the document content
+2. Send the `prompt` field to your LLM, parse the JSON response: `{"summary": "...", "tags": [...]}`
+3. Run `step2_write_result` with the LLM-generated summary and tags
 
 ```bash
 # Step 1: Get the summarize prompt
 popsicle doc summarize <doc-id> --generate-prompt --format json
 
-# Step 2: Use the returned prompt to call your LLM, then write results back
+# Step 2: Send the "prompt" field to your LLM, then write results back
 popsicle doc summarize <doc-id> --summary "LLM-generated summary" --tags "tag1,tag2,tag3"
 ```
 
-This overwrites the rule-based summary with a higher-quality LLM version, improving cross-run document search accuracy.
+Do NOT skip this step. Documents without LLM-generated summaries will not appear in cross-run search results.
 
 ## Workflow Rules
 
@@ -605,4 +622,6 @@ popsicle pipeline next --format json
 ```
 
 Then execute the suggested CLI command. If a step has `requires_approval: true`, STOP and ask the user to review before proceeding.
+
+**Important**: When a step includes a `context_command` field, run it FIRST to get the enriched prompt (with historical references and project memories), then use that prompt to guide document creation.
 "#;

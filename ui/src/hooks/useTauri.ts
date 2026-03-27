@@ -102,6 +102,7 @@ export interface NextStepInfo {
   prompt: string | null;
   blocked_by: string[];
   requires_approval: boolean;
+  context_command?: string;
 }
 
 export function useRefresh(callback: () => void) {

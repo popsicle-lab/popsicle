@@ -19,6 +19,10 @@ pub struct NextStep {
     pub prompt: Option<String>,
     pub blocked_by: Vec<String>,
     pub requires_approval: bool,
+    /// CLI command to retrieve enriched prompt with historical references.
+    /// Present when action is "create" — the agent should run this BEFORE creating the document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_command: Option<String>,
     /// Contextual hints for the user/agent (e.g., skipped upstream skills).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hints: Vec<String>,
@@ -74,6 +78,11 @@ impl Advisor {
                             let hints =
                                 Self::build_skill_hints(skill_name, registry, &pipeline_skills);
 
+                            let context_command = Some(format!(
+                                "popsicle prompt {} --run {} --related --format json",
+                                skill_name, run.id
+                            ));
+
                             steps.push(NextStep {
                                 stage: stage.name.clone(),
                                 skill: skill_name.to_string(),
@@ -86,6 +95,7 @@ impl Advisor {
                                 prompt,
                                 blocked_by: vec![],
                                 requires_approval: false,
+                                context_command,
                                 hints,
                             });
                         }
@@ -128,6 +138,7 @@ impl Advisor {
                             prompt: None,
                             blocked_by: missing.clone(),
                             requires_approval: false,
+                            context_command: None,
                             hints: vec![],
                         });
                     }
@@ -248,6 +259,7 @@ impl Advisor {
                         prompt,
                         blocked_by: vec![],
                         requires_approval: transition.requires_approval,
+                        context_command: None,
                         hints,
                     });
                 }

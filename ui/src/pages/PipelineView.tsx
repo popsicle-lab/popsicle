@@ -422,8 +422,23 @@ function NextStepCard({ step }: { step: NextStepInfo }) {
           需您本人审批：请先审阅/参与讨论，确认后由您本人在终端执行下方命令，勿让 AI 代执行。
         </p>
       )}
+      {step.context_command && (
+        <div className="mb-2">
+          <span className="text-xs text-[var(--text-secondary)]">
+            Step 1 — get enriched prompt:
+          </span>
+          <code className="block text-xs bg-[var(--bg-primary)] px-3 py-1.5 rounded font-mono text-[var(--accent)] overflow-x-auto mt-1">
+            $ {step.context_command}
+          </code>
+        </div>
+      )}
       {step.cli_command && (
         <div className="flex items-center gap-2">
+          {step.context_command && (
+            <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
+              Step 2 —
+            </span>
+          )}
           <code className="flex-1 text-xs bg-[var(--bg-primary)] px-3 py-1.5 rounded font-mono text-[var(--accent)] overflow-x-auto">
             $ {cmdToShow}
           </code>

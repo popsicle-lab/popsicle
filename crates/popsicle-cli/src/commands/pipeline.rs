@@ -646,7 +646,12 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
                         approval_tag
                     );
                     println!("   {}", step.description);
-                    if step.requires_approval {
+                    if let Some(ctx_cmd) = &step.context_command {
+                        println!("   Step 1 — get enriched prompt (with historical references):");
+                        println!("   $ {}", ctx_cmd);
+                        println!("   Step 2 — create document:");
+                        println!("   $ {}", step.cli_command);
+                    } else if step.requires_approval {
                         println!(
                             "   → 此步骤需您本人审批，请先审阅文档/参与讨论，勿由 AI 代执行。"
                         );

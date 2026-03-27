@@ -186,6 +186,8 @@ pub struct NextStepInfo {
     pub prompt: Option<String>,
     pub blocked_by: Vec<String>,
     pub requires_approval: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_command: Option<String>,
 }
 
 #[derive(Serialize)]
