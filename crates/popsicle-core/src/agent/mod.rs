@@ -432,6 +432,11 @@ fn install_claude(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
     std::fs::write(ctx_scan_dir.join("SKILL.md"), SKILL_CONTEXT_SCAN)?;
     installed.push(".claude/skills/popsicle-context-scan/SKILL.md".to_string());
 
+    let bootstrap_dir = skills_dir.join("popsicle-bootstrap");
+    std::fs::create_dir_all(&bootstrap_dir)?;
+    std::fs::write(bootstrap_dir.join("SKILL.md"), SKILL_BOOTSTRAP)?;
+    installed.push(".claude/skills/popsicle-bootstrap/SKILL.md".to_string());
+
     Ok(installed)
 }
 
@@ -466,6 +471,11 @@ fn install_cursor(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
     std::fs::create_dir_all(&ctx_scan_dir)?;
     std::fs::write(ctx_scan_dir.join("SKILL.md"), SKILL_CONTEXT_SCAN)?;
     installed.push(".cursor/skills/popsicle-context-scan/SKILL.md".to_string());
+
+    let bootstrap_dir = skills_dir.join("popsicle-bootstrap");
+    std::fs::create_dir_all(&bootstrap_dir)?;
+    std::fs::write(bootstrap_dir.join("SKILL.md"), SKILL_BOOTSTRAP)?;
+    installed.push(".cursor/skills/popsicle-bootstrap/SKILL.md".to_string());
 
     Ok(installed)
 }
@@ -624,4 +634,75 @@ popsicle pipeline next --format json
 Then execute the suggested CLI command. If a step has `requires_approval: true`, STOP and ask the user to review before proceeding.
 
 **Important**: When a step includes a `context_command` field, run it FIRST to get the enriched prompt (with historical references and project memories), then use that prompt to guide document creation.
+"#;
+
+const SKILL_BOOTSTRAP: &str = r#"---
+name: popsicle-bootstrap
+description: Bootstrap a project from an installed module. Discovers existing docs, generates an LLM-driven plan, and creates a Topic with imported documents and pipeline run.
+---
+
+Bootstrap a project by analyzing its existing documentation and mapping it to module skills.
+
+Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
+
+## When to Use
+
+- After `popsicle init --module <source>` when the project has existing documentation
+- After `popsicle module install <source>` to set up the workflow for the project
+- When starting a new popsicle workflow on a project with existing docs (README, specs, RFCs, etc.)
+
+## 3-Step Bootstrap Flow
+
+### Step 1: Ensure project context exists
+
+```bash
+popsicle context scan --force
+```
+
+### Step 2: Generate the bootstrap prompt
+
+```bash
+popsicle context bootstrap --generate-prompt --format json
+```
+
+This outputs a JSON object with a `prompt` field. The prompt includes:
+- Project technical profile
+- File tree
+- Discovered documentation with content previews
+- Module's bootstrap instructions (from `bootstrap.md`)
+- Available skills and pipelines
+
+### Step 3: Send prompt to LLM and apply the plan
+
+Send the `prompt` field to your LLM. It will return a JSON bootstrap plan like:
+
+```json
+{
+  "topic_name": "my-project",
+  "pipeline": "full-sdlc",
+  "documents": [
+    {"path": "docs/prd.md", "skill": "prd-writer", "doc_type": "prd", "title": "Product Requirements"},
+    {"path": "README.md", "skill": "domain-analysis", "doc_type": "overview", "title": "Project Overview"}
+  ],
+  "summary": "Rust CLI project with existing PRD and README"
+}
+```
+
+Apply the plan:
+
+```bash
+popsicle context bootstrap --apply '<JSON plan>' --start
+```
+
+Use `--start` to also create a PipelineRun. Omit it to only create the Topic and import documents.
+
+If the JSON is large, save it to a file and use:
+
+```bash
+popsicle context bootstrap --apply @bootstrap-plan.json --start
+```
+
+## After Bootstrap
+
+Run `popsicle pipeline next --format json` to see the first recommended action in the new pipeline run.
 "#;

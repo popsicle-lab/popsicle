@@ -25,6 +25,10 @@ pub struct InitArgs {
     #[arg(short, long)]
     module: Option<String>,
 
+    /// Print bootstrap instructions after init (use with --module)
+    #[arg(long)]
+    bootstrap: bool,
+
     /// Skip installing agent instruction files
     #[arg(long)]
     no_agent_files: bool,
@@ -211,6 +215,14 @@ targets = [{}]
                 }
             }
             println!("  Config: {}", config_path.display());
+
+            if args.bootstrap && module_installed.is_some() {
+                println!();
+                println!("  Bootstrap: run the following to set up your project workflow:");
+                println!("    popsicle context bootstrap --generate-prompt --format json");
+                println!("    # → send the 'prompt' field to your LLM, get a JSON plan back");
+                println!("    popsicle context bootstrap --apply '<JSON plan>' --start");
+            }
         }
         OutputFormat::Json => {
             let result = serde_json::json!({
@@ -232,6 +244,11 @@ targets = [{}]
                     "version": mi.version,
                     "source": args.module,
                 })),
+                "bootstrap_hint": if args.bootstrap && module_installed.is_some() {
+                    Some("Run `popsicle context bootstrap --generate-prompt` to start bootstrapping")
+                } else {
+                    None
+                },
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }

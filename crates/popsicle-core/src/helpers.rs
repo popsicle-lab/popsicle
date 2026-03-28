@@ -6,7 +6,7 @@ use crate::registry::{PipelineLoader, SkillLoader, SkillRegistry, ToolLoader, To
 use crate::storage::{ProjectConfig, ProjectLayout};
 
 /// Resolve the active module name from config, falling back to "official".
-fn active_module_name(project_dir: &Path) -> String {
+pub fn active_module_name(project_dir: &Path) -> String {
     let config_path = project_dir.join(".popsicle").join("config.toml");
     ProjectConfig::load(&config_path)
         .map(|c| c.module.name_or_default().to_string())

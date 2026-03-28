@@ -245,6 +245,12 @@ fn install_module(source: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 println!("  Description: {}", desc);
             }
             println!("  Agent instructions: regenerated");
+
+            if popsicle_core::helpers::load_bootstrap_md(&project_dir).is_some() {
+                println!();
+                println!("  Tip: this module supports bootstrap. Run:");
+                println!("    popsicle context bootstrap --generate-prompt --format json");
+            }
         }
         OutputFormat::Json => {
             let result = serde_json::json!({

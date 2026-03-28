@@ -1,6 +1,9 @@
 use std::env;
 use std::io::Read as _;
 
+use popsicle_core::engine::bootstrap::{
+    BootstrapPlan, BootstrapResult, build_bootstrap_prompt, execute_bootstrap_plan,
+};
 use popsicle_core::engine::markdown::upsert_section;
 use popsicle_core::helpers;
 use popsicle_core::scanner::ProjectScanner;
@@ -21,6 +24,9 @@ pub enum ContextCommand {
 
     /// Search documents across all pipeline runs using full-text search
     Search(SearchArgs),
+
+    /// Bootstrap project from installed module (2-step: generate-prompt → apply)
+    Bootstrap(BootstrapArgs),
 }
 
 #[derive(clap::Args)]
@@ -38,6 +44,21 @@ pub struct ScanArgs {
     /// Overwrite existing project-context.md
     #[arg(long)]
     force: bool,
+}
+
+#[derive(clap::Args)]
+pub struct BootstrapArgs {
+    /// Generate a prompt for the LLM to produce a bootstrap plan
+    #[arg(long)]
+    generate_prompt: bool,
+
+    /// Apply a bootstrap plan (JSON string or @file path)
+    #[arg(long)]
+    apply: Option<String>,
+
+    /// Also create a PipelineRun (used with --apply)
+    #[arg(long)]
+    start: bool,
 }
 
 #[derive(clap::Args)]
@@ -77,6 +98,7 @@ pub fn execute(cmd: ContextCommand, format: &OutputFormat) -> anyhow::Result<()>
         ContextCommand::Scan(args) => execute_scan(args, format),
         ContextCommand::Update(args) => execute_update(args, format),
         ContextCommand::Search(args) => execute_search(args, format),
+        ContextCommand::Bootstrap(args) => execute_bootstrap(args, format),
     }
 }
 
@@ -394,6 +416,185 @@ fn execute_search(args: SearchArgs, format: &OutputFormat) -> anyhow::Result<()>
     }
 
     Ok(())
+}
+
+// ── bootstrap ──
+
+fn execute_bootstrap(args: BootstrapArgs, format: &OutputFormat) -> anyhow::Result<()> {
+    let cwd = env::current_dir()?;
+    let layout = ProjectLayout::new(&cwd);
+    layout
+        .ensure_initialized()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    if args.generate_prompt {
+        return execute_bootstrap_generate_prompt(&cwd, &layout, format);
+    }
+
+    if let Some(ref input) = args.apply {
+        return execute_bootstrap_apply(input, &cwd, args.start, format);
+    }
+
+    anyhow::bail!("Specify --generate-prompt or --apply <json>. See --help for usage.");
+}
+
+fn execute_bootstrap_generate_prompt(
+    cwd: &std::path::Path,
+    layout: &ProjectLayout,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
+    // Load project context
+    let context_path = layout.project_context_path();
+    let project_context = if context_path.exists() {
+        std::fs::read_to_string(&context_path)?
+    } else {
+        let scanner = ProjectScanner::new(cwd);
+        let content = scanner.scan();
+        std::fs::write(&context_path, &content)?;
+        content
+    };
+
+    // Generate file tree (depth-limited)
+    let file_tree = generate_file_tree(cwd, 3);
+
+    // Discover documentation
+    let scanner = ProjectScanner::new(cwd);
+    let discovered_docs = scanner.detect_documentation();
+
+    // Load module bootstrap.md
+    let bootstrap_md = helpers::load_bootstrap_md(cwd);
+
+    // Load available skills and pipelines
+    let registry = helpers::load_registry(cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let skills: Vec<String> = registry.list().iter().map(|s| s.name.clone()).collect();
+
+    let pipelines = helpers::load_pipelines(cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let pipeline_names: Vec<String> = pipelines.iter().map(|p| p.name.clone()).collect();
+
+    let prompt = build_bootstrap_prompt(
+        &project_context,
+        &file_tree,
+        &discovered_docs,
+        bootstrap_md.as_deref(),
+        &skills,
+        &pipeline_names,
+    );
+
+    let module_name = helpers::active_module_name(cwd);
+
+    match format {
+        OutputFormat::Text => println!("{}", prompt),
+        OutputFormat::Json => {
+            let result = serde_json::json!({
+                "module": module_name,
+                "skills": skills,
+                "pipelines": pipeline_names,
+                "discovered_docs": discovered_docs.len(),
+                "prompt": prompt,
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+    }
+
+    Ok(())
+}
+
+fn execute_bootstrap_apply(
+    input: &str,
+    cwd: &std::path::Path,
+    start: bool,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
+    // Parse JSON from string or @file
+    let json_str = if let Some(file_path) = input.strip_prefix('@') {
+        std::fs::read_to_string(file_path)?
+    } else {
+        input.to_string()
+    };
+
+    let plan: BootstrapPlan =
+        serde_json::from_str(&json_str).map_err(|e| anyhow::anyhow!("Invalid bootstrap plan JSON: {}", e))?;
+
+    let result: BootstrapResult =
+        execute_bootstrap_plan(&plan, cwd, start).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    match format {
+        OutputFormat::Text => {
+            println!("✓ Bootstrap complete");
+            println!("  Topic: {} ({})", result.topic_name, result.topic_id);
+            if let Some(ref run_id) = result.pipeline_run_id {
+                println!("  Pipeline run: {} ({})", plan.pipeline, run_id);
+            }
+            println!("  Documents imported: {}", result.documents_imported);
+            if !result.summary.is_empty() {
+                println!("  Summary: {}", result.summary);
+            }
+        }
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+    }
+
+    Ok(())
+}
+
+/// Generate a simple file tree string, limited to a given depth.
+fn generate_file_tree(root: &std::path::Path, max_depth: usize) -> String {
+    let mut out = String::new();
+    walk_tree(root, root, 0, max_depth, &mut out);
+    out
+}
+
+fn walk_tree(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    depth: usize,
+    max_depth: usize,
+    out: &mut String,
+) {
+    if depth >= max_depth {
+        return;
+    }
+
+    let skip_dirs = [
+        "node_modules",
+        "target",
+        ".git",
+        ".popsicle",
+        "vendor",
+        "dist",
+        "build",
+        "__pycache__",
+        ".next",
+    ];
+
+    let mut entries: Vec<_> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                !name.starts_with('.') || name == ".github"
+            })
+            .collect(),
+        Err(_) => return,
+    };
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let indent = "  ".repeat(depth);
+        let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+
+        if is_dir {
+            if skip_dirs.contains(&name.as_str()) {
+                continue;
+            }
+            out.push_str(&format!("{}{}/\n", indent, name));
+            walk_tree(&entry.path(), root, depth + 1, max_depth, out);
+        } else {
+            out.push_str(&format!("{}{}\n", indent, name));
+        }
+    }
 }
 
 fn find_pipeline(name: &str) -> anyhow::Result<popsicle_core::model::PipelineDef> {
