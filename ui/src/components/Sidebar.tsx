@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Brain,
   Search,
+  Tags,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -21,6 +22,7 @@ const navItems: {
 }[] = [
   { kind: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { kind: "issues", label: "Issues", icon: ClipboardList },
+  { kind: "topics", label: "Topics", icon: Tags },
   { kind: "search", label: "Doc Search", icon: Search },
   { kind: "git", label: "Git Tracking", icon: GitBranch },
   { kind: "memories", label: "Memories", icon: Brain },
@@ -39,6 +41,9 @@ export function Sidebar({ page, setPage }: Props) {
   const isActive = (kind: Page["kind"]) => {
     if (kind === "issues") {
       return page.kind === "issues" || issueChildKinds.has(page.kind);
+    }
+    if (kind === "topics") {
+      return page.kind === "topics" || page.kind === "topic";
     }
     return page.kind === kind;
   };

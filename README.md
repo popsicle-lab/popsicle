@@ -8,8 +8,9 @@ It organizes the full software development lifecycle through composable **Skills
 
 - **Module** — A self-contained distribution unit packaging a set of Skills and Pipelines together; one active module per project, upgradeable via CLI or binary update
 - **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `domain-analysis`, `arch-debate`, `rfc-writer`)
-- **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages
-- **Document** — Artifacts produced by Skills, stored as YAML frontmatter + Markdown files for Git-friendliness
+- **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Topic for continuity and revision support
+- **Topic** — Groups related pipeline runs and documents under a single development theme (e.g., "jwt-migration"); enables cross-pipeline document sharing, version tracking, and pipeline revision
+- **Document** — Artifacts produced by Skills, stored as YAML frontmatter + Markdown files for Git-friendliness; linked to a Topic for cross-run visibility with automatic version tracking
 - **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
 - **Guard** — Conditions on workflow transitions that enforce upstream approval and document completeness
@@ -110,6 +111,18 @@ popsicle issue start PROJ-1
 # See what to do next
 popsicle pipeline next
 
+# Create a topic for related work
+popsicle topic create "Add user authentication"
+
+# Start a pipeline run linked to a topic
+popsicle pipeline run full-sdlc --title "Auth implementation" --topic "Add user authentication"
+
+# Revise specific stages of a completed run
+popsicle pipeline revise <run-id> --stages design,implementation
+
+# View topic details with all runs and documents
+popsicle topic show "Add user authentication"
+
 # Quick change (skip full pipeline ceremony)
 popsicle pipeline quick --title "Fix login button"
 
@@ -168,13 +181,23 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle init [--agent <targets>] [--module <source>]` | Initialize project (idempotent); optionally install a module in the same step |
 | `popsicle pipeline list` | List available pipeline templates |
 | `popsicle pipeline create <name>` | Create a custom pipeline template |
-| `popsicle pipeline run <pipeline> --title <t>` | Start a pipeline run |
+| `popsicle pipeline run <pipeline> --title <t> [--topic <name>]` | Start a pipeline run |
 | `popsicle pipeline quick --title <t> [--skill <s>]` | Quick single-stage run (skip full pipeline) |
 | `popsicle pipeline status [--run <id>]` | Show pipeline run status with documents |
 | `popsicle pipeline next [--run <id>]` | Advisor: recommended next steps |
 | `popsicle pipeline verify [--run <id>]` | Verify all stages complete and documents approved |
 | `popsicle pipeline archive [--run <id>]` | Archive a completed pipeline run |
 | `popsicle pipeline recommend --task <desc>` | Recommend pipeline based on task description |
+| `popsicle pipeline revise <run-id> --stages <list>` | Revise specific stages of a completed pipeline run |
+
+### Topic Management
+
+| Command | Description |
+|---------|-------------|
+| `popsicle topic create <name> [-d <desc>] [-t <tags>]` | Create a new topic |
+| `popsicle topic list` | List all topics |
+| `popsicle topic show <name>` | Show topic details with runs and documents |
+| `popsicle topic delete <name> [--force]` | Delete a topic (--force to delete with existing runs) |
 
 ### Module Management
 
@@ -437,6 +460,8 @@ workflow:
 AI Agents ──→ CLI (only write path) ──→ Core Engine ──→ Files + SQLite
 Developer ──→                               ↑
                                   Desktop UI (read-only)
+                                    ├── Dashboard with topic overview
+                                    ├── Topic browser & detail view
                                     ├── Pipeline DAG visualization
                                     ├── Document viewer + metadata panel
                                     ├── Discussion viewer (conversational UI)
@@ -455,6 +480,7 @@ Developer ──→                               ↑
 - **Git-aware** — Post-commit hooks auto-track commits; link commits to documents, stages, and skills
 - **Multi-agent** — Native support for Claude Code and Cursor with auto-generated skills following the Agent Skills open standard
 - **Hybrid storage** — Documents as Markdown files (Git-friendly), metadata and state indexed in SQLite
+- **Topic-driven** — Pipeline runs and documents grouped by topic for cross-run document sharing, version tracking, and iterative revision
 - **Context-aware** — Project tech profile auto-scanned and injected with attention-optimized ordering (low → medium → high relevance)
 - **Memory-driven** — Cross-session memory with event-driven staleness, two-layer promotion, and 200-line budget
 - **Work item traceability** — Bugs, stories, and test cases linked across documents, pipeline runs, issues, and commits
@@ -477,7 +503,7 @@ your-project/
 │   ├── artifacts/                # Documents organized by pipeline run
 │   ├── project-context.md        # Auto-scanned technical profile
 │   ├── memories.md               # Cross-session memory store (≤200 lines)
-│   ├── popsicle.db               # SQLite index (docs, bugs, stories, test cases, memories)
+│   ├── popsicle.db               # SQLite index (topics, docs, pipeline runs, bugs, stories, test cases, memories)
 │   └── config.toml               # Project config (includes [module] section)
 ├── .claude/                      # Claude Code (--agent claude)
 │   ├── CLAUDE.md                 # Instructions + skill catalog
@@ -497,7 +523,8 @@ popsicle ui
 
 The Tauri desktop app provides read-only visualization:
 
-- **Dashboard** — Pipeline run overview, Git status bar, document statistics, quick actions with copyable commands
+- **Dashboard** — Topic overview, pipeline run summary, Git status bar, document statistics, quick actions with copyable commands
+- **Topics** — Topic list with run/document counts, detail view with related pipeline runs, documents (latest versions), and revision history
 - **Issues** — Issue list with type/status filters, pipeline binding indicator, create form with pipeline selector, detail view with progress tracking
 - **Pipeline View** — Stage DAG with status highlighting, documents and commits per stage, verification status, archive hint, Next Step Advisor
 - **Document Viewer** — Markdown rendering + metadata panel (type, status, skill, tags, timeline, linked commits)

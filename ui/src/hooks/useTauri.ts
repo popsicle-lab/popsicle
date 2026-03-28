@@ -41,6 +41,30 @@ export interface PipelineRunInfo {
   title: string;
   created_at: string;
   updated_at: string;
+  topic_id: string;
+  run_type: string;
+}
+
+export interface TopicInfo {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  tags: string[];
+  created_at: string;
+  run_count: number;
+  doc_count: number;
+}
+
+export interface TopicDetailInfo {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  tags: string[];
+  created_at: string;
+  runs: PipelineRunInfo[];
+  documents: DocInfo[];
 }
 
 export interface PipelineStatusFull {
@@ -565,6 +589,16 @@ export async function getDiscussion(
   discussionId: string
 ): Promise<DiscussionFull> {
   return invoke("get_discussion", { discussionId });
+}
+
+// ── Topic types ──
+
+export async function listTopics(): Promise<TopicInfo[]> {
+  return invoke("list_topics");
+}
+
+export async function getTopic(topicName: string): Promise<TopicDetailInfo> {
+  return invoke("get_topic", { topicName });
 }
 
 // ── Memory types ──

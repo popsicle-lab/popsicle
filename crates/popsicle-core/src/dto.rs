@@ -112,6 +112,8 @@ pub struct PipelineRunInfo {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    pub topic_id: String,
+    pub run_type: String,
 }
 
 #[derive(Serialize)]
@@ -454,6 +456,32 @@ pub struct AcceptanceCriterionInfo {
     pub description: String,
     pub verified: bool,
     pub test_case_ids: Vec<String>,
+}
+
+// ── Topic ──
+
+#[derive(Serialize)]
+pub struct TopicInfo {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+    pub tags: Vec<String>,
+    pub created_at: String,
+    pub run_count: u32,
+    pub doc_count: u32,
+}
+
+#[derive(Serialize)]
+pub struct TopicDetailInfo {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+    pub tags: Vec<String>,
+    pub created_at: String,
+    pub runs: Vec<PipelineRunInfo>,
+    pub documents: Vec<DocInfo>,
 }
 
 // ── Memory ──

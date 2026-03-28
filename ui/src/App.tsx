@@ -14,6 +14,8 @@ import { TestCaseDetailView } from "./pages/TestCaseDetailView";
 import { StoryDetailView } from "./pages/StoryDetailView";
 import { MemoriesView } from "./pages/MemoriesView";
 import { SearchView } from "./pages/SearchView";
+import { TopicsView } from "./pages/TopicsView";
+import { TopicDetailView } from "./pages/TopicDetailView";
 import { ProjectPicker } from "./components/ProjectPicker";
 
 export type Page =
@@ -29,7 +31,9 @@ export type Page =
   | { kind: "testcase"; testCaseKey: string; fromIssue?: string }
   | { kind: "story"; storyKey: string; fromIssue?: string }
   | { kind: "memories" }
-  | { kind: "search" };
+  | { kind: "search" }
+  | { kind: "topics" }
+  | { kind: "topic"; topicName: string };
 
 export default function App() {
   const { dir, setProjectDir } = useProjectDir();
@@ -143,6 +147,16 @@ export default function App() {
         )}
         {page.kind === "search" && (
           <SearchView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "topics" && (
+          <TopicsView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "topic" && (
+          <TopicDetailView
+            key={`${page.topicName}-${refreshKey}`}
+            topicName={page.topicName}
+            setPage={setPage}
+          />
         )}
       </main>
     </div>

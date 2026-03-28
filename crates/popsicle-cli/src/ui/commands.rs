@@ -6,7 +6,7 @@ use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
 use popsicle_core::model::{
-    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, StageState,
+    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, StageState, Topic,
 };
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
@@ -158,6 +158,8 @@ pub fn list_pipeline_runs(state: State<AppState>) -> Result<Vec<PipelineRunInfo>
             title: r.title.clone(),
             created_at: r.created_at.clone(),
             updated_at: r.updated_at.clone(),
+            topic_id: r.topic_id.clone(),
+            run_type: r.run_type.clone(),
         })
         .collect())
 }
@@ -1473,4 +1475,72 @@ pub fn get_memory(id: u32, state: State<AppState>) -> Result<MemoryInfo, String>
         .ok_or_else(|| format!("Memory #{} not found", id))?;
 
     Ok(memory_to_info(memory))
+}
+
+#[tauri::command]
+pub fn list_topics(state: State<AppState>) -> Result<Vec<TopicInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+    let topics = db.list_topics().map_err(|e| e.to_string())?;
+    Ok(topics
+        .iter()
+        .map(|t| {
+            let run_count = db.list_topic_runs(&t.id).map(|r| r.len() as u32).unwrap_or(0);
+            let doc_count = db
+                .query_topic_documents(&t.id)
+                .map(|d| d.len() as u32)
+                .unwrap_or(0);
+            TopicInfo {
+                id: t.id.clone(),
+                name: t.name.clone(),
+                slug: t.slug.clone(),
+                description: t.description.clone(),
+                tags: t.tags.clone(),
+                created_at: t.created_at.to_rfc3339(),
+                run_count,
+                doc_count,
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDetailInfo, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let topic = db
+        .find_topic_by_name(&topic_name)
+        .map_err(|e| e.to_string())?
+        .or_else(|| db.get_topic(&topic_name).ok().flatten())
+        .ok_or_else(|| format!("Topic not found: {}", topic_name))?;
+
+    let runs = db.list_topic_runs(&topic.id).map_err(|e| e.to_string())?;
+    let docs = db
+        .query_topic_documents(&topic.id)
+        .map_err(|e| e.to_string())?;
+
+    Ok(TopicDetailInfo {
+        id: topic.id.clone(),
+        name: topic.name.clone(),
+        slug: topic.slug.clone(),
+        description: topic.description.clone(),
+        tags: topic.tags.clone(),
+        created_at: topic.created_at.to_rfc3339(),
+        runs: runs
+            .iter()
+            .map(|r| PipelineRunInfo {
+                id: r.id.clone(),
+                pipeline_name: r.pipeline_name.clone(),
+                title: r.title.clone(),
+                created_at: r.created_at.clone(),
+                updated_at: r.updated_at.clone(),
+                topic_id: r.topic_id.clone(),
+                run_type: r.run_type.clone(),
+            })
+            .collect(),
+        documents: docs.iter().map(|d| doc_row_to_info(d)).collect(),
+    })
 }
