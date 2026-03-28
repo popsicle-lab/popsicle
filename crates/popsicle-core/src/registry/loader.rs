@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use crate::error::Result;
-use crate::model::{PipelineDef, SkillDef};
-use crate::registry::SkillRegistry;
+use crate::model::{PipelineDef, SkillDef, ToolDef};
+use crate::registry::{SkillRegistry, ToolRegistry};
 
 /// Loads Skill definitions from the filesystem.
 pub struct SkillLoader;
@@ -61,5 +61,35 @@ impl PipelineLoader {
 
         pipelines.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(pipelines)
+    }
+}
+
+/// Loads Tool definitions from the filesystem.
+pub struct ToolLoader;
+
+impl ToolLoader {
+    /// Scan a directory for subdirectories containing tool.yaml files.
+    pub fn load_dir(dir: &Path, registry: &mut ToolRegistry) -> Result<usize> {
+        if !dir.is_dir() {
+            return Ok(0);
+        }
+
+        let mut count = 0;
+        let entries = std::fs::read_dir(dir)?;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                let tool_file = path.join("tool.yaml");
+                if tool_file.exists() {
+                    let tool = ToolDef::load(&tool_file)?;
+                    registry.register(tool);
+                    count += 1;
+                }
+            }
+        }
+
+        Ok(count)
     }
 }

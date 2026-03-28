@@ -58,6 +58,16 @@ impl ProjectLayout {
         self.modules_dir().join(name)
     }
 
+    /// The project-local tools directory: `.popsicle/tools/`.
+    pub fn tools_dir(&self) -> PathBuf {
+        self.root.join("tools")
+    }
+
+    /// The tools directory bundled inside a specific module.
+    pub fn module_tools_dir(&self, module_name: &str) -> PathBuf {
+        self.module_dir(module_name).join("tools")
+    }
+
     /// The artifacts directory for a specific pipeline run.
     pub fn run_dir(&self, run_slug: &str) -> PathBuf {
         self.artifacts_dir().join(run_slug)

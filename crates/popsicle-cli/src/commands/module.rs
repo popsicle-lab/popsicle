@@ -206,7 +206,32 @@ fn install_module(source: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .ensure_initialized()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let info = install_module_from_source(&layout, source)?;
+    // If the source looks like a bare registry name (e.g. "spec-development"
+    // or "spec-development@1.0.0"), resolve it via the registry index first.
+    let resolved_source = if popsicle_core::registry::is_registry_name(source) {
+        let index = popsicle_core::registry::RegistryIndex::open(None)
+            .map_err(|e| anyhow::anyhow!("Failed to open registry: {}", e))?;
+        let resolved = index
+            .resolve(source)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        if resolved.pkg_type != popsicle_core::registry::PackageType::Module {
+            anyhow::bail!(
+                "'{}' is a {} in the registry, not a module. Use `popsicle tool install {}` instead.",
+                resolved.name,
+                resolved.pkg_type,
+                source
+            );
+        }
+        eprintln!(
+            "Resolved '{}' → {} v{} ({})",
+            source, resolved.name, resolved.version, resolved.source
+        );
+        resolved.source
+    } else {
+        source.to_string()
+    };
+
+    let info = install_module_from_source(&layout, &resolved_source)?;
 
     regenerate_agent_files(&project_dir, &layout)?;
 

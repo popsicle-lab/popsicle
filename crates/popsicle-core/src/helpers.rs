@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::engine::PipelineRecommender;
 use crate::model::{Issue, PipelineDef};
-use crate::registry::{PipelineLoader, SkillLoader, SkillRegistry};
+use crate::registry::{PipelineLoader, SkillLoader, SkillRegistry, ToolLoader, ToolRegistry};
 use crate::storage::{ProjectConfig, ProjectLayout};
 
 /// Resolve the active module name from config, falling back to "official".
@@ -79,6 +79,35 @@ pub fn find_pipeline(project_dir: &Path, name: &str) -> crate::error::Result<Pip
         .ok_or_else(|| {
             crate::error::PopsicleError::Storage(format!("Pipeline template not found: {}", name))
         })
+}
+
+/// Load all tool definitions from standard project directories.
+///
+/// Loading order (later registrations overwrite earlier — same name wins latest):
+/// 1. Active module tools (lowest priority)
+/// 2. Project-local `.popsicle/tools/` (user overrides)
+/// 3. Workspace `tools/` (highest priority, development)
+pub fn load_tools(project_dir: &Path) -> crate::error::Result<ToolRegistry> {
+    let mut registry = ToolRegistry::new();
+    let layout = ProjectLayout::new(project_dir);
+
+    let module_name = active_module_name(project_dir);
+    let module_tools = layout.module_tools_dir(&module_name);
+    if module_tools.is_dir() {
+        ToolLoader::load_dir(&module_tools, &mut registry)?;
+    }
+
+    let local_tools = layout.tools_dir();
+    if local_tools.is_dir() {
+        ToolLoader::load_dir(&local_tools, &mut registry)?;
+    }
+
+    let workspace_tools = project_dir.join("tools");
+    if workspace_tools.is_dir() {
+        ToolLoader::load_dir(&workspace_tools, &mut registry)?;
+    }
+
+    Ok(registry)
 }
 
 /// Convert a title to a URL-friendly slug.

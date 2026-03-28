@@ -1,11 +1,15 @@
+pub mod index;
 mod loader;
+pub mod package;
 
-pub use loader::{PipelineLoader, SkillLoader};
+pub use index::{RegistryIndex, ResolvedPackage, SearchResult, is_registry_name};
+pub use loader::{PipelineLoader, SkillLoader, ToolLoader};
+pub use package::{PackageDep, PackageEntry, PackageType, PackageVersion, RegistryConfig, index_path};
 
 use std::collections::HashMap;
 
 use crate::error::{PopsicleError, Result};
-use crate::model::SkillDef;
+use crate::model::{SkillDef, ToolDef};
 
 /// Central registry that discovers, loads, and provides access to Skills.
 #[derive(Debug, Default)]
@@ -49,5 +53,54 @@ impl SkillRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.skills.is_empty()
+    }
+}
+
+/// Central registry that discovers, loads, and provides access to Tools.
+///
+/// Tools are action-oriented skills (command/prompt executors) that can be
+/// sourced from external repositories and installed independently of a module.
+#[derive(Debug, Default)]
+pub struct ToolRegistry {
+    tools: HashMap<String, ToolDef>,
+}
+
+impl ToolRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a tool definition. Later registrations overwrite earlier ones
+    /// (matching the 3-layer priority loading pattern).
+    pub fn register(&mut self, tool: ToolDef) {
+        self.tools.insert(tool.name.clone(), tool);
+    }
+
+    /// Get a tool by name.
+    pub fn get(&self, name: &str) -> Result<&ToolDef> {
+        self.tools
+            .get(name)
+            .ok_or_else(|| PopsicleError::SkillNotFound(format!("Tool '{}' not found", name)))
+    }
+
+    /// List all registered tools, sorted by name.
+    pub fn list(&self) -> Vec<&ToolDef> {
+        let mut tools: Vec<_> = self.tools.values().collect();
+        tools.sort_by_key(|t| &t.name);
+        tools
+    }
+
+    /// Check if a tool is registered.
+    pub fn contains(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+
+    /// Number of registered tools.
+    pub fn len(&self) -> usize {
+        self.tools.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tools.is_empty()
     }
 }

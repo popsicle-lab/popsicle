@@ -11,9 +11,11 @@ mod migrate;
 mod module;
 mod pipeline;
 mod prompt;
+pub(crate) mod registry;
 mod skill;
 mod story;
 mod test;
+mod tool;
 
 use clap::Subcommand;
 use clap_complete::Shell;
@@ -72,6 +74,14 @@ pub enum Command {
     #[command(subcommand)]
     Module(module::ModuleCommand),
 
+    /// Manage tools (action-oriented skills: commands and AI prompt templates)
+    #[command(subcommand)]
+    Tool(tool::ToolCommand),
+
+    /// Package registry: search, publish, and discover modules & tools
+    #[command(subcommand)]
+    Registry(registry::RegistryCommand),
+
     /// Project context: view pipeline context or scan project for technical profile
     #[command(subcommand)]
     Context(context::ContextCommand),
@@ -110,6 +120,8 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Extract(sub) => extract::execute(sub, format),
         Command::Migrate(args) => migrate::execute(args, format),
         Command::Module(sub) => module::execute(sub, format),
+        Command::Tool(sub) => tool::execute(sub, format),
+        Command::Registry(sub) => registry::execute(sub, format),
         Command::Context(sub) => context::execute(sub, format),
         Command::Memory(sub) => memory::execute(sub, format),
         Command::Prompt(args) => prompt::execute(args, format),
