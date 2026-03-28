@@ -129,7 +129,15 @@ fn create_doc(
         .trim_matches('-')
         .to_string();
 
-    let mut doc = Document::new(&artifact.artifact_type, title, skill_name, run_id);
+    let db = IndexDb::open(&layout.db_path())?;
+
+    // Get the topic_id from the pipeline run
+    let pipeline_run = db
+        .get_pipeline_run(run_id)
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .ok_or_else(|| anyhow::anyhow!("Pipeline run '{}' not found", run_id))?;
+
+    let mut doc = Document::new(&artifact.artifact_type, title, skill_name, run_id, &pipeline_run.topic_id);
     doc.status = skill.workflow.initial.clone();
 
     // Try to load template body
@@ -144,7 +152,6 @@ fn create_doc(
 
     FileStorage::write_document(&doc, &file_path)?;
 
-    let db = IndexDb::open(&layout.db_path())?;
     db.upsert_document(&doc)?;
 
     let hook_ctx = HookContext::from_document(&doc, "artifact_created");
@@ -761,6 +768,9 @@ mod tests {
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
         };
         let body = "## Summary\nThis is a test document about JWT authentication.";
 
@@ -788,6 +798,9 @@ mod tests {
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
         };
         let body = "## Decision\nWe chose Redis for session storage.";
 

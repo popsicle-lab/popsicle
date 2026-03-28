@@ -15,6 +15,14 @@ pub struct Document {
     #[serde(default)]
     pub skill_name: String,
     pub pipeline_run_id: String,
+    /// Topic this document belongs to.
+    pub topic_id: String,
+    /// Revision counter (starts at 1, incremented on each revision).
+    #[serde(default = "default_version")]
+    pub version: u32,
+    /// Previous version's document ID (if this is a revision).
+    #[serde(default)]
+    pub parent_doc_id: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Auto-generated summary for document indexing (not persisted in frontmatter).
@@ -32,6 +40,10 @@ pub struct Document {
     pub file_path: PathBuf,
 }
 
+fn default_version() -> u32 {
+    1
+}
+
 /// Parsed representation: frontmatter + body split from raw markdown.
 #[derive(Debug, Clone)]
 pub struct RawDocument {
@@ -45,6 +57,7 @@ impl Document {
         title: impl Into<String>,
         skill_name: impl Into<String>,
         pipeline_run_id: impl Into<String>,
+        topic_id: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -54,12 +67,39 @@ impl Document {
             status: "draft".to_string(),
             skill_name: skill_name.into(),
             pipeline_run_id: pipeline_run_id.into(),
+            topic_id: topic_id.into(),
+            version: 1,
+            parent_doc_id: None,
             tags: Vec::new(),
             summary: String::new(),
             metadata: serde_yaml_ng::Value::Null,
             created_at: Some(now),
             updated_at: Some(now),
             body: String::new(),
+            file_path: PathBuf::new(),
+        }
+    }
+
+    /// Create a new revision of this document.
+    /// Bumps version, links to parent, resets status to draft.
+    pub fn new_revision(&self, new_run_id: impl Into<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            doc_type: self.doc_type.clone(),
+            title: self.title.clone(),
+            status: "draft".to_string(),
+            skill_name: self.skill_name.clone(),
+            pipeline_run_id: new_run_id.into(),
+            topic_id: self.topic_id.clone(),
+            version: self.version + 1,
+            parent_doc_id: Some(self.id.clone()),
+            tags: self.tags.clone(),
+            summary: String::new(),
+            metadata: self.metadata.clone(),
+            created_at: Some(now),
+            updated_at: Some(now),
+            body: self.body.clone(),
             file_path: PathBuf::new(),
         }
     }
@@ -123,7 +163,7 @@ Some body content.
 
     #[test]
     fn test_document_roundtrip() {
-        let mut doc = Document::new("prd", "Test PRD", "product-prd", "run-001");
+        let mut doc = Document::new("prd", "Test PRD", "product-prd", "run-001", "topic-001");
         doc.body = "## Background\nSome content.".to_string();
 
         let content = doc.to_file_content().unwrap();
@@ -131,6 +171,21 @@ Some body content.
 
         assert_eq!(parsed.title, "Test PRD");
         assert_eq!(parsed.doc_type, "prd");
+        assert_eq!(parsed.topic_id, "topic-001");
+        assert_eq!(parsed.version, 1);
+        assert!(parsed.parent_doc_id.is_none());
         assert!(parsed.body.contains("## Background"));
+    }
+
+    #[test]
+    fn test_document_revision() {
+        let doc = Document::new("rfc", "RFC v1", "rfc-writer", "run-001", "topic-001");
+        let rev = doc.new_revision("run-002");
+        assert_eq!(rev.version, 2);
+        assert_eq!(rev.parent_doc_id, Some(doc.id.clone()));
+        assert_eq!(rev.topic_id, "topic-001");
+        assert_eq!(rev.pipeline_run_id, "run-002");
+        assert_eq!(rev.status, "draft");
+        assert_ne!(rev.id, doc.id);
     }
 }

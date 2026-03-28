@@ -1,7 +1,7 @@
 use std::env;
 
 use popsicle_core::helpers;
-use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority};
+use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority, Topic};
 use popsicle_core::storage::{IndexDb, ProjectConfig, ProjectLayout};
 
 use crate::OutputFormat;
@@ -356,7 +356,17 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .validate()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let run = PipelineRun::new(&pipeline_def, &issue.title);
+    let topic = {
+        let name = &issue.title;
+        if let Some(t) = db.find_topic_by_name(name).map_err(|e| anyhow::anyhow!("{}", e))? {
+            t
+        } else {
+            let t = Topic::new(name, "");
+            db.create_topic(&t).map_err(|e| anyhow::anyhow!("{}", e))?;
+            t
+        }
+    };
+    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id);
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir)?;
 

@@ -396,10 +396,10 @@ fn build_input_context(
         .query_documents(None, None, Some(run_id))
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let pipeline_skills: Vec<String> = db
-        .get_pipeline_run(run_id)
-        .ok()
-        .flatten()
+    let current_run = db.get_pipeline_run(run_id).ok().flatten();
+
+    let pipeline_skills: Vec<String> = current_run
+        .as_ref()
         .and_then(|run| {
             helpers::find_pipeline(&cwd, &run.pipeline_name)
                 .ok()
@@ -412,6 +412,12 @@ fn build_input_context(
         })
         .unwrap_or_default();
 
+    // Pre-fetch topic-level documents for cross-run resolution
+    let topic_docs: Vec<popsicle_core::storage::DocumentRow> = current_run
+        .as_ref()
+        .and_then(|run| db.query_topic_documents(&run.topic_id).ok())
+        .unwrap_or_default();
+
     let mut context_inputs = Vec::new();
 
     for input in &skill.inputs {
@@ -421,6 +427,31 @@ fn build_input_context(
             .collect();
 
         if upstream_docs.is_empty() {
+            // Fallback: try topic-level documents from other runs
+            let fallback_docs: Vec<_> = topic_docs
+                .iter()
+                .filter(|d| d.skill_name == input.from_skill)
+                .collect();
+
+            if !fallback_docs.is_empty() {
+                for doc_row in fallback_docs {
+                    let body =
+                        FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+                            .map(|d| d.body)
+                            .unwrap_or_else(|_| "(unable to read document)".to_string());
+
+                    context_inputs.push(ContextInput {
+                        artifact_type: input.artifact_type.clone(),
+                        title: format!("{} (from topic)", doc_row.title),
+                        status: doc_row.status.clone(),
+                        body,
+                        relevance: input.relevance,
+                        sections: input.sections.clone(),
+                    });
+                }
+                continue;
+            }
+
             if input.required {
                 let skill_in_pipeline = pipeline_skills.is_empty()
                     || pipeline_skills.iter().any(|s| s == &input.from_skill);
@@ -607,6 +638,9 @@ mod tests {
             updated_at: None,
             summary: "Authentication design document".into(),
             doc_tags: "[\"rfc\", \"auth\"]".into(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
         }]);
         let result = build_full_prompt(&None, &None, &refs, &None, "Do the thing.");
         assert!(result.contains("Historical References"));
@@ -643,6 +677,9 @@ mod tests {
             updated_at: None,
             summary: "old summary".into(),
             doc_tags: "[]".into(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
         }]);
         let assembled = Some(AssembledContext {
             parts: vec![],

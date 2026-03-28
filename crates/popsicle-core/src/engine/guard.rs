@@ -302,6 +302,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Background\n\nWe need caching for performance.\n\n## Goals\n\n- Reduce latency to under 200ms\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -324,6 +327,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Background\n\nSome content.\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -347,6 +353,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body:
                 "## Background\n\nDescribe the business context.\n\n## Goals\n\n- Reduce latency\n"
                     .into(),
@@ -380,6 +389,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Tasks\n\n- [x] Build API\n- [x] Write docs\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -403,6 +415,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Tasks\n\n- [x] Build API\n- [ ] Write docs\n- [ ] Deploy\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -430,6 +445,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Summary\n\nJust text, no checkboxes.\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -453,6 +471,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Open Questions\n\n- [ ] Decide on DB\n\n## Task Checklist\n\n- [x] Build API\n- [x] Write tests\n\n## Notes\n\nSome notes.\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -481,6 +502,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Summary\n\nSome content.\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -504,6 +528,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Summary\n\nReal content here.\n\n## Checklist\n\n- [x] Done\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -536,6 +563,9 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: "## Summary\n\nReal content here.\n\n## Checklist\n\n- [ ] Not done\n".into(),
             file_path: std::path::PathBuf::new(),
         };
@@ -678,6 +708,9 @@ workflow:
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: String::new(),
             file_path: std::path::PathBuf::new(),
         };
@@ -727,6 +760,9 @@ workflow:
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: String::new(),
             file_path: std::path::PathBuf::new(),
         };
@@ -783,6 +819,9 @@ workflow:
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
             body: String::new(),
             file_path: std::path::PathBuf::new(),
         };

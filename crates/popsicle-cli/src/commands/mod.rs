@@ -16,6 +16,7 @@ mod skill;
 mod story;
 mod test;
 mod tool;
+mod topic;
 
 use clap::Subcommand;
 use clap_complete::Shell;
@@ -78,6 +79,10 @@ pub enum Command {
     #[command(subcommand)]
     Tool(tool::ToolCommand),
 
+    /// Manage topics (group related pipeline runs and documents)
+    #[command(subcommand)]
+    Topic(topic::TopicCommand),
+
     /// Package registry: search, publish, and discover modules & tools
     #[command(subcommand)]
     Registry(registry::RegistryCommand),
@@ -121,6 +126,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Migrate(args) => migrate::execute(args, format),
         Command::Module(sub) => module::execute(sub, format),
         Command::Tool(sub) => tool::execute(sub, format),
+        Command::Topic(sub) => topic::execute(sub, format),
         Command::Registry(sub) => registry::execute(sub, format),
         Command::Context(sub) => context::execute(sub, format),
         Command::Memory(sub) => memory::execute(sub, format),

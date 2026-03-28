@@ -224,6 +224,9 @@ impl Advisor {
                             status: doc.status.clone(),
                             skill_name: doc.skill_name.clone(),
                             pipeline_run_id: doc.pipeline_run_id.clone(),
+                            topic_id: doc.topic_id.clone(),
+                            version: doc.version,
+                            parent_doc_id: doc.parent_doc_id.clone(),
                             tags: vec![],
                             summary: String::new(),
                             metadata: serde_yaml_ng::Value::Null,
@@ -339,7 +342,7 @@ prompts:
     fn test_next_steps_ready_no_docs() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test");
+        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
         let docs: Vec<DocumentRow> = vec![];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
@@ -358,7 +361,7 @@ prompts:
     fn test_next_steps_with_draft_doc() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test");
+        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
         let docs = vec![DocumentRow {
             id: "d1".to_string(),
             doc_type: "domain-model".to_string(),
@@ -371,6 +374,9 @@ prompts:
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
         }];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
@@ -395,7 +401,7 @@ prompts:
             keywords: vec![],
             scale: None,
         };
-        let mut run = PipelineRun::new(&pipeline, "Test");
+        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
         run.stage_states
             .insert("domain".to_string(), StageState::Completed);
 
@@ -411,6 +417,9 @@ prompts:
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
         }];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
@@ -421,7 +430,7 @@ prompts:
     fn test_has_actionable_steps() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test");
+        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
         let docs: Vec<DocumentRow> = vec![];
 
         assert!(Advisor::has_actionable_steps(
@@ -479,7 +488,7 @@ prompts:
             keywords: vec![],
             scale: None,
         };
-        let run = PipelineRun::new(&pipeline, "Test");
+        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
         let docs = vec![DocumentRow {
             id: "d1".to_string(),
             doc_type: "domain-model".to_string(),
@@ -492,6 +501,9 @@ prompts:
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
         }];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);

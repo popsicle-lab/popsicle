@@ -76,6 +76,28 @@ impl PipelineDef {
     }
 }
 
+/// Distinguishes how a pipeline run was created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunType {
+    /// Fresh start — no prior run.
+    New,
+    /// Correcting a completed run (Issue #2).
+    Revision,
+    /// Extending with a different pipeline on the same topic (Issue #4).
+    Continuation,
+}
+
+impl std::fmt::Display for RunType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::New => write!(f, "new"),
+            Self::Revision => write!(f, "revision"),
+            Self::Continuation => write!(f, "continuation"),
+        }
+    }
+}
+
 /// A running instance of a Pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineRun {
@@ -83,8 +105,20 @@ pub struct PipelineRun {
     pub pipeline_name: String,
     pub title: String,
     pub stage_states: HashMap<String, StageState>,
+    /// Topic this run belongs to.
+    pub topic_id: String,
+    /// If this is a revision/continuation, the parent run's ID.
+    #[serde(default)]
+    pub parent_run_id: Option<String>,
+    /// How this run was created.
+    #[serde(default = "default_run_type")]
+    pub run_type: RunType,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+fn default_run_type() -> RunType {
+    RunType::New
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +129,8 @@ pub enum StageState {
     InProgress,
     Completed,
     Skipped,
+    /// Was completed, reopened for correction in a revision run.
+    Revised,
 }
 
 impl std::fmt::Display for StageState {
@@ -105,12 +141,13 @@ impl std::fmt::Display for StageState {
             Self::InProgress => write!(f, "in_progress"),
             Self::Completed => write!(f, "completed"),
             Self::Skipped => write!(f, "skipped"),
+            Self::Revised => write!(f, "revised"),
         }
     }
 }
 
 impl PipelineRun {
-    pub fn new(pipeline_def: &PipelineDef, title: impl Into<String>) -> Self {
+    pub fn new(pipeline_def: &PipelineDef, title: impl Into<String>, topic_id: impl Into<String>) -> Self {
         let now = Utc::now();
         let mut stage_states = HashMap::new();
 
@@ -128,15 +165,57 @@ impl PipelineRun {
             pipeline_name: pipeline_def.name.clone(),
             title: title.into(),
             stage_states,
+            topic_id: topic_id.into(),
+            parent_run_id: None,
+            run_type: RunType::New,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Create a revision run from a completed parent run.
+    /// Specified stages are set to Revised; others inherit Completed/Skipped.
+    pub fn new_revision(
+        pipeline_def: &PipelineDef,
+        parent: &PipelineRun,
+        revised_stages: &[String],
+    ) -> Self {
+        let now = Utc::now();
+        let mut stage_states = HashMap::new();
+
+        for stage in &pipeline_def.stages {
+            let state = if revised_stages.contains(&stage.name) {
+                StageState::Revised
+            } else {
+                // Inherit the parent state (Completed or Skipped) or default Blocked
+                parent
+                    .stage_states
+                    .get(&stage.name)
+                    .copied()
+                    .unwrap_or(StageState::Blocked)
+            };
+            stage_states.insert(stage.name.clone(), state);
+        }
+
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            pipeline_name: pipeline_def.name.clone(),
+            title: format!("{} (revision)", parent.title),
+            stage_states,
+            topic_id: parent.topic_id.clone(),
+            parent_run_id: Some(parent.id.clone()),
+            run_type: RunType::Revision,
             created_at: now,
             updated_at: now,
         }
     }
 
     /// Recompute blocked/ready states based on current completions.
+    /// Revised stages are treated as needing re-work and become Ready when deps are met.
     pub fn refresh_states(&mut self, pipeline_def: &PipelineDef) {
         for stage in &pipeline_def.stages {
             let current = self.stage_states.get(&stage.name).copied();
+            // Skip stages already in progress or done (not revised)
             if matches!(
                 current,
                 Some(StageState::Completed | StageState::Skipped | StageState::InProgress)
@@ -152,7 +231,12 @@ impl PipelineRun {
             let new_state = if all_deps_done {
                 StageState::Ready
             } else {
-                StageState::Blocked
+                // Revised stages stay Revised until deps are met, then go Ready
+                if matches!(current, Some(StageState::Revised)) {
+                    StageState::Revised
+                } else {
+                    StageState::Blocked
+                }
             };
             self.stage_states.insert(stage.name.clone(), new_state);
         }
@@ -197,16 +281,19 @@ stages:
     #[test]
     fn test_pipeline_run_initial_states() {
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
-        let run = PipelineRun::new(&def, "Test Feature");
+        let run = PipelineRun::new(&def, "Test Feature", "topic-1");
         assert_eq!(run.stage_states["domain"], StageState::Ready);
         assert_eq!(run.stage_states["product"], StageState::Blocked);
         assert_eq!(run.stage_states["tech-design"], StageState::Blocked);
+        assert_eq!(run.topic_id, "topic-1");
+        assert_eq!(run.run_type, RunType::New);
+        assert!(run.parent_run_id.is_none());
     }
 
     #[test]
     fn test_refresh_states() {
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
-        let mut run = PipelineRun::new(&def, "Test Feature");
+        let mut run = PipelineRun::new(&def, "Test Feature", "topic-1");
 
         run.stage_states
             .insert("domain".to_string(), StageState::Completed);
@@ -236,5 +323,67 @@ stages:
             scale: None,
         };
         assert!(def.all_skill_names().is_empty());
+    }
+
+    #[test]
+    fn test_new_revision() {
+        let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
+        let mut parent = PipelineRun::new(&def, "Test Feature", "topic-1");
+        // Complete all stages in parent
+        for stage in &def.stages {
+            parent
+                .stage_states
+                .insert(stage.name.clone(), StageState::Completed);
+        }
+
+        let revision =
+            PipelineRun::new_revision(&def, &parent, &["tech-design".to_string()]);
+
+        assert_eq!(revision.run_type, RunType::Revision);
+        assert_eq!(revision.parent_run_id, Some(parent.id.clone()));
+        assert_eq!(revision.topic_id, "topic-1");
+        assert_eq!(revision.stage_states["domain"], StageState::Completed);
+        assert_eq!(revision.stage_states["product"], StageState::Completed);
+        assert_eq!(revision.stage_states["tech-design"], StageState::Revised);
+    }
+
+    #[test]
+    fn test_refresh_revised_becomes_ready() {
+        let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
+        let mut parent = PipelineRun::new(&def, "Test Feature", "topic-1");
+        for stage in &def.stages {
+            parent
+                .stage_states
+                .insert(stage.name.clone(), StageState::Completed);
+        }
+
+        let mut revision =
+            PipelineRun::new_revision(&def, &parent, &["tech-design".to_string()]);
+        // product is Completed (dep met), so tech-design should become Ready
+        revision.refresh_states(&def);
+        assert_eq!(revision.stage_states["tech-design"], StageState::Ready);
+    }
+
+    #[test]
+    fn test_refresh_revised_stays_revised_when_deps_not_met() {
+        let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
+        let mut parent = PipelineRun::new(&def, "Test Feature", "topic-1");
+        for stage in &def.stages {
+            parent
+                .stage_states
+                .insert(stage.name.clone(), StageState::Completed);
+        }
+
+        // Revise both product and tech-design
+        let mut revision = PipelineRun::new_revision(
+            &def,
+            &parent,
+            &["product".to_string(), "tech-design".to_string()],
+        );
+        // product's dep (domain) is Completed → product becomes Ready
+        // tech-design's dep (product) is Revised (not Completed) → stays Revised
+        revision.refresh_states(&def);
+        assert_eq!(revision.stage_states["product"], StageState::Ready);
+        assert_eq!(revision.stage_states["tech-design"], StageState::Revised);
     }
 }

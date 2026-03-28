@@ -114,7 +114,11 @@ fn import_file(
         .trim_matches('-')
         .to_string();
 
-    let mut doc = Document::new("imported", &title, skill, run_id);
+    let mut doc = Document::new("imported", &title, skill, run_id, "");
+    // Resolve topic_id from the pipeline run
+    if let Ok(Some(run)) = db.get_pipeline_run(run_id) {
+        doc.topic_id = run.topic_id;
+    }
     doc.status = "approved".to_string();
     doc.body = content;
 

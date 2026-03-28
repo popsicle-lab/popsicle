@@ -2,7 +2,7 @@ use std::env;
 
 use popsicle_core::engine::{Advisor, PipelineRecommender};
 use popsicle_core::helpers;
-use popsicle_core::model::{PipelineDef, PipelineRun, StageState};
+use popsicle_core::model::{PipelineDef, PipelineRun, StageState, Topic};
 use popsicle_core::storage::{IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -29,6 +29,9 @@ pub enum PipelineCommand {
         /// Title for this pipeline run
         #[arg(short, long)]
         title: String,
+        /// Topic name (groups related runs; auto-created if not exists)
+        #[arg(long)]
+        topic: Option<String>,
     },
     /// Show status of a pipeline run
     Status {
@@ -68,6 +71,15 @@ pub enum PipelineCommand {
         /// Task description (e.g. "add user authentication feature")
         task: String,
     },
+    /// Create a revision run from a completed pipeline run
+    Revise {
+        /// Pipeline run ID to revise
+        #[arg(short, long)]
+        run: String,
+        /// Comma-separated list of stage names to revise
+        #[arg(short, long)]
+        stages: String,
+    },
 }
 
 pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()> {
@@ -78,13 +90,17 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
             description,
             local,
         } => create_pipeline(&name, &description, local, format),
-        PipelineCommand::Run { pipeline, title } => run_pipeline(&pipeline, &title, format),
+        PipelineCommand::Run { pipeline, title, topic } => run_pipeline(&pipeline, &title, topic.as_deref(), format),
         PipelineCommand::Status { run } => show_status(run.as_deref(), format),
         PipelineCommand::Next { run } => show_next(run.as_deref(), format),
         PipelineCommand::Verify { run } => verify_run(run.as_deref(), format),
         PipelineCommand::Archive { run } => archive_run(run.as_deref(), format),
         PipelineCommand::Quick { title, skill } => quick_run(&title, &skill, format),
         PipelineCommand::Recommend { task } => recommend_pipeline(&task, format),
+        PipelineCommand::Revise { run, stages } => {
+            let stage_list: Vec<String> = stages.split(',').map(|s| s.trim().to_string()).collect();
+            revise_pipeline(&run, &stage_list, format)
+        }
     }
 }
 
@@ -250,11 +266,12 @@ fn quick_run(title: &str, skill_name: &str, format: &OutputFormat) -> anyhow::Re
         scale: None,
     };
 
-    let run = PipelineRun::new(&quick_def, title);
+    let db = IndexDb::open(&layout.db_path())?;
+    let topic = resolve_or_create_topic(&db, title)?;
+    let run = PipelineRun::new(&quick_def, title, &topic.id);
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir)?;
 
-    let db = IndexDb::open(&layout.db_path())?;
     db.upsert_pipeline_run(&run)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -472,18 +489,19 @@ fn list_pipelines(format: &OutputFormat) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_pipeline(pipeline_name: &str, title: &str, format: &OutputFormat) -> anyhow::Result<()> {
+fn run_pipeline(pipeline_name: &str, title: &str, topic_name: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let pipeline_def = find_pipeline(pipeline_name)?;
     pipeline_def
         .validate()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let run = PipelineRun::new(&pipeline_def, title);
+    let db = IndexDb::open(&layout.db_path())?;
+    let topic = resolve_or_create_topic(&db, topic_name.unwrap_or(title))?;
+    let run = PipelineRun::new(&pipeline_def, title, &topic.id);
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir)?;
 
-    let db = IndexDb::open(&layout.db_path())?;
     db.upsert_pipeline_run(&run)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
@@ -715,4 +733,117 @@ fn collect_context_hints(layout: &ProjectLayout) -> Vec<String> {
     }
 
     hints
+}
+
+/// Resolve an existing topic by name, or create a new one.
+fn resolve_or_create_topic(db: &IndexDb, name: &str) -> anyhow::Result<Topic> {
+    if let Some(topic) = db
+        .find_topic_by_name(name)
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+    {
+        return Ok(topic);
+    }
+    let topic = Topic::new(name, "");
+    db.create_topic(&topic)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    Ok(topic)
+}
+
+fn revise_pipeline(
+    run_id: &str,
+    revised_stages: &[String],
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
+    let layout = project_layout()?;
+    let db = IndexDb::open(&layout.db_path())?;
+
+    let parent_run = db
+        .get_pipeline_run(run_id)
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .ok_or_else(|| anyhow::anyhow!("Pipeline run '{}' not found", run_id))?;
+
+    let pipeline_def = find_pipeline(&parent_run.pipeline_name)?;
+
+    // Validate that all specified stages exist in the pipeline
+    for stage_name in revised_stages {
+        if !pipeline_def.stages.iter().any(|s| &s.name == stage_name) {
+            anyhow::bail!(
+                "Stage '{}' not found in pipeline '{}'",
+                stage_name,
+                pipeline_def.name
+            );
+        }
+    }
+
+    let mut revision = PipelineRun::new_revision(&pipeline_def, &parent_run, revised_stages);
+    revision.refresh_states(&pipeline_def);
+
+    let run_dir = layout.run_dir(&revision.id);
+    std::fs::create_dir_all(&run_dir)?;
+
+    db.upsert_pipeline_run(&revision)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Create revision documents for skills in revised stages
+    let docs = db
+        .query_documents(None, None, Some(run_id))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    let revised_skills: Vec<String> = pipeline_def
+        .stages
+        .iter()
+        .filter(|s| revised_stages.contains(&s.name))
+        .flat_map(|s| s.skill_names())
+        .map(|s| s.to_string())
+        .collect();
+
+    for doc_row in &docs {
+        if revised_skills.contains(&doc_row.skill_name) {
+            // Load the full document and create a revision
+            let full_doc = popsicle_core::model::Document::from_file_content(
+                &std::fs::read_to_string(&doc_row.file_path)?,
+                std::path::PathBuf::from(&doc_row.file_path),
+            )
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            let rev_doc = full_doc.new_revision(&revision.id);
+            let dest = run_dir.join(
+                std::path::Path::new(&doc_row.file_path)
+                    .file_name()
+                    .unwrap_or_default(),
+            );
+            popsicle_core::storage::FileStorage::write_document(&rev_doc, &dest)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            db.upsert_document(&rev_doc)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+        }
+    }
+
+    match format {
+        OutputFormat::Text => {
+            println!("Created revision run: {}", revision.id);
+            println!("  Parent: {}", run_id);
+            println!("  Revised stages: {}", revised_stages.join(", "));
+            for stage in &pipeline_def.stages {
+                let state = revision
+                    .stage_states
+                    .get(&stage.name)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                println!("  [{}] {}", state, stage.name);
+            }
+        }
+        OutputFormat::Json => {
+            let out = serde_json::json!({
+                "id": revision.id,
+                "parent_run_id": run_id,
+                "run_type": "revision",
+                "revised_stages": revised_stages,
+                "stage_states": revision.stage_states,
+            });
+            println!("{}", serde_json::to_string_pretty(&out)?);
+        }
+    }
+
+    Ok(())
 }
