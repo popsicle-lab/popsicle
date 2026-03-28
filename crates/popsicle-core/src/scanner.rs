@@ -1,4 +1,16 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+
+/// A documentation file discovered during project scanning.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DiscoveredDoc {
+    /// Relative path from project root
+    pub path: String,
+    /// File size in bytes
+    pub size: u64,
+    /// First N lines as content preview
+    pub preview: String,
+}
 
 /// Scans a project directory to produce a technical profile.
 ///
@@ -60,7 +72,8 @@ impl ProjectScanner {
         let structure = self.detect_structure();
         let practices = self.detect_practices();
         let deps = self.detect_key_dependencies();
-        self.render(&tech, &structure, &practices, &deps)
+        let docs = self.detect_documentation();
+        self.render(&tech, &structure, &practices, &deps, &docs)
     }
 
     // ── Language & framework detection ──
@@ -535,6 +548,122 @@ impl ProjectScanner {
         deps
     }
 
+    // ── Documentation discovery ──
+
+    const SKIP_DIRS: &'static [&'static str] = &[
+        ".git",
+        ".popsicle",
+        "node_modules",
+        "target",
+        "vendor",
+        "dist",
+        "build",
+    ];
+
+    const DOC_DIRS: &'static [&'static str] = &["docs", "doc", "specs", "design", "adr", "rfcs"];
+
+    const DOC_EXTENSIONS: &'static [&'static str] = &["md", "mdx", "rst", "txt"];
+
+    fn is_skip_dir(name: &str) -> bool {
+        Self::SKIP_DIRS.contains(&name) || name.starts_with('.')
+    }
+
+    fn is_doc_extension(path: &Path) -> bool {
+        path.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| Self::DOC_EXTENSIONS.contains(&ext))
+    }
+
+    fn read_preview(path: &Path, max_lines: usize) -> String {
+        std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .take(max_lines)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn walk_for_docs(dir: &Path, root: &Path, results: &mut Vec<DiscoveredDoc>, recurse: bool) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+
+            if path.is_dir() {
+                if recurse && !Self::is_skip_dir(&name_str) {
+                    Self::walk_for_docs(&path, root, results, true);
+                }
+            } else if Self::is_doc_extension(&path) {
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .to_string();
+                let preview = Self::read_preview(&path, 30);
+                results.push(DiscoveredDoc {
+                    path: rel,
+                    size,
+                    preview,
+                });
+            }
+        }
+    }
+
+    /// Discover documentation files in the project.
+    ///
+    /// Scans common doc directories and file patterns:
+    /// - Root: README.md, *.md (not hidden, not in node_modules/target/etc.)
+    /// - docs/, doc/, specs/, design/, adr/, rfcs/ directories (recursively)
+    /// - Any .md, .mdx, .rst, .txt files found
+    ///
+    /// Returns a list of discovered files with path, size, and content preview.
+    pub fn detect_documentation(&self) -> Vec<DiscoveredDoc> {
+        let mut results = Vec::new();
+
+        // Root-level doc files (non-recursive)
+        Self::walk_for_docs(&self.root, &self.root, &mut results, false);
+
+        // Known doc directories (recursive)
+        for dir_name in Self::DOC_DIRS {
+            let dir = self.root.join(dir_name);
+            if dir.is_dir() {
+                Self::walk_for_docs(&dir, &self.root, &mut results, true);
+            }
+        }
+
+        // Deduplicate by path
+        let mut seen = HashSet::new();
+        results.retain(|d| seen.insert(d.path.clone()));
+
+        results.sort_by(|a, b| a.path.cmp(&b.path));
+        results
+    }
+
+    /// Render discovered docs as a markdown section.
+    pub fn render_documentation_section(docs: &[DiscoveredDoc]) -> String {
+        if docs.is_empty() {
+            return String::new();
+        }
+        let mut out = String::from("## Existing Documentation\n\n");
+        out.push_str("| Path | Size |\n");
+        out.push_str("|------|------|\n");
+        for doc in docs {
+            let size_label = if doc.size >= 1024 {
+                format!("{:.1} KB", doc.size as f64 / 1024.0)
+            } else {
+                format!("{} B", doc.size)
+            };
+            out.push_str(&format!("| {} | {} |\n", doc.path, size_label));
+        }
+        out.push('\n');
+        out
+    }
+
     // ── Markdown rendering ──
 
     fn render(
@@ -543,6 +672,7 @@ impl ProjectScanner {
         structure: &ProjectStructure,
         practices: &DevPractices,
         deps: &[Dependency],
+        docs: &[DiscoveredDoc],
     ) -> String {
         let mut out = String::new();
 
@@ -638,6 +768,12 @@ impl ProjectScanner {
                 }
             }
             out.push('\n');
+        }
+
+        // Existing Documentation
+        let doc_section = Self::render_documentation_section(docs);
+        if !doc_section.is_empty() {
+            out.push_str(&doc_section);
         }
 
         // Notes section for user edits

@@ -110,6 +110,16 @@ pub fn load_tools(project_dir: &Path) -> crate::error::Result<ToolRegistry> {
     Ok(registry)
 }
 
+/// Load the bootstrap.md from the active module, if it exists.
+pub fn load_bootstrap_md(project_dir: &Path) -> Option<String> {
+    let module_name = active_module_name(project_dir);
+    let bootstrap_path = project_dir
+        .join(".popsicle/modules")
+        .join(&module_name)
+        .join("bootstrap.md");
+    std::fs::read_to_string(bootstrap_path).ok()
+}
+
 /// Convert a title to a URL-friendly slug.
 pub fn slugify(title: &str) -> String {
     title
