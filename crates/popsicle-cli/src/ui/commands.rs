@@ -769,7 +769,17 @@ pub fn start_issue(key: String, state: State<AppState>) -> Result<IssueInfo, Str
         helpers::find_pipeline(&dir, &resolved.pipeline_name).map_err(|e| e.to_string())?;
     pipeline_def.validate().map_err(|e| e.to_string())?;
 
-    let run = PipelineRun::new(&pipeline_def, &issue.title);
+    let topic = {
+        let name = &issue.title;
+        if let Some(t) = db.find_topic_by_name(name).map_err(|e| e.to_string())? {
+            t
+        } else {
+            let t = Topic::new(name, "");
+            db.create_topic(&t).map_err(|e| e.to_string())?;
+            t
+        }
+    };
+    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id);
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir).map_err(|e| e.to_string())?;
 
