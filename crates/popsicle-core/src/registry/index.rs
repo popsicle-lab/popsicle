@@ -384,9 +384,18 @@ fn git_clone(url: &str, dest: &Path) -> Result<()> {
 }
 
 fn git_fetch(repo: &Path) -> Result<()> {
+    // Discard any uncommitted local changes (e.g. leftover from a failed publish)
+    let _ = run_git(&["checkout", "--", "."], Some(repo));
+
     run_git(&["fetch", "--depth", "1", "origin", "main"], Some(repo))
         .or_else(|_| run_git(&["fetch", "--depth", "1", "origin"], Some(repo)))
-        .or_else(|_| run_git(&["pull", "--ff-only"], Some(repo)))
+        .or_else(|_| run_git(&["pull", "--ff-only"], Some(repo)))?;
+
+    // Reset local branch to match remote so the working tree is up to date.
+    // Without this, `git fetch` updates refs but leaves files stale, causing
+    // false "version already exists" errors and push rejections.
+    run_git(&["reset", "--hard", "origin/main"], Some(repo))
+        .or_else(|_| run_git(&["reset", "--hard", "FETCH_HEAD"], Some(repo)))
 }
 
 fn git_add_all(repo: &Path) -> Result<()> {
