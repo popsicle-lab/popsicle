@@ -435,10 +435,9 @@ fn build_input_context(
 
             if !fallback_docs.is_empty() {
                 for doc_row in fallback_docs {
-                    let body =
-                        FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
-                            .map(|d| d.body)
-                            .unwrap_or_else(|_| "(unable to read document)".to_string());
+                    let body = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+                        .map(|d| d.body)
+                        .unwrap_or_else(|_| "(unable to read document)".to_string());
 
                     context_inputs.push(ContextInput {
                         artifact_type: input.artifact_type.clone(),

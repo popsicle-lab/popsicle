@@ -54,12 +54,7 @@ pub fn execute(cmd: TopicCommand, format: &OutputFormat) -> Result<()> {
     }
 }
 
-fn create_topic(
-    name: &str,
-    description: &str,
-    tags: &str,
-    format: &OutputFormat,
-) -> Result<()> {
+fn create_topic(name: &str, description: &str, tags: &str, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
     let tag_list: Vec<String> = if tags.is_empty() {
@@ -70,8 +65,7 @@ fn create_topic(
 
     let mut topic = Topic::new(name.to_string(), description.to_string());
     topic.tags = tag_list;
-    db.create_topic(&topic)
-        .context("Failed to create topic")?;
+    db.create_topic(&topic).context("Failed to create topic")?;
 
     match format {
         OutputFormat::Text => {
@@ -105,10 +99,7 @@ fn list_topics(format: &OutputFormat) -> Result<()> {
                 println!("No topics found.");
                 return Ok(());
             }
-            println!(
-                "{:<36}  {:<24}  {:<20}  TAGS",
-                "ID", "NAME", "SLUG"
-            );
+            println!("{:<36}  {:<24}  {:<20}  TAGS", "ID", "NAME", "SLUG");
             println!("{}", "-".repeat(100));
             for t in &topics {
                 let tags = if t.tags.is_empty() {
@@ -116,10 +107,7 @@ fn list_topics(format: &OutputFormat) -> Result<()> {
                 } else {
                     t.tags.join(", ")
                 };
-                println!(
-                    "{:<36}  {:<24}  {:<20}  {}",
-                    t.id, t.name, t.slug, tags
-                );
+                println!("{:<36}  {:<24}  {:<20}  {}", t.id, t.name, t.slug, tags);
             }
             println!("\n{} topic(s)", topics.len());
         }
@@ -153,12 +141,8 @@ fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
         .or_else(|| db.get_topic(name).ok().flatten())
         .ok_or_else(|| anyhow::anyhow!("Topic not found: {}", name))?;
 
-    let runs = db
-        .list_topic_runs(&topic.id)
-        .unwrap_or_default();
-    let docs = db
-        .query_topic_documents(&topic.id)
-        .unwrap_or_default();
+    let runs = db.list_topic_runs(&topic.id).unwrap_or_default();
+    let docs = db.query_topic_documents(&topic.id).unwrap_or_default();
 
     match format {
         OutputFormat::Text => {
@@ -169,7 +153,10 @@ fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
             if !topic.tags.is_empty() {
                 println!("  Tags:        {}", topic.tags.join(", "));
             }
-            println!("  Created:     {}", topic.created_at.format("%Y-%m-%d %H:%M"));
+            println!(
+                "  Created:     {}",
+                topic.created_at.format("%Y-%m-%d %H:%M")
+            );
             println!();
 
             if runs.is_empty() {

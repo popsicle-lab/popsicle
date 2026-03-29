@@ -4,8 +4,8 @@ use anyhow::bail;
 use chrono::Utc;
 use popsicle_core::model::{ModuleDef, ToolDef};
 use popsicle_core::registry::{
-    PackageType, PackageVersion, RegistryIndex, ToolLoader, ToolRegistry,
-    SkillLoader, SkillRegistry, PipelineLoader,
+    PackageType, PackageVersion, PipelineLoader, RegistryIndex, SkillLoader, SkillRegistry,
+    ToolLoader, ToolRegistry,
 };
 
 use crate::OutputFormat;
@@ -83,10 +83,16 @@ pub fn execute(cmd: RegistryCommand, format: &OutputFormat) -> anyhow::Result<()
 
 // ── search ────────────────────────────────────────────────────────────────
 
-fn search(query: &str, type_filter: Option<TypeFilter>, format: &OutputFormat) -> anyhow::Result<()> {
+fn search(
+    query: &str,
+    type_filter: Option<TypeFilter>,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
     let index = open_index()?;
     let pkg_type = type_filter.map(PackageType::from);
-    let results = index.search(query, pkg_type).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let results = index
+        .search(query, pkg_type)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     match format {
         OutputFormat::Text => {
@@ -306,11 +312,11 @@ fn build_module_version(
     // Collect pipelines
     let pipelines_dir = dir.join("pipelines");
     let mut pipeline_names = Vec::new();
-    if pipelines_dir.is_dir() {
-        if let Ok(pipelines) = PipelineLoader::load_dir(&pipelines_dir) {
-            pipeline_names = pipelines.iter().map(|p| p.name.clone()).collect();
-            pipeline_names.sort();
-        }
+    if pipelines_dir.is_dir()
+        && let Ok(pipelines) = PipelineLoader::load_dir(&pipelines_dir)
+    {
+        pipeline_names = pipelines.iter().map(|p| p.name.clone()).collect();
+        pipeline_names.sort();
     }
 
     // Collect tools

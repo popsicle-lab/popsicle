@@ -358,7 +358,10 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
 
     let topic = {
         let name = &issue.title;
-        if let Some(t) = db.find_topic_by_name(name).map_err(|e| anyhow::anyhow!("{}", e))? {
+        if let Some(t) = db
+            .find_topic_by_name(name)
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+        {
             t
         } else {
             let t = Topic::new(name, "");

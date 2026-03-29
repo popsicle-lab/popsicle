@@ -74,17 +74,10 @@ impl ToolDef {
     pub fn load(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let mut def: ToolDef = serde_yaml_ng::from_str(&content).map_err(|e| {
-            PopsicleError::InvalidSkillDef(format!(
-                "Invalid tool.yaml {}: {}",
-                path.display(),
-                e
-            ))
+            PopsicleError::InvalidSkillDef(format!("Invalid tool.yaml {}: {}", path.display(), e))
         })?;
 
-        def.source_dir = path
-            .parent()
-            .unwrap_or(Path::new("."))
-            .to_path_buf();
+        def.source_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
 
         // Load optional guide.md
         let guide_path = def.source_dir.join("guide.md");
@@ -104,7 +97,10 @@ impl ToolDef {
 
     /// Resolve argument values, applying defaults for optional args.
     /// Returns an error if a required argument is missing.
-    pub fn resolve_args(&self, provided: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+    pub fn resolve_args(
+        &self,
+        provided: &HashMap<String, String>,
+    ) -> Result<HashMap<String, String>> {
         let mut resolved = HashMap::new();
         for arg in &self.args {
             if let Some(val) = provided.get(&arg.name) {

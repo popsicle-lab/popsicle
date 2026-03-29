@@ -137,7 +137,13 @@ fn create_doc(
         .map_err(|e| anyhow::anyhow!("{}", e))?
         .ok_or_else(|| anyhow::anyhow!("Pipeline run '{}' not found", run_id))?;
 
-    let mut doc = Document::new(&artifact.artifact_type, title, skill_name, run_id, &pipeline_run.topic_id);
+    let mut doc = Document::new(
+        &artifact.artifact_type,
+        title,
+        skill_name,
+        run_id,
+        &pipeline_run.topic_id,
+    );
     doc.status = skill.workflow.initial.clone();
 
     // Try to load template body

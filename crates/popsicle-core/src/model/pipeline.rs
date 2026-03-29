@@ -147,7 +147,11 @@ impl std::fmt::Display for StageState {
 }
 
 impl PipelineRun {
-    pub fn new(pipeline_def: &PipelineDef, title: impl Into<String>, topic_id: impl Into<String>) -> Self {
+    pub fn new(
+        pipeline_def: &PipelineDef,
+        title: impl Into<String>,
+        topic_id: impl Into<String>,
+    ) -> Self {
         let now = Utc::now();
         let mut stage_states = HashMap::new();
 
@@ -336,8 +340,7 @@ stages:
                 .insert(stage.name.clone(), StageState::Completed);
         }
 
-        let revision =
-            PipelineRun::new_revision(&def, &parent, &["tech-design".to_string()]);
+        let revision = PipelineRun::new_revision(&def, &parent, &["tech-design".to_string()]);
 
         assert_eq!(revision.run_type, RunType::Revision);
         assert_eq!(revision.parent_run_id, Some(parent.id.clone()));
@@ -357,8 +360,7 @@ stages:
                 .insert(stage.name.clone(), StageState::Completed);
         }
 
-        let mut revision =
-            PipelineRun::new_revision(&def, &parent, &["tech-design".to_string()]);
+        let mut revision = PipelineRun::new_revision(&def, &parent, &["tech-design".to_string()]);
         // product is Completed (dep met), so tech-design should become Ready
         revision.refresh_states(&def);
         assert_eq!(revision.stage_states["tech-design"], StageState::Ready);

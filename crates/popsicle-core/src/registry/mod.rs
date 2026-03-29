@@ -4,7 +4,9 @@ pub mod package;
 
 pub use index::{RegistryIndex, ResolvedPackage, SearchResult, is_registry_name};
 pub use loader::{PipelineLoader, SkillLoader, ToolLoader};
-pub use package::{PackageDep, PackageEntry, PackageType, PackageVersion, RegistryConfig, index_path};
+pub use package::{
+    PackageDep, PackageEntry, PackageType, PackageVersion, RegistryConfig, index_path,
+};
 
 use std::collections::HashMap;
 

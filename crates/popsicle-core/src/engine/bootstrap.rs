@@ -62,9 +62,7 @@ pub fn build_bootstrap_prompt(
 ) -> String {
     let mut prompt = String::new();
 
-    prompt.push_str(
-        "You are analyzing a software project to set up a development workflow.\n\n",
-    );
+    prompt.push_str("You are analyzing a software project to set up a development workflow.\n\n");
 
     prompt.push_str("## Project Technical Profile\n\n");
     prompt.push_str(project_context);

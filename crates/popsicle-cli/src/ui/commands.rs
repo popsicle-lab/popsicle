@@ -1496,7 +1496,10 @@ pub fn list_topics(state: State<AppState>) -> Result<Vec<TopicInfo>, String> {
     Ok(topics
         .iter()
         .map(|t| {
-            let run_count = db.list_topic_runs(&t.id).map(|r| r.len() as u32).unwrap_or(0);
+            let run_count = db
+                .list_topic_runs(&t.id)
+                .map(|r| r.len() as u32)
+                .unwrap_or(0);
             let doc_count = db
                 .query_topic_documents(&t.id)
                 .map(|d| d.len() as u32)
@@ -1551,6 +1554,6 @@ pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDeta
                 run_type: r.run_type.clone(),
             })
             .collect(),
-        documents: docs.iter().map(|d| doc_row_to_info(d)).collect(),
+        documents: docs.iter().map(doc_row_to_info).collect(),
     })
 }

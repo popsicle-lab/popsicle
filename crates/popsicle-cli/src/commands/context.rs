@@ -512,8 +512,8 @@ fn execute_bootstrap_apply(
         input.to_string()
     };
 
-    let plan: BootstrapPlan =
-        serde_json::from_str(&json_str).map_err(|e| anyhow::anyhow!("Invalid bootstrap plan JSON: {}", e))?;
+    let plan: BootstrapPlan = serde_json::from_str(&json_str)
+        .map_err(|e| anyhow::anyhow!("Invalid bootstrap plan JSON: {}", e))?;
 
     let result: BootstrapResult =
         execute_bootstrap_plan(&plan, cwd, start).map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -541,17 +541,11 @@ fn execute_bootstrap_apply(
 /// Generate a simple file tree string, limited to a given depth.
 fn generate_file_tree(root: &std::path::Path, max_depth: usize) -> String {
     let mut out = String::new();
-    walk_tree(root, root, 0, max_depth, &mut out);
+    walk_tree(root, 0, max_depth, &mut out);
     out
 }
 
-fn walk_tree(
-    dir: &std::path::Path,
-    root: &std::path::Path,
-    depth: usize,
-    max_depth: usize,
-    out: &mut String,
-) {
+fn walk_tree(dir: &std::path::Path, depth: usize, max_depth: usize, out: &mut String) {
     if depth >= max_depth {
         return;
     }
@@ -590,7 +584,7 @@ fn walk_tree(
                 continue;
             }
             out.push_str(&format!("{}{}/\n", indent, name));
-            walk_tree(&entry.path(), root, depth + 1, max_depth, out);
+            walk_tree(&entry.path(), depth + 1, max_depth, out);
         } else {
             out.push_str(&format!("{}{}\n", indent, name));
         }

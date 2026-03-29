@@ -6,10 +6,11 @@ It organizes the full software development lifecycle through composable **Skills
 
 ## Core Concepts
 
-- **Module** — A self-contained distribution unit packaging a set of Skills and Pipelines together; one active module per project, upgradeable via CLI or binary update
-- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `domain-analysis`, `arch-debate`, `rfc-writer`)
+- **Module** — A self-contained distribution unit packaging Skills, Pipelines, and a Bootstrap spec; one active module per project, distributed via a git-based [registry](https://popsicle-lab.com/registry)
+- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `arch-debate`, `rfc-writer`, `implementation`)
 - **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Topic for continuity and revision support
 - **Topic** — Groups related pipeline runs and documents under a single development theme (e.g., "jwt-migration"); enables cross-pipeline document sharing, version tracking, and pipeline revision
+- **Bootstrap** — LLM-driven project initialization that reads a module's `bootstrap.md` (natural language spec), scans the project, and generates a structured plan covering architecture, bounded contexts, conventions, and team decisions — all before the first pipeline run
 - **Document** — Artifacts produced by Skills, stored as YAML frontmatter + Markdown files for Git-friendliness; linked to a Topic for cross-run visibility with automatic version tracking
 - **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
@@ -28,7 +29,7 @@ It organizes the full software development lifecycle through composable **Skills
 
 Pre-built binaries (CLI + Desktop UI) are available for macOS, Linux, and Windows:
 
-> **[Latest Release](https://github.com/curtiseng/popsicle/releases/latest)**
+> **[Latest Release](https://github.com/popsicle-lab/popsicle/releases/latest)**
 
 | Platform | File |
 |----------|------|
@@ -101,6 +102,13 @@ popsicle init --agent claude,cursor --module github:popsicle-lab/popsicle-spec-d
 
 # Install git post-commit hook for automatic tracking
 popsicle git init
+
+# Bootstrap: generate a project plan from the module's bootstrap spec
+popsicle context bootstrap --generate-prompt   # Outputs an LLM prompt to stdout
+# Feed the prompt to your LLM, save the output as bootstrap-plan.md, then:
+popsicle context bootstrap --apply bootstrap-plan.md
+# Or combine generate + apply in one step (requires ANTHROPIC_API_KEY):
+popsicle context bootstrap --start
 
 # Create an issue and bind a specific pipeline
 popsicle issue create --type product --title "Add user authentication" --pipeline full-sdlc
@@ -207,6 +215,8 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle module show [<name>]` | Show module details: skills, pipelines, version, source |
 | `popsicle module install <source>` | Install a module from local path or `github:user/repo[#ref][//subdir]`; auto-regenerates agent instructions |
 | `popsicle module upgrade [--force]` | Upgrade active module (re-fetch from recorded source); auto-regenerates agent instructions |
+| `popsicle module publish` | Publish the current module to the registry (requires `POPSICLE_REGISTRY_TOKEN`) |
+| `popsicle registry search <query>` | Search the registry for modules |
 
 Examples:
 
@@ -228,6 +238,9 @@ popsicle module upgrade
 
 # Force reinstall even if version matches
 popsicle module upgrade --force
+
+# Publish a module to the registry
+cd my-module && popsicle module publish
 ```
 
 Skill loading priority (later overrides earlier):
@@ -350,6 +363,9 @@ When `--pipeline` is specified at creation, `issue start` uses that pipeline dir
 | `popsicle context scan` | Auto-scan project and generate technical profile |
 | `popsicle context show [--run <id>] [--stage <s>]` | Full pipeline context with document bodies (JSON) |
 | `popsicle context update --section <name>` | Update a section in project-context.md |
+| `popsicle context bootstrap --generate-prompt` | Generate a bootstrap LLM prompt from the module's `bootstrap.md` |
+| `popsicle context bootstrap --apply <file>` | Apply a bootstrap plan (LLM output) to create project-level configs |
+| `popsicle context bootstrap --start` | Run end-to-end bootstrap: generate prompt → call LLM → apply plan (requires `ANTHROPIC_API_KEY`) |
 | `popsicle prompt <skill> [--state <s>] [--run <id>]` | AI prompt with upstream context + memory injected |
 | `popsicle migrate --skill <s> <paths...>` | Import existing Markdown docs into a pipeline run |
 | `popsicle completions <zsh/bash/fish>` | Generate shell completions |
@@ -358,17 +374,35 @@ All commands support `--format json` for machine consumption.
 
 ## Official Module: `spec-development`
 
-Popsicle ships as a bare orchestration engine. Install the official module to get skills and pipelines:
+Popsicle ships as a bare orchestration engine. Install the official module to get skills, pipelines, and a bootstrap spec:
 
 ```bash
-popsicle module install github:curtiseng/popsclice-spec-development
+popsicle module install github:popsicle-lab/popsicle-spec-development
 ```
 
-### Skills (17)
+Browse the full module catalog on the [Popsicle Registry](https://popsicle-lab.com/registry).
+
+### Bootstrap
+
+The module includes a `bootstrap.md` that guides LLM-driven project initialization:
+
+```bash
+# Generate a prompt for your LLM (includes project scan + bootstrap spec)
+popsicle context bootstrap --generate-prompt
+
+# Apply the LLM-generated plan
+popsicle context bootstrap --apply bootstrap-plan.md
+
+# Or run the full loop automatically (requires ANTHROPIC_API_KEY)
+popsicle context bootstrap --start
+```
+
+The bootstrap process produces a structured project plan covering architecture decisions, bounded contexts, entity relationships, conventions, and team workflow — all stored in `.popsicle/bootstrap-plan.md`. This plan feeds into every subsequent pipeline run as shared context.
+
+### Skills (16)
 
 | Skill | Artifact Type | Description |
 |-------|---------------|-------------|
-| `domain-analysis` | domain-model | Domain boundary analysis and model definition |
 | `product-debate` | product-debate-record | Multi-persona product debate to explore options |
 | `prd-writer` | prd | Product requirements document with quality scoring |
 | `arch-debate` | arch-debate-record | Multi-persona architecture debate for technical decisions |
@@ -386,7 +420,7 @@ popsicle module install github:curtiseng/popsclice-spec-development
 | `bug-tracker` | bug-report | Bug tracking and issue management |
 | `test-report` | test-summary | Test report analysis and aggregation |
 
-### Pipelines (5)
+### Pipelines (8)
 
 #### `full-sdlc` — Full software development lifecycle (scale: full)
 
@@ -426,6 +460,28 @@ implementation → test-codegen → quality (bug-tracker + test-report)
 ```
 test-planning → test-codegen → quality
 ```
+
+#### `quick-feature` — Fast feature with clear requirements (scale: light)
+
+```
+prd-writer → rfc-writer + adr-writer → implementation → test-codegen → quality
+```
+
+Keywords: `quick`, `fast`, `clear-requirement`
+
+#### `single-doc` — Single document workflow (scale: minimal)
+
+One-shot document generation — pick any skill as a standalone task.
+
+Keywords: `single`, `doc`, `one-off`, `write-rfc`, `write-adr`, `write-prd`
+
+#### `hotfix` — Emergency fix workflow (scale: minimal)
+
+```
+implementation → unit-test-codegen → bug-tracker
+```
+
+Keywords: `hotfix`, `bug`, `fix`, `urgent`, `emergency`
 
 Use `popsicle pipeline recommend --task "<description>"` to get a recommendation based on your task.
 
@@ -476,6 +532,7 @@ Developer ──→                               ↑
 - **CLI executes, UI observes** — AI agents and developers operate through CLI; UI only visualizes and suggests
 - **Skills are first-class** — Each skill carries its own sub-workflow, templates, prompts, and hooks
 - **Pipeline orchestrates** — DAG-based stage dependencies with automatic state propagation
+- **Bootstrap before build** — LLM-driven project planning from natural language specs before the first pipeline run
 - **Guards enforce discipline** — Upstream approval and content completeness checked before transitions
 - **Git-aware** — Post-commit hooks auto-track commits; link commits to documents, stages, and skills
 - **Multi-agent** — Native support for Claude Code and Cursor with auto-generated skills following the Agent Skills open standard
@@ -485,7 +542,7 @@ Developer ──→                               ↑
 - **Memory-driven** — Cross-session memory with event-driven staleness, two-layer promotion, and 200-line budget
 - **Work item traceability** — Bugs, stories, and test cases linked across documents, pipeline runs, issues, and commits
 - **Scale-adaptive** — Pipeline recommender matches task complexity to the right workflow depth
-- **Modular distribution** — One active module per project; install from Git; `popsicle init` is idempotent
+- **Modular distribution** — Git-based registry; one active module per project; install from Git; `popsicle init` is idempotent
 - **Extensible** — Custom skills (`skill create`), pipelines (`pipeline create`), hooks for lifecycle events
 
 ### Project Layout (after `popsicle init`)

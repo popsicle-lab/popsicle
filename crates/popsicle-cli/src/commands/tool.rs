@@ -78,20 +78,13 @@ fn list_tools(format: &OutputFormat) -> anyhow::Result<()> {
             if tools.is_empty() {
                 println!("No tools installed.");
                 println!();
-                println!(
-                    "Install a tool with: popsicle tool install <source>"
-                );
+                println!("Install a tool with: popsicle tool install <source>");
                 return Ok(());
             }
-            println!("{:<20} {:<10} {}", "NAME", "VERSION", "DESCRIPTION");
+            println!("{:<20} {:<10} DESCRIPTION", "NAME", "VERSION");
             println!("{}", "-".repeat(70));
             for t in &tools {
-                println!(
-                    "{:<20} {:<10} {}",
-                    t.name,
-                    t.version,
-                    t.description
-                );
+                println!("{:<20} {:<10} {}", t.name, t.version, t.description);
             }
             println!("\n{} tool(s) available.", tools.len());
         }
@@ -159,7 +152,11 @@ fn print_tool_detail(tool: &ToolDef) {
     if let Some(src) = &tool.source {
         println!("  Source:      {}", src);
     }
-    let kind = if tool.command.is_some() { "command" } else { "prompt" };
+    let kind = if tool.command.is_some() {
+        "command"
+    } else {
+        "prompt"
+    };
     println!("  Kind:        {}", kind);
 
     if !tool.args.is_empty() {
@@ -172,7 +169,10 @@ fn print_tool_detail(tool: &ToolDef) {
                 .as_deref()
                 .map(|d| format!(" (default: {})", d))
                 .unwrap_or_default();
-            println!("  {:.<20} {} [{}]{}", arg.name, arg.description, req, default);
+            println!(
+                "  {:.<20} {} [{}]{}",
+                arg.name, arg.description, req, default
+            );
         }
     }
 
@@ -199,7 +199,11 @@ fn print_tool_detail(tool: &ToolDef) {
 
 // ── install ───────────────────────────────────────────────────────────────────
 
-fn install_tool(source: &str, name_override: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
+fn install_tool(
+    source: &str,
+    name_override: Option<&str>,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
     let project_dir = project_dir()?;
     let layout = ProjectLayout::new(&project_dir);
     layout
@@ -260,7 +264,10 @@ fn install_tool(source: &str, name_override: Option<&str>, format: &OutputFormat
 
     match format {
         OutputFormat::Text => {
-            println!("Installed tool '{}' (v{}) from {}", tool_def.name, tool_def.version, source);
+            println!(
+                "Installed tool '{}' (v{}) from {}",
+                tool_def.name, tool_def.version, source
+            );
             println!("  Location: {}", dest.display());
             println!();
             println!("Run with: popsicle tool run {}", install_name);

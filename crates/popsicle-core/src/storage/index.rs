@@ -538,7 +538,17 @@ impl IndexDb {
         })?;
 
         if let Some(row) = rows.next() {
-            let (id, pipeline_name, title, states_json, topic_id, parent_run_id, run_type_str, created_str, updated_str) = row?;
+            let (
+                id,
+                pipeline_name,
+                title,
+                states_json,
+                topic_id,
+                parent_run_id,
+                run_type_str,
+                created_str,
+                updated_str,
+            ) = row?;
             let stage_states: std::collections::HashMap<String, StageState> =
                 serde_json::from_str(&states_json)
                     .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
@@ -600,8 +610,7 @@ impl IndexDb {
 
     /// Create a new topic.
     pub fn create_topic(&self, topic: &crate::model::Topic) -> Result<()> {
-        let tags_json =
-            serde_json::to_string(&topic.tags).unwrap_or_else(|_| "[]".to_string());
+        let tags_json = serde_json::to_string(&topic.tags).unwrap_or_else(|_| "[]".to_string());
         self.conn.execute(
             "INSERT INTO topics (id, name, slug, description, tags, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -656,6 +665,7 @@ impl IndexDb {
         Self::parse_topic_row(rows.next())
     }
 
+    #[allow(clippy::type_complexity)]
     fn parse_topic_row(
         row: Option<
             std::result::Result<
@@ -666,8 +676,7 @@ impl IndexDb {
     ) -> Result<Option<crate::model::Topic>> {
         match row {
             Some(Ok((id, name, slug, description, tags_json, created_str, updated_str))) => {
-                let tags: Vec<String> =
-                    serde_json::from_str(&tags_json).unwrap_or_default();
+                let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
                 let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
                     .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
                     .with_timezone(&chrono::Utc);

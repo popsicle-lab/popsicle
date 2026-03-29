@@ -90,7 +90,11 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
             description,
             local,
         } => create_pipeline(&name, &description, local, format),
-        PipelineCommand::Run { pipeline, title, topic } => run_pipeline(&pipeline, &title, topic.as_deref(), format),
+        PipelineCommand::Run {
+            pipeline,
+            title,
+            topic,
+        } => run_pipeline(&pipeline, &title, topic.as_deref(), format),
         PipelineCommand::Status { run } => show_status(run.as_deref(), format),
         PipelineCommand::Next { run } => show_next(run.as_deref(), format),
         PipelineCommand::Verify { run } => verify_run(run.as_deref(), format),
@@ -489,7 +493,12 @@ fn list_pipelines(format: &OutputFormat) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_pipeline(pipeline_name: &str, title: &str, topic_name: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
+fn run_pipeline(
+    pipeline_name: &str,
+    title: &str,
+    topic_name: Option<&str>,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let pipeline_def = find_pipeline(pipeline_name)?;
     pipeline_def

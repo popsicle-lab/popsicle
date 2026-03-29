@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::{PopsicleError, Result};
-use crate::registry::package::{PackageEntry, PackageType, PackageVersion, RegistryConfig, index_path};
+use crate::registry::package::{
+    PackageEntry, PackageType, PackageVersion, RegistryConfig, index_path,
+};
 
 /// Default registry URL.
 const DEFAULT_REGISTRY: &str = "https://github.com/popsicle-lab/popsicle-registry.git";
@@ -28,9 +30,7 @@ impl RegistryIndex {
     ///
     /// The index is cached at `~/.popsicle/registry/`.
     pub fn open(registry_url: Option<&str>) -> Result<Self> {
-        let remote_url = registry_url
-            .unwrap_or(DEFAULT_REGISTRY)
-            .to_string();
+        let remote_url = registry_url.unwrap_or(DEFAULT_REGISTRY).to_string();
 
         let local_path = cache_dir()?;
 
@@ -102,9 +102,8 @@ impl RegistryIndex {
         }
 
         let versions = read_package_file(&file_path)?;
-        PackageEntry::from_versions(versions).ok_or_else(|| {
-            PopsicleError::Storage(format!("Package '{}' has no versions", name))
-        })
+        PackageEntry::from_versions(versions)
+            .ok_or_else(|| PopsicleError::Storage(format!("Package '{}' has no versions", name)))
     }
 
     /// Resolve a package name (optionally with `@version`) to a source string.
@@ -122,17 +121,11 @@ impl RegistryIndex {
 
         let pkg_version = if let Some(v) = version {
             entry.version(v).ok_or_else(|| {
-                PopsicleError::Storage(format!(
-                    "Version '{}' not found for package '{}'",
-                    v, name
-                ))
+                PopsicleError::Storage(format!("Version '{}' not found for package '{}'", v, name))
             })?
         } else {
             entry.latest().ok_or_else(|| {
-                PopsicleError::Storage(format!(
-                    "No available version for package '{}'",
-                    name
-                ))
+                PopsicleError::Storage(format!("No available version for package '{}'", name))
             })?
         };
 
@@ -148,11 +141,7 @@ impl RegistryIndex {
     /// Search packages by a text query, optionally filtered by type.
     ///
     /// Searches name, description, keywords, skills, pipelines, and tools.
-    pub fn search(
-        &self,
-        query: &str,
-        pkg_type: Option<PackageType>,
-    ) -> Result<Vec<SearchResult>> {
+    pub fn search(&self, query: &str, pkg_type: Option<PackageType>) -> Result<Vec<SearchResult>> {
         let query_lower = query.to_lowercase();
         let mut results = Vec::new();
 
@@ -162,10 +151,10 @@ impl RegistryIndex {
         for entry in packages {
             if let Some(latest) = entry.latest() {
                 // Type filter
-                if let Some(t) = pkg_type {
-                    if latest.pkg_type != t {
-                        continue;
-                    }
+                if let Some(t) = pkg_type
+                    && latest.pkg_type != t
+                {
+                    continue;
                 }
 
                 // Text match: name, description, keywords, skills, pipelines, tools
@@ -190,7 +179,7 @@ impl RegistryIndex {
     /// List all packages in the index.
     pub fn list_all_packages(&self) -> Result<Vec<PackageEntry>> {
         let mut entries = Vec::new();
-        walk_index_dir(&self.local_path, &self.local_path, &mut entries)?;
+        walk_index_dir(&self.local_path, &mut entries)?;
         Ok(entries)
     }
 
@@ -281,11 +270,7 @@ fn read_package_file(path: &Path) -> Result<Vec<PackageVersion>> {
 }
 
 /// Recursively walk the index directory, skipping `.git`, `config.json`, etc.
-fn walk_index_dir(
-    base: &Path,
-    dir: &Path,
-    entries: &mut Vec<PackageEntry>,
-) -> Result<()> {
+fn walk_index_dir(dir: &Path, entries: &mut Vec<PackageEntry>) -> Result<()> {
     if !dir.is_dir() {
         return Ok(());
     }
@@ -302,13 +287,13 @@ fn walk_index_dir(
         }
 
         if path.is_dir() {
-            walk_index_dir(base, &path, entries)?;
+            walk_index_dir(&path, entries)?;
         } else if path.is_file() {
             // This should be a package NDJSON file
-            if let Ok(versions) = read_package_file(&path) {
-                if let Some(pkg) = PackageEntry::from_versions(versions) {
-                    entries.push(pkg);
-                }
+            if let Ok(versions) = read_package_file(&path)
+                && let Some(pkg) = PackageEntry::from_versions(versions)
+            {
+                entries.push(pkg);
             }
         }
     }
@@ -328,10 +313,10 @@ fn compute_search_score(v: &PackageVersion, query: &str) -> u32 {
     }
 
     // Description
-    if let Some(desc) = &v.description {
-        if desc.to_lowercase().contains(query) {
-            score += 20;
-        }
+    if let Some(desc) = &v.description
+        && desc.to_lowercase().contains(query)
+    {
+        score += 20;
     }
 
     // Keywords
@@ -344,7 +329,12 @@ fn compute_search_score(v: &PackageVersion, query: &str) -> u32 {
     }
 
     // Skills, pipelines, tools
-    for s in v.skills.iter().chain(v.pipelines.iter()).chain(v.tools.iter()) {
+    for s in v
+        .skills
+        .iter()
+        .chain(v.pipelines.iter())
+        .chain(v.tools.iter())
+    {
         if s.to_lowercase().contains(query) {
             score += 5;
         }
@@ -361,9 +351,9 @@ fn run_git(args: &[&str], cwd: Option<&Path>) -> Result<()> {
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let output = cmd.output().map_err(|e| {
-        PopsicleError::Storage(format!("Failed to run git: {}", e))
-    })?;
+    let output = cmd
+        .output()
+        .map_err(|e| PopsicleError::Storage(format!("Failed to run git: {}", e)))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(PopsicleError::Storage(format!(
@@ -380,7 +370,10 @@ fn git_clone(url: &str, dest: &Path) -> Result<()> {
     if dest.is_dir() {
         std::fs::remove_dir_all(dest)?;
     }
-    run_git(&["clone", "--depth", "1", url, &dest.to_string_lossy()], None)
+    run_git(
+        &["clone", "--depth", "1", url, &dest.to_string_lossy()],
+        None,
+    )
 }
 
 fn git_fetch(repo: &Path) -> Result<()> {
