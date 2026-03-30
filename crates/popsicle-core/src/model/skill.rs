@@ -21,7 +21,7 @@ pub struct SkillDef {
     #[serde(default)]
     pub hooks: HooksDef,
 
-    /// How documents produced by this skill accumulate within a Topic.
+    /// How documents produced by this skill accumulate within a Spec.
     #[serde(default)]
     pub doc_lifecycle: DocLifecycle,
 
@@ -36,11 +36,11 @@ fn default_version() -> String {
     "0.1.0".to_string()
 }
 
-/// How documents produced by this skill accumulate within a Topic.
+/// How documents produced by this skill accumulate within a Spec.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DocLifecycle {
-    /// One document per topic — new pipeline runs update the existing doc (default).
+    /// One document per spec — new pipeline runs update the existing doc (default).
     #[default]
     Singleton,
     /// Each pipeline run creates a new document — history accumulates (e.g. ADRs).

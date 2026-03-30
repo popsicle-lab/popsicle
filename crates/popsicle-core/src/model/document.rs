@@ -15,8 +15,8 @@ pub struct Document {
     #[serde(default)]
     pub skill_name: String,
     pub pipeline_run_id: String,
-    /// Topic this document belongs to.
-    pub topic_id: String,
+    /// Spec this document belongs to.
+    pub spec_id: String,
     /// Revision counter (starts at 1, incremented on each revision).
     #[serde(default = "default_version")]
     pub version: u32,
@@ -57,7 +57,7 @@ impl Document {
         title: impl Into<String>,
         skill_name: impl Into<String>,
         pipeline_run_id: impl Into<String>,
-        topic_id: impl Into<String>,
+        spec_id: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -67,7 +67,7 @@ impl Document {
             status: "active".to_string(),
             skill_name: skill_name.into(),
             pipeline_run_id: pipeline_run_id.into(),
-            topic_id: topic_id.into(),
+            spec_id: spec_id.into(),
             version: 1,
             parent_doc_id: None,
             tags: Vec::new(),
@@ -91,7 +91,7 @@ impl Document {
             status: "active".to_string(),
             skill_name: self.skill_name.clone(),
             pipeline_run_id: new_run_id.into(),
-            topic_id: self.topic_id.clone(),
+            spec_id: self.spec_id.clone(),
             version: self.version + 1,
             parent_doc_id: Some(self.id.clone()),
             tags: self.tags.clone(),
@@ -163,7 +163,7 @@ Some body content.
 
     #[test]
     fn test_document_roundtrip() {
-        let mut doc = Document::new("prd", "Test PRD", "product-prd", "run-001", "topic-001");
+        let mut doc = Document::new("prd", "Test PRD", "product-prd", "run-001", "spec-001");
         doc.body = "## Background\nSome content.".to_string();
 
         let content = doc.to_file_content().unwrap();
@@ -171,7 +171,7 @@ Some body content.
 
         assert_eq!(parsed.title, "Test PRD");
         assert_eq!(parsed.doc_type, "prd");
-        assert_eq!(parsed.topic_id, "topic-001");
+        assert_eq!(parsed.spec_id, "spec-001");
         assert_eq!(parsed.version, 1);
         assert!(parsed.parent_doc_id.is_none());
         assert!(parsed.body.contains("## Background"));
@@ -179,11 +179,11 @@ Some body content.
 
     #[test]
     fn test_document_revision() {
-        let doc = Document::new("rfc", "RFC v1", "rfc-writer", "run-001", "topic-001");
+        let doc = Document::new("rfc", "RFC v1", "rfc-writer", "run-001", "spec-001");
         let rev = doc.new_revision("run-002");
         assert_eq!(rev.version, 2);
         assert_eq!(rev.parent_doc_id, Some(doc.id.clone()));
-        assert_eq!(rev.topic_id, "topic-001");
+        assert_eq!(rev.spec_id, "spec-001");
         assert_eq!(rev.pipeline_run_id, "run-002");
         assert_eq!(rev.status, "active");
         assert_ne!(rev.id, doc.id);

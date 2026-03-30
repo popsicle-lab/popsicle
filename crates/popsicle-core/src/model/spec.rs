@@ -1,23 +1,23 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// A topic groups related pipeline runs and documents under a single
-/// feature or initiative.  Documents and runs always belong to a topic,
+/// A spec groups related pipeline runs and documents under a single
+/// feature or initiative.  Documents and runs always belong to a spec,
 /// enabling cross-pipeline reuse and revision tracking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Topic {
+pub struct Spec {
     pub id: String,
     pub name: String,
     /// URL-safe slug used as the `{slug}` prefix in artifact file patterns.
     pub slug: String,
     #[serde(default)]
     pub description: String,
-    /// Parent namespace this topic belongs to (required).
+    /// Parent namespace this spec belongs to (required).
     #[serde(default)]
     pub namespace_id: String,
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Exclusive lock: the pipeline run currently operating on this topic.
+    /// Exclusive lock: the pipeline run currently operating on this spec.
     #[serde(default)]
     pub locked_by_run_id: Option<String>,
     #[serde(default)]
@@ -26,10 +26,14 @@ pub struct Topic {
     pub updated_at: DateTime<Utc>,
 }
 
-impl Topic {
-    /// Create a new topic. The slug is auto-generated from `name` if not
+impl Spec {
+    /// Create a new spec. The slug is auto-generated from `name` if not
     /// supplied (lowercased, spaces/underscores → hyphens, non-alphanumeric stripped).
-    pub fn new(name: impl Into<String>, description: impl Into<String>, namespace_id: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        namespace_id: impl Into<String>,
+    ) -> Self {
         let name = name.into();
         let slug = slugify(&name);
         let now = Utc::now();
@@ -88,20 +92,20 @@ mod tests {
     }
 
     #[test]
-    fn test_new_topic_generates_slug() {
-        let topic = Topic::new("Add User Auth", "Implement JWT auth", "proj-1");
-        assert_eq!(topic.slug, "add-user-auth");
-        assert_eq!(topic.name, "Add User Auth");
-        assert_eq!(topic.description, "Implement JWT auth");
-        assert!(!topic.id.is_empty());
+    fn test_new_spec_generates_slug() {
+        let spec = Spec::new("Add User Auth", "Implement JWT auth", "proj-1");
+        assert_eq!(spec.slug, "add-user-auth");
+        assert_eq!(spec.name, "Add User Auth");
+        assert_eq!(spec.description, "Implement JWT auth");
+        assert!(!spec.id.is_empty());
     }
 
     #[test]
-    fn test_new_topic_timestamps() {
+    fn test_new_spec_timestamps() {
         let before = Utc::now();
-        let topic = Topic::new("Test", "", "proj-1");
+        let spec = Spec::new("Test", "", "proj-1");
         let after = Utc::now();
-        assert!(topic.created_at >= before && topic.created_at <= after);
-        assert!(topic.updated_at >= before && topic.updated_at <= after);
+        assert!(spec.created_at >= before && spec.created_at <= after);
+        assert!(spec.updated_at >= before && spec.updated_at <= after);
     }
 }

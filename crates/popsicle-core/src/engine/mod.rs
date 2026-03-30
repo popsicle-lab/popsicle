@@ -10,7 +10,7 @@ mod recommender;
 pub use advisor::{Advisor, NextStep};
 pub use bootstrap::{
     BootstrapDoc, BootstrapNamespace, BootstrapNamespaceResult, BootstrapPlan, BootstrapResult,
-    BootstrapTopic, BootstrapTopicResult, build_bootstrap_prompt, execute_bootstrap_plan,
+    BootstrapSpec, BootstrapSpecResult, build_bootstrap_prompt, execute_bootstrap_plan,
 };
 pub use context::{AssembledContext, ContextInput, ContextPart, assemble_input_context};
 pub use guard::{GuardResult, check_guard, count_checkboxes};

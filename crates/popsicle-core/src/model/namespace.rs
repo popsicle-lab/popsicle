@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// A namespace groups related topics under a single initiative or epic.
-/// Namespaces are optional — topics can exist without a namespace.
+/// A namespace groups related specs under a single initiative or epic.
+/// Namespaces are optional — specs can exist without a namespace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Namespace {
     pub id: String,
@@ -56,7 +56,7 @@ impl std::str::FromStr for NamespaceStatus {
 impl Namespace {
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         let name = name.into();
-        let slug = super::topic::slugify(&name);
+        let slug = super::spec::slugify(&name);
         let now = Utc::now();
         Self {
             id: uuid::Uuid::new_v4().to_string(),

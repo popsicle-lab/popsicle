@@ -1,5 +1,5 @@
-use rusqlite::{Connection, params};
 use rusqlite::OptionalExtension;
+use rusqlite::{Connection, params};
 use std::path::Path;
 
 use crate::error::Result;
@@ -7,7 +7,7 @@ use crate::git::{CommitLink, ReviewStatus};
 use crate::model::{
     AcceptanceCriterion, Bug, BugSeverity, BugSource, BugStatus, Discussion, DiscussionMessage,
     DiscussionRole, DiscussionStatus, Document, Issue, IssueStatus, IssueType, MessageType,
-    PipelineRun, Priority, Namespace, NamespaceStatus, RoleSource, RunType, StageState, TestCase,
+    Namespace, NamespaceStatus, PipelineRun, Priority, RoleSource, RunType, StageState, TestCase,
     TestCaseStatus, TestPriority, TestRunResult, TestType, UserStory, UserStoryStatus,
 };
 
@@ -46,7 +46,7 @@ impl IndexDb {
                 updated_at TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS topics (
+            CREATE TABLE IF NOT EXISTS specs (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
                 slug TEXT NOT NULL UNIQUE,
@@ -63,7 +63,7 @@ impl IndexDb {
                 status TEXT NOT NULL,
                 skill_name TEXT NOT NULL,
                 pipeline_run_id TEXT NOT NULL,
-                topic_id TEXT NOT NULL REFERENCES topics(id),
+                spec_id TEXT NOT NULL REFERENCES specs(id),
                 version INTEGER NOT NULL DEFAULT 1,
                 parent_doc_id TEXT,
                 file_path TEXT NOT NULL,
@@ -76,7 +76,7 @@ impl IndexDb {
                 pipeline_name TEXT NOT NULL,
                 title TEXT NOT NULL,
                 stage_states_json TEXT NOT NULL,
-                topic_id TEXT NOT NULL REFERENCES topics(id),
+                spec_id TEXT NOT NULL REFERENCES specs(id),
                 parent_run_id TEXT,
                 run_type TEXT NOT NULL DEFAULT 'new',
                 created_at TEXT NOT NULL,
@@ -86,8 +86,8 @@ impl IndexDb {
             CREATE INDEX IF NOT EXISTS idx_doc_skill ON documents(skill_name);
             CREATE INDEX IF NOT EXISTS idx_doc_run ON documents(pipeline_run_id);
             CREATE INDEX IF NOT EXISTS idx_doc_status ON documents(status);
-            CREATE INDEX IF NOT EXISTS idx_doc_topic ON documents(topic_id);
-            CREATE INDEX IF NOT EXISTS idx_run_topic ON pipeline_runs(topic_id);
+            CREATE INDEX IF NOT EXISTS idx_doc_spec ON documents(spec_id);
+            CREATE INDEX IF NOT EXISTS idx_run_spec ON pipeline_runs(spec_id);
 
             CREATE TABLE IF NOT EXISTS commit_links (
                 sha TEXT NOT NULL,
@@ -153,7 +153,7 @@ impl IndexDb {
                 priority TEXT NOT NULL DEFAULT 'medium',
                 status TEXT NOT NULL DEFAULT 'backlog',
                 pipeline TEXT,
-                topic_id TEXT NOT NULL DEFAULT '' REFERENCES topics(id),
+                spec_id TEXT NOT NULL DEFAULT '' REFERENCES specs(id),
                 labels TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -162,7 +162,7 @@ impl IndexDb {
             CREATE INDEX IF NOT EXISTS idx_issue_key ON issues(key);
             CREATE INDEX IF NOT EXISTS idx_issue_status ON issues(status);
             CREATE INDEX IF NOT EXISTS idx_issue_type ON issues(issue_type);
-            CREATE INDEX IF NOT EXISTS idx_issue_topic ON issues(topic_id);
+            CREATE INDEX IF NOT EXISTS idx_issue_spec ON issues(spec_id);
 
             CREATE TABLE IF NOT EXISTS bugs (
                 id TEXT PRIMARY KEY,
@@ -290,44 +290,42 @@ impl IndexDb {
         }
 
         // Migration: rename projects table to namespaces
-        let has_projects_table: bool = self
-            .conn
-            .prepare("SELECT id FROM projects LIMIT 0")
-            .is_ok();
+        let has_projects_table: bool = self.conn.prepare("SELECT id FROM projects LIMIT 0").is_ok();
         if has_projects_table {
             self.conn
                 .execute_batch("ALTER TABLE projects RENAME TO namespaces;")?;
         }
 
-        // Migration: add namespace_id column to topics
+        // Migration: add namespace_id column to specs
         let has_namespace_id: bool = self
             .conn
-            .prepare("SELECT namespace_id FROM topics LIMIT 0")
+            .prepare("SELECT namespace_id FROM specs LIMIT 0")
             .is_ok();
         if !has_namespace_id {
             // Check if old project_id column exists (pre-rename databases)
             let has_project_id: bool = self
                 .conn
-                .prepare("SELECT project_id FROM topics LIMIT 0")
+                .prepare("SELECT project_id FROM specs LIMIT 0")
                 .is_ok();
             if has_project_id {
                 self.conn
-                    .execute_batch("ALTER TABLE topics RENAME COLUMN project_id TO namespace_id;")?;
+                    .execute_batch("ALTER TABLE specs RENAME COLUMN project_id TO namespace_id;")?;
             } else {
-                self.conn
-                    .execute_batch("ALTER TABLE topics ADD COLUMN namespace_id TEXT REFERENCES namespaces(id);")?;
+                self.conn.execute_batch(
+                    "ALTER TABLE specs ADD COLUMN namespace_id TEXT REFERENCES namespaces(id);",
+                )?;
             }
         }
 
-        // Migration: add topic lock columns
-        let has_topic_lock: bool = self
+        // Migration: add spec lock columns
+        let has_spec_lock: bool = self
             .conn
-            .prepare("SELECT locked_by_run_id FROM topics LIMIT 0")
+            .prepare("SELECT locked_by_run_id FROM specs LIMIT 0")
             .is_ok();
-        if !has_topic_lock {
+        if !has_spec_lock {
             self.conn.execute_batch(
-                "ALTER TABLE topics ADD COLUMN locked_by_run_id TEXT REFERENCES pipeline_runs(id);
-                 ALTER TABLE topics ADD COLUMN locked_at TEXT;",
+                "ALTER TABLE specs ADD COLUMN locked_by_run_id TEXT REFERENCES pipeline_runs(id);
+                 ALTER TABLE specs ADD COLUMN locked_at TEXT;",
             )?;
         }
 
@@ -342,18 +340,18 @@ impl IndexDb {
                                 CREATE INDEX IF NOT EXISTS idx_run_issue ON pipeline_runs(issue_id);")?;
         }
 
-        // Migration: add topic_id column to issues (for existing DBs)
-        let has_issue_topic_id: bool = self
+        // Migration: add spec_id column to issues (for existing DBs)
+        let has_issue_spec_id: bool = self
             .conn
-            .prepare("SELECT topic_id FROM issues LIMIT 0")
+            .prepare("SELECT spec_id FROM issues LIMIT 0")
             .is_ok();
-        if !has_issue_topic_id {
+        if !has_issue_spec_id {
             self.conn
-                .execute_batch("ALTER TABLE issues ADD COLUMN topic_id TEXT NOT NULL DEFAULT '' REFERENCES topics(id);
-                                CREATE INDEX IF NOT EXISTS idx_issue_topic ON issues(topic_id);")?;
+                .execute_batch("ALTER TABLE issues ADD COLUMN spec_id TEXT NOT NULL DEFAULT '' REFERENCES specs(id);
+                                CREATE INDEX IF NOT EXISTS idx_issue_spec ON issues(spec_id);")?;
         }
 
-        // Migration: backfill issue.topic_id from pipeline_runs and move pipeline_run_id to pipeline_runs.issue_id
+        // Migration: backfill issue.spec_id from pipeline_runs and move pipeline_run_id to pipeline_runs.issue_id
         let _ = self.conn.execute_batch(
             "UPDATE pipeline_runs SET issue_id = (
                 SELECT id FROM issues WHERE issues.pipeline_run_id = pipeline_runs.id
@@ -361,10 +359,21 @@ impl IndexDb {
                 SELECT 1 FROM issues WHERE issues.pipeline_run_id = pipeline_runs.id
              );
 
-             UPDATE issues SET topic_id = (
-                SELECT topic_id FROM pipeline_runs WHERE pipeline_runs.id = issues.pipeline_run_id
-             ) WHERE topic_id = '' AND pipeline_run_id IS NOT NULL AND pipeline_run_id != '';",
+             UPDATE issues SET spec_id = (
+                SELECT spec_id FROM pipeline_runs WHERE pipeline_runs.id = issues.pipeline_run_id
+             ) WHERE spec_id = '' AND pipeline_run_id IS NOT NULL AND pipeline_run_id != '';",
         );
+
+        // Migration: rename topics table to specs and topic_id columns to spec_id
+        let has_topics_table: bool = self.conn.prepare("SELECT id FROM topics LIMIT 0").is_ok();
+        if has_topics_table {
+            self.conn.execute_batch(
+                "ALTER TABLE topics RENAME TO specs;
+                 ALTER TABLE documents RENAME COLUMN topic_id TO spec_id;
+                 ALTER TABLE pipeline_runs RENAME COLUMN topic_id TO spec_id;
+                 ALTER TABLE issues RENAME COLUMN topic_id TO spec_id;",
+            )?;
+        }
 
         // FTS5 virtual table for full-text search on documents
         self.conn.execute_batch(
@@ -401,7 +410,7 @@ impl IndexDb {
     pub fn upsert_document(&self, doc: &Document) -> Result<()> {
         let tags_json = serde_json::to_string(&doc.tags).unwrap_or_else(|_| "[]".to_string());
         self.conn.execute(
-            "INSERT INTO documents (id, doc_type, title, status, skill_name, pipeline_run_id, topic_id, version, parent_doc_id, file_path, created_at, updated_at, summary, doc_tags)
+            "INSERT INTO documents (id, doc_type, title, status, skill_name, pipeline_run_id, spec_id, version, parent_doc_id, file_path, created_at, updated_at, summary, doc_tags)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(id) DO UPDATE SET
                 status = excluded.status,
@@ -419,7 +428,7 @@ impl IndexDb {
                 doc.status,
                 doc.skill_name,
                 doc.pipeline_run_id,
-                doc.topic_id,
+                doc.spec_id,
                 doc.version,
                 doc.parent_doc_id,
                 doc.file_path.display().to_string(),
@@ -470,7 +479,7 @@ impl IndexDb {
     ) -> Result<Vec<(DocumentRow, f64)>> {
         let mut sql = String::from(
             "SELECT d.id, d.doc_type, d.title, d.status, d.skill_name, d.pipeline_run_id,
-                    d.topic_id, d.version, d.parent_doc_id,
+                    d.spec_id, d.version, d.parent_doc_id,
                     d.file_path, d.created_at, d.updated_at,
                     COALESCE(d.summary, '') AS summary, COALESCE(d.doc_tags, '[]') AS doc_tags,
                     bm25(documents_fts) AS rank
@@ -513,7 +522,7 @@ impl IndexDb {
                     status: row.get(3)?,
                     skill_name: row.get(4)?,
                     pipeline_run_id: row.get(5)?,
-                    topic_id: row.get(6)?,
+                    spec_id: row.get(6)?,
                     version: row.get(7)?,
                     parent_doc_id: row.get(8)?,
                     file_path: row.get(9)?,
@@ -540,7 +549,7 @@ impl IndexDb {
         status: Option<&str>,
         run_id: Option<&str>,
     ) -> Result<Vec<DocumentRow>> {
-        let mut sql = "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, topic_id, version, parent_doc_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags FROM documents WHERE 1=1".to_string();
+        let mut sql = "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, spec_id, version, parent_doc_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags FROM documents WHERE 1=1".to_string();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(s) = skill {
@@ -572,7 +581,7 @@ impl IndexDb {
                 status: row.get(3)?,
                 skill_name: row.get(4)?,
                 pipeline_run_id: row.get(5)?,
-                topic_id: row.get(6)?,
+                spec_id: row.get(6)?,
                 version: row.get(7)?,
                 parent_doc_id: row.get(8)?,
                 file_path: row.get(9)?,
@@ -603,7 +612,7 @@ impl IndexDb {
         };
 
         self.conn.execute(
-            "INSERT INTO pipeline_runs (id, pipeline_name, title, stage_states_json, topic_id, parent_run_id, run_type, created_at, updated_at, issue_id)
+            "INSERT INTO pipeline_runs (id, pipeline_name, title, stage_states_json, spec_id, parent_run_id, run_type, created_at, updated_at, issue_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(id) DO UPDATE SET
                 stage_states_json = excluded.stage_states_json,
@@ -613,7 +622,7 @@ impl IndexDb {
                 run.pipeline_name,
                 run.title,
                 states_json,
-                run.topic_id,
+                run.spec_id,
                 run.parent_run_id,
                 run.run_type.to_string(),
                 run.created_at.to_rfc3339(),
@@ -627,7 +636,7 @@ impl IndexDb {
     /// Load a pipeline run by ID.
     pub fn get_pipeline_run(&self, run_id: &str) -> Result<Option<PipelineRun>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, pipeline_name, title, stage_states_json, topic_id, parent_run_id, run_type, created_at, updated_at, issue_id FROM pipeline_runs WHERE id = ?1",
+            "SELECT id, pipeline_name, title, stage_states_json, spec_id, parent_run_id, run_type, created_at, updated_at, issue_id FROM pipeline_runs WHERE id = ?1",
         )?;
 
         let mut rows = stmt.query_map(params![run_id], |row| {
@@ -651,7 +660,7 @@ impl IndexDb {
                 pipeline_name,
                 title,
                 states_json,
-                topic_id,
+                spec_id,
                 parent_run_id,
                 run_type_str,
                 created_str,
@@ -678,7 +687,7 @@ impl IndexDb {
                 pipeline_name,
                 title,
                 stage_states,
-                topic_id,
+                spec_id,
                 issue_id: issue_id_opt.unwrap_or_default(),
                 parent_run_id,
                 run_type,
@@ -693,7 +702,7 @@ impl IndexDb {
     /// List all pipeline runs.
     pub fn list_pipeline_runs(&self) -> Result<Vec<PipelineRunRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, pipeline_name, title, topic_id, run_type, parent_run_id, created_at, updated_at, issue_id FROM pipeline_runs ORDER BY created_at DESC",
+            "SELECT id, pipeline_name, title, spec_id, run_type, parent_run_id, created_at, updated_at, issue_id FROM pipeline_runs ORDER BY created_at DESC",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -701,7 +710,7 @@ impl IndexDb {
                 id: row.get(0)?,
                 pipeline_name: row.get(1)?,
                 title: row.get(2)?,
-                topic_id: row.get(3)?,
+                spec_id: row.get(3)?,
                 run_type: row.get(4)?,
                 parent_run_id: row.get(5)?,
                 created_at: row.get(6)?,
@@ -717,39 +726,39 @@ impl IndexDb {
         Ok(results)
     }
 
-    // ── Topic CRUD ──────────────────────────────────────────────────
+    // ── Spec CRUD ──────────────────────────────────────────────────
 
-    /// Create a new topic.
-    pub fn create_topic(&self, topic: &crate::model::Topic) -> Result<()> {
-        let tags_json = serde_json::to_string(&topic.tags).unwrap_or_else(|_| "[]".to_string());
-        let namespace_id_param: Option<&str> = if topic.namespace_id.is_empty() {
+    /// Create a new spec.
+    pub fn create_spec(&self, spec: &crate::model::Spec) -> Result<()> {
+        let tags_json = serde_json::to_string(&spec.tags).unwrap_or_else(|_| "[]".to_string());
+        let namespace_id_param: Option<&str> = if spec.namespace_id.is_empty() {
             None
         } else {
-            Some(&topic.namespace_id)
+            Some(&spec.namespace_id)
         };
         self.conn.execute(
-            "INSERT INTO topics (id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at)
+            "INSERT INTO specs (id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
-                topic.id,
-                topic.name,
-                topic.slug,
-                topic.description,
+                spec.id,
+                spec.name,
+                spec.slug,
+                spec.description,
                 tags_json,
-                topic.created_at.to_rfc3339(),
-                topic.updated_at.to_rfc3339(),
+                spec.created_at.to_rfc3339(),
+                spec.updated_at.to_rfc3339(),
                 namespace_id_param,
-                topic.locked_by_run_id.as_deref(),
-                topic.locked_at.map(|t| t.to_rfc3339()),
+                spec.locked_by_run_id.as_deref(),
+                spec.locked_at.map(|t| t.to_rfc3339()),
             ],
         )?;
         Ok(())
     }
 
-    /// Get a topic by ID.
-    pub fn get_topic(&self, id: &str) -> Result<Option<crate::model::Topic>> {
+    /// Get a spec by ID.
+    pub fn get_spec(&self, id: &str) -> Result<Option<crate::model::Spec>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics WHERE id = ?1",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM specs WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], |row| {
             Ok((
@@ -765,13 +774,13 @@ impl IndexDb {
                 row.get::<_, Option<String>>(9)?,
             ))
         })?;
-        Self::parse_topic_row(rows.next())
+        Self::parse_spec_row(rows.next())
     }
 
-    /// Find a topic by name.
-    pub fn find_topic_by_name(&self, name: &str) -> Result<Option<crate::model::Topic>> {
+    /// Find a spec by name.
+    pub fn find_spec_by_name(&self, name: &str) -> Result<Option<crate::model::Spec>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics WHERE name = ?1",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM specs WHERE name = ?1",
         )?;
         let mut rows = stmt.query_map(params![name], |row| {
             Ok((
@@ -787,20 +796,42 @@ impl IndexDb {
                 row.get::<_, Option<String>>(9)?,
             ))
         })?;
-        Self::parse_topic_row(rows.next())
+        Self::parse_spec_row(rows.next())
     }
 
     #[allow(clippy::type_complexity)]
-    fn parse_topic_row(
+    fn parse_spec_row(
         row: Option<
             std::result::Result<
-                (String, String, String, String, String, String, String, Option<String>, Option<String>, Option<String>),
+                (
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                ),
                 rusqlite::Error,
             >,
         >,
-    ) -> Result<Option<crate::model::Topic>> {
+    ) -> Result<Option<crate::model::Spec>> {
         match row {
-            Some(Ok((id, name, slug, description, tags_json, created_str, updated_str, namespace_id, locked_by_run_id, locked_at_str))) => {
+            Some(Ok((
+                id,
+                name,
+                slug,
+                description,
+                tags_json,
+                created_str,
+                updated_str,
+                namespace_id,
+                locked_by_run_id,
+                locked_at_str,
+            ))) => {
                 let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
                 let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
                     .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
@@ -812,7 +843,7 @@ impl IndexDb {
                     .as_deref()
                     .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                     .map(|dt| dt.with_timezone(&chrono::Utc));
-                Ok(Some(crate::model::Topic {
+                Ok(Some(crate::model::Spec {
                     id,
                     name,
                     slug,
@@ -830,10 +861,10 @@ impl IndexDb {
         }
     }
 
-    /// List all topics.
-    pub fn list_topics(&self) -> Result<Vec<crate::model::Topic>> {
+    /// List all specs.
+    pub fn list_specs(&self) -> Result<Vec<crate::model::Spec>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics ORDER BY created_at DESC",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM specs ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -851,7 +882,18 @@ impl IndexDb {
         })?;
         let mut results = Vec::new();
         for row in rows {
-            let (id, name, slug, description, tags_json, created_str, updated_str, namespace_id, locked_by_run_id, locked_at_str) = row?;
+            let (
+                id,
+                name,
+                slug,
+                description,
+                tags_json,
+                created_str,
+                updated_str,
+                namespace_id,
+                locked_by_run_id,
+                locked_at_str,
+            ) = row?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
             let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
                 .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
@@ -863,7 +905,7 @@ impl IndexDb {
                 .as_deref()
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                 .map(|dt| dt.with_timezone(&chrono::Utc));
-            results.push(crate::model::Topic {
+            results.push(crate::model::Spec {
                 id,
                 name,
                 slug,
@@ -879,25 +921,32 @@ impl IndexDb {
         Ok(results)
     }
 
-    /// Find topics whose tags overlap with the given keywords.
-    /// Returns topics sorted by match score (number of matching tags, descending).
-    pub fn match_topics_by_tags(&self, keywords: &[String]) -> Result<Vec<(crate::model::Topic, usize)>> {
+    /// Find specs whose tags overlap with the given keywords.
+    /// Returns specs sorted by match score (number of matching tags, descending).
+    pub fn match_specs_by_tags(
+        &self,
+        keywords: &[String],
+    ) -> Result<Vec<(crate::model::Spec, usize)>> {
         if keywords.is_empty() {
             return Ok(vec![]);
         }
-        let topics = self.list_topics()?;
-        let mut scored: Vec<(crate::model::Topic, usize)> = topics
+        let specs = self.list_specs()?;
+        let mut scored: Vec<(crate::model::Spec, usize)> = specs
             .into_iter()
             .filter_map(|t| {
                 if t.tags.is_empty() {
                     return None;
                 }
-                let score = t.tags.iter()
-                    .filter(|tag| keywords.iter().any(|kw| {
-                        let tag_lower = tag.to_lowercase();
-                        let kw_lower = kw.to_lowercase();
-                        tag_lower.contains(&kw_lower) || kw_lower.contains(&tag_lower)
-                    }))
+                let score = t
+                    .tags
+                    .iter()
+                    .filter(|tag| {
+                        keywords.iter().any(|kw| {
+                            let tag_lower = tag.to_lowercase();
+                            let kw_lower = kw.to_lowercase();
+                            tag_lower.contains(&kw_lower) || kw_lower.contains(&tag_lower)
+                        })
+                    })
                     .count();
                 if score > 0 { Some((t, score)) } else { None }
             })
@@ -906,50 +955,50 @@ impl IndexDb {
         Ok(scored)
     }
 
-    /// Delete a topic by ID.
-    pub fn delete_topic(&self, id: &str) -> Result<()> {
+    /// Delete a spec by ID.
+    pub fn delete_spec(&self, id: &str) -> Result<()> {
         self.conn
-            .execute("DELETE FROM topics WHERE id = ?1", params![id])?;
+            .execute("DELETE FROM specs WHERE id = ?1", params![id])?;
         Ok(())
     }
 
-    /// Atomically acquire an exclusive lock on a topic for the given run.
+    /// Atomically acquire an exclusive lock on a spec for the given run.
     /// Returns Ok(true) if lock acquired, Ok(false) if already locked by another run.
-    pub fn acquire_topic_lock(&self, topic_id: &str, run_id: &str) -> Result<bool> {
+    pub fn acquire_spec_lock(&self, spec_id: &str, run_id: &str) -> Result<bool> {
         let now = chrono::Utc::now().to_rfc3339();
         let rows = self.conn.execute(
-            "UPDATE topics SET locked_by_run_id = ?2, locked_at = ?3, updated_at = ?3
+            "UPDATE specs SET locked_by_run_id = ?2, locked_at = ?3, updated_at = ?3
              WHERE id = ?1 AND (locked_by_run_id IS NULL OR locked_by_run_id = ?2)",
-            params![topic_id, run_id, now],
+            params![spec_id, run_id, now],
         )?;
         Ok(rows > 0)
     }
 
-    /// Release the lock on a topic. If `run_id` is Some, only release if held by that run.
-    pub fn release_topic_lock(&self, topic_id: &str, run_id: Option<&str>) -> Result<bool> {
+    /// Release the lock on a spec. If `run_id` is Some, only release if held by that run.
+    pub fn release_spec_lock(&self, spec_id: &str, run_id: Option<&str>) -> Result<bool> {
         let now = chrono::Utc::now().to_rfc3339();
         let rows = match run_id {
             Some(rid) => self.conn.execute(
-                "UPDATE topics SET locked_by_run_id = NULL, locked_at = NULL, updated_at = ?3
+                "UPDATE specs SET locked_by_run_id = NULL, locked_at = NULL, updated_at = ?3
                  WHERE id = ?1 AND locked_by_run_id = ?2",
-                params![topic_id, rid, now],
+                params![spec_id, rid, now],
             )?,
             None => self.conn.execute(
-                "UPDATE topics SET locked_by_run_id = NULL, locked_at = NULL, updated_at = ?2
+                "UPDATE specs SET locked_by_run_id = NULL, locked_at = NULL, updated_at = ?2
                  WHERE id = ?1",
-                params![topic_id, now],
+                params![spec_id, now],
             )?,
         };
         Ok(rows > 0)
     }
 
-    /// Check if a topic is locked and return the locking run ID if so.
-    pub fn get_topic_lock(&self, topic_id: &str) -> Result<Option<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT locked_by_run_id FROM topics WHERE id = ?1",
-        )?;
+    /// Check if a spec is locked and return the locking run ID if so.
+    pub fn get_spec_lock(&self, spec_id: &str) -> Result<Option<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT locked_by_run_id FROM specs WHERE id = ?1")?;
         let result: Option<Option<String>> = stmt
-            .query_row(params![topic_id], |row| row.get::<_, Option<String>>(0))
+            .query_row(params![spec_id], |row| row.get::<_, Option<String>>(0))
             .ok();
         Ok(result.flatten())
     }
@@ -992,7 +1041,16 @@ impl IndexDb {
             ))
         })?;
         match rows.next() {
-            Some(Ok((id, name, slug, description, status_str, tags_json, created_str, updated_str))) => {
+            Some(Ok((
+                id,
+                name,
+                slug,
+                description,
+                status_str,
+                tags_json,
+                created_str,
+                updated_str,
+            ))) => {
                 let status: NamespaceStatus = status_str
                     .parse()
                     .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
@@ -1045,7 +1103,8 @@ impl IndexDb {
         })?;
         let mut results = Vec::new();
         for row in rows {
-            let (id, name, slug, description, status_str, tags_json, created_str, updated_str) = row?;
+            let (id, name, slug, description, status_str, tags_json, created_str, updated_str) =
+                row?;
             let status: NamespaceStatus = status_str
                 .parse()
                 .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
@@ -1097,17 +1156,20 @@ impl IndexDb {
         self.get_namespace(name)
     }
 
-    /// List topics optionally filtered by namespace.
-    pub fn list_topics_by_namespace(&self, namespace_id: Option<&str>) -> Result<Vec<crate::model::Topic>> {
+    /// List specs optionally filtered by namespace.
+    pub fn list_specs_by_namespace(
+        &self,
+        namespace_id: Option<&str>,
+    ) -> Result<Vec<crate::model::Spec>> {
         match namespace_id {
-            Some(nid) => self.list_namespace_topics(nid),
-            None => self.list_topics(),
+            Some(nid) => self.list_namespace_specs(nid),
+            None => self.list_specs(),
         }
     }
 
-    pub fn list_namespace_topics(&self, namespace_id: &str) -> Result<Vec<crate::model::Topic>> {
+    pub fn list_namespace_specs(&self, namespace_id: &str) -> Result<Vec<crate::model::Spec>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics WHERE namespace_id = ?1 ORDER BY created_at DESC",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM specs WHERE namespace_id = ?1 ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map(params![namespace_id], |row| {
             Ok((
@@ -1125,7 +1187,18 @@ impl IndexDb {
         })?;
         let mut results = Vec::new();
         for row in rows {
-            let (id, name, slug, description, tags_json, created_str, updated_str, namespace_id, locked_by_run_id, locked_at_str) = row?;
+            let (
+                id,
+                name,
+                slug,
+                description,
+                tags_json,
+                created_str,
+                updated_str,
+                namespace_id,
+                locked_by_run_id,
+                locked_at_str,
+            ) = row?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
             let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
                 .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
@@ -1137,7 +1210,7 @@ impl IndexDb {
                 .as_deref()
                 .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                 .map(|dt| dt.with_timezone(&chrono::Utc));
-            results.push(crate::model::Topic {
+            results.push(crate::model::Spec {
                 id,
                 name,
                 slug,
@@ -1153,15 +1226,15 @@ impl IndexDb {
         Ok(results)
     }
 
-    /// Query documents across a topic (all runs), returning the latest version of each artifact type.
-    pub fn query_topic_documents(&self, topic_id: &str) -> Result<Vec<DocumentRow>> {
+    /// Query documents across a spec (all runs), returning the latest version of each artifact type.
+    pub fn query_spec_documents(&self, spec_id: &str) -> Result<Vec<DocumentRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, topic_id, version, parent_doc_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags
+            "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, spec_id, version, parent_doc_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags
              FROM documents
-             WHERE topic_id = ?1
+             WHERE spec_id = ?1
              ORDER BY doc_type, version DESC",
         )?;
-        let rows = stmt.query_map(params![topic_id], |row| {
+        let rows = stmt.query_map(params![spec_id], |row| {
             Ok(DocumentRow {
                 id: row.get(0)?,
                 doc_type: row.get(1)?,
@@ -1169,7 +1242,7 @@ impl IndexDb {
                 status: row.get(3)?,
                 skill_name: row.get(4)?,
                 pipeline_run_id: row.get(5)?,
-                topic_id: row.get(6)?,
+                spec_id: row.get(6)?,
                 version: row.get(7)?,
                 parent_doc_id: row.get(8)?,
                 file_path: row.get(9)?,
@@ -1192,16 +1265,20 @@ impl IndexDb {
         Ok(results)
     }
 
-    /// Query all documents in a topic for a specific skill, across all pipeline runs.
+    /// Query all documents in a spec for a specific skill, across all pipeline runs.
     /// Returns docs ordered by version DESC (latest first).
-    pub fn query_topic_skill_docs(&self, topic_id: &str, skill_name: &str) -> Result<Vec<DocumentRow>> {
+    pub fn query_spec_skill_docs(
+        &self,
+        spec_id: &str,
+        skill_name: &str,
+    ) -> Result<Vec<DocumentRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, topic_id, version, parent_doc_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags \
+            "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, spec_id, version, parent_doc_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags \
              FROM documents \
-             WHERE topic_id = ?1 AND skill_name = ?2 \
+             WHERE spec_id = ?1 AND skill_name = ?2 \
              ORDER BY version DESC",
         )?;
-        let rows = stmt.query_map(params![topic_id, skill_name], |row| {
+        let rows = stmt.query_map(params![spec_id, skill_name], |row| {
             Ok(DocumentRow {
                 id: row.get(0)?,
                 doc_type: row.get(1)?,
@@ -1209,7 +1286,7 @@ impl IndexDb {
                 status: row.get(3)?,
                 skill_name: row.get(4)?,
                 pipeline_run_id: row.get(5)?,
-                topic_id: row.get(6)?,
+                spec_id: row.get(6)?,
                 version: row.get(7)?,
                 parent_doc_id: row.get(8)?,
                 file_path: row.get(9)?,
@@ -1226,17 +1303,17 @@ impl IndexDb {
         Ok(results)
     }
 
-    /// List pipeline runs for a specific topic.
-    pub fn list_topic_runs(&self, topic_id: &str) -> Result<Vec<PipelineRunRow>> {
+    /// List pipeline runs for a specific spec.
+    pub fn list_spec_runs(&self, spec_id: &str) -> Result<Vec<PipelineRunRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, pipeline_name, title, topic_id, run_type, parent_run_id, created_at, updated_at, issue_id FROM pipeline_runs WHERE topic_id = ?1 ORDER BY created_at DESC",
+            "SELECT id, pipeline_name, title, spec_id, run_type, parent_run_id, created_at, updated_at, issue_id FROM pipeline_runs WHERE spec_id = ?1 ORDER BY created_at DESC",
         )?;
-        let rows = stmt.query_map(params![topic_id], |row| {
+        let rows = stmt.query_map(params![spec_id], |row| {
             Ok(PipelineRunRow {
                 id: row.get(0)?,
                 pipeline_name: row.get(1)?,
                 title: row.get(2)?,
-                topic_id: row.get(3)?,
+                spec_id: row.get(3)?,
                 run_type: row.get(4)?,
                 parent_run_id: row.get(5)?,
                 created_at: row.get(6)?,
@@ -1253,14 +1330,14 @@ impl IndexDb {
 
     pub fn find_runs_by_issue(&self, issue_id: &str) -> Result<Vec<PipelineRunRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, pipeline_name, title, topic_id, run_type, parent_run_id, created_at, updated_at, issue_id FROM pipeline_runs WHERE issue_id = ?1 ORDER BY created_at DESC",
+            "SELECT id, pipeline_name, title, spec_id, run_type, parent_run_id, created_at, updated_at, issue_id FROM pipeline_runs WHERE issue_id = ?1 ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map(params![issue_id], |row| {
             Ok(PipelineRunRow {
                 id: row.get(0)?,
                 pipeline_name: row.get(1)?,
                 title: row.get(2)?,
-                topic_id: row.get(3)?,
+                spec_id: row.get(3)?,
                 run_type: row.get(4)?,
                 parent_run_id: row.get(5)?,
                 created_at: row.get(6)?,
@@ -1612,7 +1689,7 @@ impl IndexDb {
         let labels_json = serde_json::to_string(&issue.labels)
             .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
         self.conn.execute(
-            "INSERT INTO issues (id, key, title, description, issue_type, priority, status, pipeline, topic_id, labels, created_at, updated_at)
+            "INSERT INTO issues (id, key, title, description, issue_type, priority, status, pipeline, spec_id, labels, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 issue.id,
@@ -1623,7 +1700,7 @@ impl IndexDb {
                 issue.priority.to_string(),
                 issue.status.to_string(),
                 issue.pipeline,
-                issue.topic_id,
+                issue.spec_id,
                 labels_json,
                 issue.created_at.to_rfc3339(),
                 issue.updated_at.to_rfc3339(),
@@ -1636,14 +1713,14 @@ impl IndexDb {
         let labels_json = serde_json::to_string(&issue.labels)
             .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?;
         self.conn.execute(
-            "UPDATE issues SET title=?1, description=?2, priority=?3, status=?4, pipeline=?5, topic_id=?6, labels=?7, updated_at=?8 WHERE id=?9",
+            "UPDATE issues SET title=?1, description=?2, priority=?3, status=?4, pipeline=?5, spec_id=?6, labels=?7, updated_at=?8 WHERE id=?9",
             params![
                 issue.title,
                 issue.description,
                 issue.priority.to_string(),
                 issue.status.to_string(),
                 issue.pipeline,
-                issue.topic_id,
+                issue.spec_id,
                 labels_json,
                 chrono::Utc::now().to_rfc3339(),
                 issue.id,
@@ -1654,7 +1731,7 @@ impl IndexDb {
 
     pub fn get_issue(&self, id_or_key: &str) -> Result<Option<Issue>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, key, title, description, issue_type, priority, status, pipeline, topic_id, labels, created_at, updated_at
+            "SELECT id, key, title, description, issue_type, priority, status, pipeline, spec_id, labels, created_at, updated_at
              FROM issues WHERE id = ?1 OR key = ?1",
         )?;
         let mut rows = stmt.query_map(params![id_or_key], |row| {
@@ -1667,7 +1744,7 @@ impl IndexDb {
                 priority: row.get(5)?,
                 status: row.get(6)?,
                 pipeline: row.get(7)?,
-                topic_id: row.get(8)?,
+                spec_id: row.get(8)?,
                 labels: row.get(9)?,
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
@@ -1700,9 +1777,9 @@ impl IndexDb {
         issue_type: Option<&str>,
         status: Option<&str>,
         label: Option<&str>,
-        topic_id: Option<&str>,
+        spec_id: Option<&str>,
     ) -> Result<Vec<Issue>> {
-        let mut sql = "SELECT id, key, title, description, issue_type, priority, status, pipeline, topic_id, labels, created_at, updated_at FROM issues WHERE 1=1".to_string();
+        let mut sql = "SELECT id, key, title, description, issue_type, priority, status, pipeline, spec_id, labels, created_at, updated_at FROM issues WHERE 1=1".to_string();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(t) = issue_type {
@@ -1717,8 +1794,8 @@ impl IndexDb {
             sql.push_str(&format!(" AND labels LIKE ?{}", param_values.len() + 1));
             param_values.push(Box::new(format!("%\"{}\"%", l)));
         }
-        if let Some(tid) = topic_id {
-            sql.push_str(&format!(" AND topic_id = ?{}", param_values.len() + 1));
+        if let Some(tid) = spec_id {
+            sql.push_str(&format!(" AND spec_id = ?{}", param_values.len() + 1));
             param_values.push(Box::new(tid.to_string()));
         }
         sql.push_str(" ORDER BY created_at DESC");
@@ -1736,7 +1813,7 @@ impl IndexDb {
                 priority: row.get(5)?,
                 status: row.get(6)?,
                 pipeline: row.get(7)?,
-                topic_id: row.get(8)?,
+                spec_id: row.get(8)?,
                 labels: row.get(9)?,
                 created_at: row.get(10)?,
                 updated_at: row.get(11)?,
@@ -2398,7 +2475,7 @@ struct IssueRow {
     priority: String,
     status: String,
     pipeline: Option<String>,
-    topic_id: String,
+    spec_id: String,
     labels: String,
     created_at: String,
     updated_at: String,
@@ -2433,7 +2510,7 @@ fn issue_from_row(row: IssueRow) -> Result<Issue> {
         issue_type,
         priority,
         status,
-        topic_id: row.topic_id,
+        spec_id: row.spec_id,
         pipeline: row.pipeline,
         labels,
         created_at,
@@ -2669,7 +2746,7 @@ pub struct DocumentRow {
     pub status: String,
     pub skill_name: String,
     pub pipeline_run_id: String,
-    pub topic_id: String,
+    pub spec_id: String,
     pub version: u32,
     pub parent_doc_id: Option<String>,
     pub file_path: String,
@@ -2684,7 +2761,7 @@ pub struct PipelineRunRow {
     pub id: String,
     pub pipeline_name: String,
     pub title: String,
-    pub topic_id: String,
+    pub spec_id: String,
     pub run_type: String,
     pub parent_run_id: Option<String>,
     pub created_at: String,
@@ -2696,13 +2773,13 @@ pub struct PipelineRunRow {
 mod tests {
     use super::*;
     use crate::git::{CommitLink, ReviewStatus};
-    use crate::model::{PipelineDef, StageDef, Topic};
+    use crate::model::{PipelineDef, Spec, StageDef};
     use std::path::PathBuf;
 
-    fn seed_test_topic(db: &IndexDb) {
-        let mut topic = Topic::new("Test Topic", "Topic for tests", "");
-        topic.id = "test-topic".to_string();
-        db.create_topic(&topic).unwrap();
+    fn seed_test_spec(db: &IndexDb) {
+        let mut spec = Spec::new("Test Spec", "Spec for tests", "");
+        spec.id = "test-spec".to_string();
+        db.create_spec(&spec).unwrap();
     }
 
     fn make_doc(id: &str, skill: &str, run_id: &str) -> Document {
@@ -2713,7 +2790,7 @@ mod tests {
             status: "active".to_string(),
             skill_name: skill.to_string(),
             pipeline_run_id: run_id.to_string(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             tags: vec![],
@@ -2746,7 +2823,7 @@ mod tests {
     #[test]
     fn test_document_upsert_and_query() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let doc = make_doc("d1", "product-prd", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -2759,7 +2836,7 @@ mod tests {
     #[test]
     fn test_document_query_filters() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         db.upsert_document(&make_doc("d1", "prd", "run-1")).unwrap();
         db.upsert_document(&make_doc("d2", "adr", "run-1")).unwrap();
         db.upsert_document(&make_doc("d3", "prd", "run-2")).unwrap();
@@ -2779,7 +2856,7 @@ mod tests {
     #[test]
     fn test_document_upsert_updates_status() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let mut doc = make_doc("d1", "prd", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -2794,9 +2871,9 @@ mod tests {
     #[test]
     fn test_pipeline_run_roundtrip() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let def = make_pipeline_def();
-        let run = PipelineRun::new(&def, "Feature X", "test-topic".to_string(), "");
+        let run = PipelineRun::new(&def, "Feature X", "test-spec".to_string(), "");
 
         db.upsert_pipeline_run(&run).unwrap();
         let loaded = db.get_pipeline_run(&run.id).unwrap().unwrap();
@@ -2817,11 +2894,11 @@ mod tests {
     #[test]
     fn test_list_pipeline_runs() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let def = make_pipeline_def();
 
-        let run1 = PipelineRun::new(&def, "Run 1", "test-topic".to_string(), "");
-        let run2 = PipelineRun::new(&def, "Run 2", "test-topic".to_string(), "");
+        let run1 = PipelineRun::new(&def, "Run 1", "test-spec".to_string(), "");
+        let run2 = PipelineRun::new(&def, "Run 2", "test-spec".to_string(), "");
         db.upsert_pipeline_run(&run1).unwrap();
         db.upsert_pipeline_run(&run2).unwrap();
 
@@ -2876,7 +2953,7 @@ mod tests {
     #[test]
     fn test_update_document_summary() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let doc = make_doc("d1", "rfc-writer", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -2891,7 +2968,7 @@ mod tests {
     #[test]
     fn test_upsert_preserves_existing_summary() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let mut doc = make_doc("d1", "rfc-writer", "run-1");
         doc.summary = "Original summary".to_string();
         doc.tags = vec!["original".to_string()];
@@ -2910,7 +2987,7 @@ mod tests {
     #[test]
     fn test_search_documents_fts5() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
 
         let mut doc1 = make_doc("d1", "rfc-writer", "run-1");
         doc1.title = "JWT Authentication RFC".to_string();
@@ -2950,7 +3027,7 @@ mod tests {
     #[test]
     fn test_search_documents_exclude_run() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
 
         let mut doc1 = make_doc("d1", "rfc-writer", "run-1");
         doc1.title = "Auth RFC".to_string();
@@ -2975,7 +3052,7 @@ mod tests {
     #[test]
     fn test_search_documents_no_results() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let doc = make_doc("d1", "rfc-writer", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -2988,7 +3065,7 @@ mod tests {
     #[test]
     fn test_document_summary_and_tags_in_query() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let doc = make_doc("d1", "rfc-writer", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -3008,7 +3085,7 @@ mod tests {
     #[test]
     fn test_llm_summary_overwrites_rule_based() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let doc = make_doc("d1", "rfc-writer", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -3037,7 +3114,7 @@ mod tests {
     #[test]
     fn test_fts_search_finds_llm_summary_content() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let doc = make_doc("d1", "rfc-writer", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -3065,7 +3142,7 @@ mod tests {
     #[test]
     fn test_summary_preserved_on_upsert_without_summary() {
         let db = IndexDb::open_in_memory().unwrap();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         let doc = make_doc("d1", "rfc-writer", "run-1");
         db.upsert_document(&doc).unwrap();
 
@@ -3089,29 +3166,33 @@ mod tests {
     }
 
     #[test]
-    fn test_match_topics_by_tags() {
+    fn test_match_specs_by_tags() {
         let db = IndexDb::open_in_memory().unwrap();
 
         // Create a namespace first
         let namespace = crate::model::Namespace::new("test-namespace", "Test");
         db.create_namespace(&namespace).unwrap();
 
-        // Create topics with tags
-        let mut t1 = Topic::new("Auth Module", "Authentication", &namespace.id);
-        t1.tags = vec!["auth".to_string(), "login".to_string(), "security".to_string()];
-        db.create_topic(&t1).unwrap();
+        // Create specs with tags
+        let mut s1 = Spec::new("Auth Module", "Authentication", &namespace.id);
+        s1.tags = vec![
+            "auth".to_string(),
+            "login".to_string(),
+            "security".to_string(),
+        ];
+        db.create_spec(&s1).unwrap();
 
-        let mut t2 = Topic::new("Payment System", "Payments", &namespace.id);
-        t2.tags = vec!["payment".to_string(), "billing".to_string()];
-        db.create_topic(&t2).unwrap();
+        let mut s2 = Spec::new("Payment System", "Payments", &namespace.id);
+        s2.tags = vec!["payment".to_string(), "billing".to_string()];
+        db.create_spec(&s2).unwrap();
 
-        let mut t3 = Topic::new("User Management", "Users", &namespace.id);
-        t3.tags = vec!["user".to_string(), "auth".to_string()];
-        db.create_topic(&t3).unwrap();
+        let mut s3 = Spec::new("User Management", "Users", &namespace.id);
+        s3.tags = vec!["user".to_string(), "auth".to_string()];
+        db.create_spec(&s3).unwrap();
 
         // Match "auth login" → should match t1 (score 2) and t3 (score 1)
         let keywords = vec!["auth".to_string(), "login".to_string()];
-        let matches = db.match_topics_by_tags(&keywords).unwrap();
+        let matches = db.match_specs_by_tags(&keywords).unwrap();
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].0.name, "Auth Module"); // score 2
         assert_eq!(matches[0].1, 2);
@@ -3120,13 +3201,13 @@ mod tests {
 
         // Match "billing" → should match t2 only
         let keywords = vec!["billing".to_string()];
-        let matches = db.match_topics_by_tags(&keywords).unwrap();
+        let matches = db.match_specs_by_tags(&keywords).unwrap();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].0.name, "Payment System");
 
         // Match "unrelated" → should match nothing
         let keywords = vec!["unrelated".to_string()];
-        let matches = db.match_topics_by_tags(&keywords).unwrap();
+        let matches = db.match_specs_by_tags(&keywords).unwrap();
         assert!(matches.is_empty());
     }
 
@@ -3136,92 +3217,93 @@ mod tests {
 
     fn seed_test_run(db: &IndexDb) {
         let def = make_pipeline_def();
-        let mut run = PipelineRun::new(&def, "Test Run", "test-topic".to_string(), "");
+        let mut run = PipelineRun::new(&def, "Test Run", "test-spec".to_string(), "");
         run.id = "run-001".to_string();
         db.upsert_pipeline_run(&run).unwrap();
     }
 
     fn seed_pipeline_run(db: &IndexDb, run_id: &str) {
         let def = make_pipeline_def();
-        let mut run = PipelineRun::new(&def, "Run", "test-topic".to_string(), "");
+        let mut run = PipelineRun::new(&def, "Run", "test-spec".to_string(), "");
         run.id = run_id.to_string();
         db.upsert_pipeline_run(&run).unwrap();
     }
 
     #[test]
-    fn test_topic_lock_acquire_release() {
+    fn test_spec_lock_acquire_release() {
         let db = seed_test_db();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         seed_pipeline_run(&db, "run-1");
 
         // Acquire lock
-        let acquired = db.acquire_topic_lock("test-topic", "run-1").unwrap();
+        let acquired = db.acquire_spec_lock("test-spec", "run-1").unwrap();
         assert!(acquired);
 
         // Check lock state
-        let lock = db.get_topic_lock("test-topic").unwrap();
+        let lock = db.get_spec_lock("test-spec").unwrap();
         assert_eq!(lock, Some("run-1".to_string()));
 
-        // Topic should have lock fields populated
-        let topic = db.get_topic("test-topic").unwrap().unwrap();
-        assert_eq!(topic.locked_by_run_id, Some("run-1".to_string()));
-        assert!(topic.locked_at.is_some());
+        // Spec should have lock fields populated
+        let spec = db.get_spec("test-spec").unwrap().unwrap();
+        assert_eq!(spec.locked_by_run_id, Some("run-1".to_string()));
+        assert!(spec.locked_at.is_some());
 
         // Release lock
-        let released = db.release_topic_lock("test-topic", Some("run-1")).unwrap();
+        let released = db.release_spec_lock("test-spec", Some("run-1")).unwrap();
         assert!(released);
 
         // Should be unlocked
-        let lock = db.get_topic_lock("test-topic").unwrap();
+        let lock = db.get_spec_lock("test-spec").unwrap();
         assert!(lock.is_none());
     }
 
     #[test]
-    fn test_topic_lock_exclusive() {
+    fn test_spec_lock_exclusive() {
         let db = seed_test_db();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         seed_pipeline_run(&db, "run-1");
         seed_pipeline_run(&db, "run-2");
 
         // First run acquires
-        let acquired = db.acquire_topic_lock("test-topic", "run-1").unwrap();
+        let acquired = db.acquire_spec_lock("test-spec", "run-1").unwrap();
         assert!(acquired);
 
         // Second run can't acquire
-        let acquired2 = db.acquire_topic_lock("test-topic", "run-2").unwrap();
+        let acquired2 = db.acquire_spec_lock("test-spec", "run-2").unwrap();
         assert!(!acquired2);
 
         // Same run can re-acquire (idempotent)
-        let acquired_same = db.acquire_topic_lock("test-topic", "run-1").unwrap();
+        let acquired_same = db.acquire_spec_lock("test-spec", "run-1").unwrap();
         assert!(acquired_same);
     }
 
     #[test]
-    fn test_topic_lock_force_release() {
+    fn test_spec_lock_force_release() {
         let db = seed_test_db();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         seed_pipeline_run(&db, "run-1");
         seed_pipeline_run(&db, "run-2");
 
-        db.acquire_topic_lock("test-topic", "run-1").unwrap();
+        db.acquire_spec_lock("test-spec", "run-1").unwrap();
 
         // Force release (no run_id check)
-        let released = db.release_topic_lock("test-topic", None).unwrap();
+        let released = db.release_spec_lock("test-spec", None).unwrap();
         assert!(released);
 
         // Now another run can acquire
-        let acquired = db.acquire_topic_lock("test-topic", "run-2").unwrap();
+        let acquired = db.acquire_spec_lock("test-spec", "run-2").unwrap();
         assert!(acquired);
     }
 
     #[test]
     fn test_update_document_status() {
         let db = seed_test_db();
-        seed_test_topic(&db);
+        seed_test_spec(&db);
         seed_test_run(&db);
 
         // Seed a document first
-        let doc = crate::model::Document::new("prd", "Test PRD", "prd-writer", "run-001", "test-topic");
+        let doc =
+            crate::model::Document::new("prd", "Test PRD", "prd-writer", "run-001", "test-spec");
         db.upsert_document(&doc).unwrap();
 
         // Update status

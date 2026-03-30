@@ -87,7 +87,7 @@ pub enum RunType {
     New,
     /// Correcting a completed run (Issue #2).
     Revision,
-    /// Extending with a different pipeline on the same topic (Issue #4).
+    /// Extending with a different pipeline on the same spec (Issue #4).
     Continuation,
 }
 
@@ -108,8 +108,8 @@ pub struct PipelineRun {
     pub pipeline_name: String,
     pub title: String,
     pub stage_states: HashMap<String, StageState>,
-    /// Topic this run belongs to.
-    pub topic_id: String,
+    /// Spec this run belongs to.
+    pub spec_id: String,
     /// The issue that triggered this run.
     #[serde(default)]
     pub issue_id: String,
@@ -156,7 +156,7 @@ impl PipelineRun {
     pub fn new(
         pipeline_def: &PipelineDef,
         title: impl Into<String>,
-        topic_id: impl Into<String>,
+        spec_id: impl Into<String>,
         issue_id: impl Into<String>,
     ) -> Self {
         let now = Utc::now();
@@ -176,7 +176,7 @@ impl PipelineRun {
             pipeline_name: pipeline_def.name.clone(),
             title: title.into(),
             stage_states,
-            topic_id: topic_id.into(),
+            spec_id: spec_id.into(),
             issue_id: issue_id.into(),
             parent_run_id: None,
             run_type: RunType::New,
@@ -214,7 +214,7 @@ impl PipelineRun {
             pipeline_name: pipeline_def.name.clone(),
             title: format!("{} (revision)", parent.title),
             stage_states,
-            topic_id: parent.topic_id.clone(),
+            spec_id: parent.spec_id.clone(),
             issue_id: parent.issue_id.clone(),
             parent_run_id: Some(parent.id.clone()),
             run_type: RunType::Revision,
@@ -294,11 +294,11 @@ stages:
     #[test]
     fn test_pipeline_run_initial_states() {
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
-        let run = PipelineRun::new(&def, "Test Feature", "topic-1", "");
+        let run = PipelineRun::new(&def, "Test Feature", "spec-1", "");
         assert_eq!(run.stage_states["domain"], StageState::Ready);
         assert_eq!(run.stage_states["product"], StageState::Blocked);
         assert_eq!(run.stage_states["tech-design"], StageState::Blocked);
-        assert_eq!(run.topic_id, "topic-1");
+        assert_eq!(run.spec_id, "spec-1");
         assert_eq!(run.run_type, RunType::New);
         assert!(run.parent_run_id.is_none());
     }
@@ -306,7 +306,7 @@ stages:
     #[test]
     fn test_refresh_states() {
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
-        let mut run = PipelineRun::new(&def, "Test Feature", "topic-1", "");
+        let mut run = PipelineRun::new(&def, "Test Feature", "spec-1", "");
 
         run.stage_states
             .insert("domain".to_string(), StageState::Completed);
@@ -341,7 +341,7 @@ stages:
     #[test]
     fn test_new_revision() {
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
-        let mut parent = PipelineRun::new(&def, "Test Feature", "topic-1", "");
+        let mut parent = PipelineRun::new(&def, "Test Feature", "spec-1", "");
         // Complete all stages in parent
         for stage in &def.stages {
             parent
@@ -353,7 +353,7 @@ stages:
 
         assert_eq!(revision.run_type, RunType::Revision);
         assert_eq!(revision.parent_run_id, Some(parent.id.clone()));
-        assert_eq!(revision.topic_id, "topic-1");
+        assert_eq!(revision.spec_id, "spec-1");
         assert_eq!(revision.stage_states["domain"], StageState::Completed);
         assert_eq!(revision.stage_states["product"], StageState::Completed);
         assert_eq!(revision.stage_states["tech-design"], StageState::Revised);
@@ -362,7 +362,7 @@ stages:
     #[test]
     fn test_refresh_revised_becomes_ready() {
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
-        let mut parent = PipelineRun::new(&def, "Test Feature", "topic-1", "");
+        let mut parent = PipelineRun::new(&def, "Test Feature", "spec-1", "");
         for stage in &def.stages {
             parent
                 .stage_states
@@ -378,7 +378,7 @@ stages:
     #[test]
     fn test_refresh_revised_stays_revised_when_deps_not_met() {
         let def: PipelineDef = serde_yaml_ng::from_str(sample_pipeline_yaml()).unwrap();
-        let mut parent = PipelineRun::new(&def, "Test Feature", "topic-1", "");
+        let mut parent = PipelineRun::new(&def, "Test Feature", "spec-1", "");
         for stage in &def.stages {
             parent
                 .stage_states

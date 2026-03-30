@@ -40,7 +40,7 @@ impl Advisor {
         run: &PipelineRun,
         registry: &SkillRegistry,
         docs: &[DocumentRow],
-        topic_docs: &[DocumentRow],
+        spec_docs: &[DocumentRow],
     ) -> Vec<NextStep> {
         let mut steps = Vec::new();
         let pipeline_skills = pipeline_def.all_skill_names();
@@ -66,12 +66,10 @@ impl Advisor {
 
                         all_skills_have_docs = false;
 
-                        // Check topic-level docs from other runs
-                        let topic_skill_docs: Vec<&DocumentRow> = topic_docs
+                        // Check spec-level docs from other runs
+                        let spec_skill_docs: Vec<&DocumentRow> = spec_docs
                             .iter()
-                            .filter(|d| {
-                                d.skill_name == skill_name && d.pipeline_run_id != run.id
-                            })
+                            .filter(|d| d.skill_name == skill_name && d.pipeline_run_id != run.id)
                             .collect();
 
                         let is_cumulative = registry
@@ -79,8 +77,8 @@ impl Advisor {
                             .map(|s| s.is_cumulative())
                             .unwrap_or(false);
 
-                        if !is_cumulative && !topic_skill_docs.is_empty() {
-                            let latest = &topic_skill_docs[0];
+                        if !is_cumulative && !spec_skill_docs.is_empty() {
+                            let latest = &spec_skill_docs[0];
                             if latest.status == "final" {
                                 // Already final in another run — suggest skip
                                 steps.push(NextStep {
@@ -88,7 +86,7 @@ impl Advisor {
                                     skill: skill_name.to_string(),
                                     action: "skip".to_string(),
                                     description: format!(
-                                        "Existing finalized '{}' (v{}) from topic — stage can be skipped",
+                                        "Existing finalized '{}' (v{}) from spec — stage can be skipped",
                                         latest.title, latest.version
                                     ),
                                     cli_command: String::new(),
@@ -141,15 +139,14 @@ impl Advisor {
                             .map(|s| s.description.clone())
                             .unwrap_or_else(|_| format!("Execute skill: {}", skill_name));
 
-                        let prompt = registry
-                            .get(skill_name)
-                            .ok()
-                            .and_then(|s| s.prompts.get("active").cloned().or_else(|| {
-                                s.prompts.values().next().cloned()
-                            }));
+                        let prompt = registry.get(skill_name).ok().and_then(|s| {
+                            s.prompts
+                                .get("active")
+                                .cloned()
+                                .or_else(|| s.prompts.values().next().cloned())
+                        });
 
-                        let hints =
-                            Self::build_skill_hints(skill_name, registry, &pipeline_skills);
+                        let hints = Self::build_skill_hints(skill_name, registry, &pipeline_skills);
 
                         steps.push(NextStep {
                             stage: stage.name.clone(),
@@ -243,9 +240,9 @@ impl Advisor {
         run: &PipelineRun,
         registry: &SkillRegistry,
         docs: &[DocumentRow],
-        topic_docs: &[DocumentRow],
+        spec_docs: &[DocumentRow],
     ) -> bool {
-        Self::next_steps(pipeline_def, run, registry, docs, topic_docs)
+        Self::next_steps(pipeline_def, run, registry, docs, spec_docs)
             .iter()
             .any(|s| s.action != "blocked")
     }
@@ -348,7 +345,7 @@ prompts:
     fn test_next_steps_ready_no_docs() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
+        let run = PipelineRun::new(&pipeline, "Test", "test-spec".to_string(), "");
         let docs: Vec<DocumentRow> = vec![];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &[]);
@@ -367,7 +364,7 @@ prompts:
     fn test_next_steps_with_doc_suggests_stage_complete() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
+        let mut run = PipelineRun::new(&pipeline, "Test", "test-spec".to_string(), "");
         run.stage_states
             .insert("domain".to_string(), StageState::InProgress);
         let docs = vec![DocumentRow {
@@ -382,7 +379,7 @@ prompts:
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
         }];
@@ -391,7 +388,11 @@ prompts:
         let actionable: Vec<_> = steps.iter().filter(|s| s.action != "blocked").collect();
         assert_eq!(actionable.len(), 1);
         assert_eq!(actionable[0].action, "complete_stage");
-        assert!(actionable[0].cli_command.contains("pipeline stage complete"));
+        assert!(
+            actionable[0]
+                .cli_command
+                .contains("pipeline stage complete")
+        );
     }
 
     #[test]
@@ -411,7 +412,7 @@ prompts:
             keywords: vec![],
             scale: None,
         };
-        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
+        let mut run = PipelineRun::new(&pipeline, "Test", "test-spec".to_string(), "");
         run.stage_states
             .insert("domain".to_string(), StageState::Completed);
 
@@ -427,7 +428,7 @@ prompts:
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
         }];
@@ -440,11 +441,15 @@ prompts:
     fn test_has_actionable_steps() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
+        let run = PipelineRun::new(&pipeline, "Test", "test-spec".to_string(), "");
         let docs: Vec<DocumentRow> = vec![];
 
         assert!(Advisor::has_actionable_steps(
-            &pipeline, &run, &registry, &docs, &[]
+            &pipeline,
+            &run,
+            &registry,
+            &docs,
+            &[]
         ));
     }
 
@@ -466,7 +471,7 @@ prompts:
             keywords: vec![],
             scale: None,
         };
-        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
+        let mut run = PipelineRun::new(&pipeline, "Test", "test-spec".to_string(), "");
         run.stage_states
             .insert("domain".to_string(), StageState::InProgress);
         let docs = vec![DocumentRow {
@@ -481,16 +486,13 @@ prompts:
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
         }];
 
         let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &[]);
-        let complete_step = steps
-            .iter()
-            .find(|s| s.action == "complete_stage")
-            .unwrap();
+        let complete_step = steps.iter().find(|s| s.action == "complete_stage").unwrap();
         assert!(complete_step.requires_approval);
         assert!(complete_step.cli_command.contains("--confirm"));
     }
@@ -512,18 +514,18 @@ prompts:
             keywords: vec![],
             scale: None,
         };
-        let run = PipelineRun::new(&pipeline, "Test", "test-topic", "");
+        let run = PipelineRun::new(&pipeline, "Test", "test-spec", "");
         let docs: Vec<DocumentRow> = vec![]; // No docs in current run
 
-        // Finalized doc from another run in same topic
-        let topic_docs = vec![DocumentRow {
+        // Finalized doc from another run in same spec
+        let spec_docs = vec![DocumentRow {
             id: "d-prev".to_string(),
             doc_type: "domain-model".to_string(),
             title: "Previous Domain Doc".to_string(),
             status: "final".to_string(),
             skill_name: "domain-analysis".to_string(),
             pipeline_run_id: "other-run-id".to_string(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             file_path: "test.md".to_string(),
@@ -533,7 +535,7 @@ prompts:
             doc_tags: "[]".to_string(),
         }];
 
-        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &topic_docs);
+        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &spec_docs);
         let actionable: Vec<_> = steps.iter().filter(|s| s.action != "blocked").collect();
         assert_eq!(actionable.len(), 1);
         assert_eq!(actionable[0].action, "skip");

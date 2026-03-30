@@ -22,19 +22,19 @@ pub struct BootstrapNamespace {
     /// Description of this product domain
     #[serde(default)]
     pub description: String,
-    /// Topics under this namespace
-    pub topics: Vec<BootstrapTopic>,
+    /// Specs under this namespace
+    pub specs: Vec<BootstrapSpec>,
 }
 
-/// A topic within a namespace in a bootstrap plan.
+/// A spec within a namespace in a bootstrap plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BootstrapTopic {
-    /// Topic name (e.g. "jwt-migration", "auth-system")
+pub struct BootstrapSpec {
+    /// Spec name (e.g. "jwt-migration", "auth-system")
     pub name: String,
-    /// Description of this topic
+    /// Description of this spec
     #[serde(default)]
     pub description: String,
-    /// Tags for matching issues to this topic
+    /// Tags for matching issues to this spec
     #[serde(default)]
     pub tags: Vec<String>,
     /// Existing documents to import as references
@@ -58,10 +58,10 @@ pub struct BootstrapDoc {
 #[derive(Debug, Clone, Serialize)]
 pub struct BootstrapResult {
     pub namespaces_created: usize,
-    pub topics_created: usize,
+    pub specs_created: usize,
     pub documents_imported: usize,
     pub summary: String,
-    /// Details per namespace/topic for display
+    /// Details per namespace/spec for display
     pub details: Vec<BootstrapNamespaceResult>,
 }
 
@@ -70,14 +70,14 @@ pub struct BootstrapResult {
 pub struct BootstrapNamespaceResult {
     pub namespace_name: String,
     pub namespace_id: String,
-    pub topics: Vec<BootstrapTopicResult>,
+    pub specs: Vec<BootstrapSpecResult>,
 }
 
-/// Result details for a single topic within a namespace.
+/// Result details for a single spec within a namespace.
 #[derive(Debug, Clone, Serialize)]
-pub struct BootstrapTopicResult {
-    pub topic_name: String,
-    pub topic_id: String,
+pub struct BootstrapSpecResult {
+    pub spec_name: String,
+    pub spec_id: String,
     pub documents_imported: usize,
 }
 
@@ -133,13 +133,13 @@ pub fn build_bootstrap_prompt(
     prompt.push_str("## Your Task\n\n");
     prompt.push_str(
         "Analyze this project and produce a bootstrap plan as JSON.\n\n\
-         Your job is ONLY to organize the project into namespaces and topics:\n\
+         Your job is ONLY to organize the project into namespaces and specs:\n\
          - **Namespaces** represent product domains (e.g. \"backend-api\", \"mobile-app\", \"shared-infra\")\n\
-         - **Topics** represent document collections for a specific concern (e.g. \"auth-system\", \"payment-integration\")\n\
-         - **Tags** on topics help match future issues to the right topic\n\n\
+         - **Specs** represent specification document collections for a specific concern (e.g. \"auth-system\", \"payment-integration\")\n\
+         - **Tags** on specs help match future issues to the right spec\n\n\
          Do NOT choose pipelines or skills — those are selected later when an issue is started.\n\n\
-         Import any existing documentation as reference documents under the appropriate topic.\n\n\
-         IMPORTANT: Propose clear, descriptive names for namespaces and topics.\n\
+         Import any existing documentation as reference documents under the appropriate spec.\n\n\
+         IMPORTANT: Propose clear, descriptive names for namespaces and specs.\n\
          The user will review and may rename them before applying.\n\n\
          Respond with ONLY valid JSON in this format:\n\
          ```json\n\
@@ -148,7 +148,7 @@ pub fn build_bootstrap_prompt(
              {\n      \
                \"name\": \"backend-api\",\n      \
                \"description\": \"Backend REST API service\",\n      \
-               \"topics\": [\n        \
+               \"specs\": [\n        \
                  {\n          \
                    \"name\": \"auth-system\",\n          \
                    \"description\": \"Authentication and authorization\",\n          \
@@ -168,7 +168,7 @@ pub fn build_bootstrap_prompt(
     prompt
 }
 
-/// Execute a bootstrap plan: create namespaces, topics, and import reference documents.
+/// Execute a bootstrap plan: create namespaces, specs, and import reference documents.
 ///
 /// Bootstrap does NOT create pipeline runs or map skills — those happen at `issue start`.
 ///
@@ -178,7 +178,7 @@ pub fn execute_bootstrap_plan(
     project_dir: &Path,
 ) -> crate::error::Result<BootstrapResult> {
     use crate::helpers::slugify;
-    use crate::model::{Document, Namespace, Topic};
+    use crate::model::{Document, Namespace, Spec};
     use crate::storage::{FileStorage, IndexDb, ProjectLayout};
 
     let layout = ProjectLayout::new(project_dir);
@@ -186,7 +186,7 @@ pub fn execute_bootstrap_plan(
     let db = IndexDb::open(&layout.db_path())?;
 
     let mut total_ns = 0usize;
-    let mut total_topics = 0usize;
+    let mut total_specs = 0usize;
     let mut total_docs = 0usize;
     let mut details = Vec::new();
 
@@ -195,16 +195,16 @@ pub fn execute_bootstrap_plan(
         db.create_namespace(&namespace)?;
         total_ns += 1;
 
-        let mut topic_results = Vec::new();
+        let mut spec_results = Vec::new();
 
-        for topic_plan in &ns_plan.topics {
-            let topic = Topic::new(&topic_plan.name, &topic_plan.description, &namespace.id);
-            db.create_topic(&topic)?;
-            total_topics += 1;
+        for spec_plan in &ns_plan.specs {
+            let spec = Spec::new(&spec_plan.name, &spec_plan.description, &namespace.id);
+            db.create_spec(&spec)?;
+            total_specs += 1;
 
             // Import existing documents as references (no pipeline run, no skill)
             let mut imported = 0usize;
-            for doc_spec in &topic_plan.documents {
+            for doc_spec in &spec_plan.documents {
                 let source_path = project_dir.join(&doc_spec.path);
                 let content = match std::fs::read_to_string(&source_path) {
                     Ok(c) => c,
@@ -220,9 +220,9 @@ pub fn execute_bootstrap_plan(
                 let mut document = Document::new(
                     &doc_spec.doc_type,
                     &title,
-                    "",  // no skill — assigned at issue start
-                    "",  // no pipeline run — created at issue start
-                    &topic.id,
+                    "", // no skill — assigned at issue start
+                    "", // no pipeline run — created at issue start
+                    &spec.id,
                 );
                 document.status = "final".to_string();
                 document.body = content;
@@ -239,9 +239,9 @@ pub fn execute_bootstrap_plan(
             }
             total_docs += imported;
 
-            topic_results.push(BootstrapTopicResult {
-                topic_name: topic_plan.name.clone(),
-                topic_id: topic.id,
+            spec_results.push(BootstrapSpecResult {
+                spec_name: spec_plan.name.clone(),
+                spec_id: spec.id,
                 documents_imported: imported,
             });
         }
@@ -249,13 +249,13 @@ pub fn execute_bootstrap_plan(
         details.push(BootstrapNamespaceResult {
             namespace_name: ns_plan.name.clone(),
             namespace_id: namespace.id,
-            topics: topic_results,
+            specs: spec_results,
         });
     }
 
     Ok(BootstrapResult {
         namespaces_created: total_ns,
-        topics_created: total_topics,
+        specs_created: total_specs,
         documents_imported: total_docs,
         summary: plan.summary.clone(),
         details,
@@ -268,12 +268,7 @@ mod tests {
 
     #[test]
     fn test_build_bootstrap_prompt_basic() {
-        let prompt = build_bootstrap_prompt(
-            "Rust project",
-            "src/\n  main.rs",
-            &[],
-            None,
-        );
+        let prompt = build_bootstrap_prompt("Rust project", "src/\n  main.rs", &[], None);
         assert!(prompt.contains("## Project Technical Profile"));
         assert!(prompt.contains("Rust project"));
         assert!(prompt.contains("## Project File Tree"));
@@ -281,7 +276,7 @@ mod tests {
         assert!(prompt.contains("No specific bootstrap instructions provided."));
         assert!(prompt.contains("## Your Task"));
         assert!(prompt.contains("\"namespaces\""));
-        assert!(prompt.contains("\"topics\""));
+        assert!(prompt.contains("\"specs\""));
         assert!(prompt.contains("**Namespaces** represent product domains"));
         // Should NOT mention pipelines or skills
         assert!(!prompt.contains("## Available Skills"));
@@ -315,7 +310,7 @@ mod tests {
                 {
                     "name": "backend-api",
                     "description": "Backend API service",
-                    "topics": [
+                    "specs": [
                         {
                             "name": "auth-system",
                             "description": "Authentication and authorization",
@@ -333,23 +328,29 @@ mod tests {
         assert_eq!(plan.namespaces.len(), 1);
         assert_eq!(plan.namespaces[0].name, "backend-api");
         assert_eq!(plan.namespaces[0].description, "Backend API service");
-        assert_eq!(plan.namespaces[0].topics.len(), 1);
-        assert_eq!(plan.namespaces[0].topics[0].name, "auth-system");
-        assert_eq!(plan.namespaces[0].topics[0].tags, vec!["auth", "login", "jwt"]);
-        assert_eq!(plan.namespaces[0].topics[0].documents.len(), 1);
-        assert_eq!(plan.namespaces[0].topics[0].documents[0].doc_type, "reference");
+        assert_eq!(plan.namespaces[0].specs.len(), 1);
+        assert_eq!(plan.namespaces[0].specs[0].name, "auth-system");
+        assert_eq!(
+            plan.namespaces[0].specs[0].tags,
+            vec!["auth", "login", "jwt"]
+        );
+        assert_eq!(plan.namespaces[0].specs[0].documents.len(), 1);
+        assert_eq!(
+            plan.namespaces[0].specs[0].documents[0].doc_type,
+            "reference"
+        );
     }
 
     #[test]
     fn test_bootstrap_plan_deserialize_minimal() {
-        let json = r#"{"namespaces": [{"name": "test", "topics": [{"name": "main"}]}]}"#;
+        let json = r#"{"namespaces": [{"name": "test", "specs": [{"name": "main"}]}]}"#;
         let plan: BootstrapPlan = serde_json::from_str(json).unwrap();
         assert_eq!(plan.namespaces.len(), 1);
         assert_eq!(plan.namespaces[0].name, "test");
         assert_eq!(plan.namespaces[0].description, "");
-        assert_eq!(plan.namespaces[0].topics[0].name, "main");
-        assert!(plan.namespaces[0].topics[0].tags.is_empty());
-        assert!(plan.namespaces[0].topics[0].documents.is_empty());
+        assert_eq!(plan.namespaces[0].specs[0].name, "main");
+        assert!(plan.namespaces[0].specs[0].tags.is_empty());
+        assert!(plan.namespaces[0].specs[0].documents.is_empty());
         assert!(plan.summary.is_empty());
     }
 }

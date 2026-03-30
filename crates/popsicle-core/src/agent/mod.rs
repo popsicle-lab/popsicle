@@ -177,9 +177,7 @@ fn build_skill_command(skill: &SkillDef) -> String {
         .any(|(_, sd)| sd.transitions.iter().any(|t| t.requires_approval));
     if has_approval {
         s.push_str("# ⚠ This stage requires --confirm (approval gate):\n");
-        s.push_str(
-            "# 禁止代用户执行。必须由用户本人审阅后在终端执行：\n",
-        );
+        s.push_str("# 禁止代用户执行。必须由用户本人审阅后在终端执行：\n");
         s.push_str("popsicle pipeline stage complete <stage-name> --confirm\n");
     }
 
@@ -225,9 +223,9 @@ Then use `$POPSICLE` in place of `popsicle` for all commands.
 You MUST follow this checklist before writing ANY code or making ANY changes.
 No exceptions — not for "small" fixes, not for low-level modules, not for "just one line".
 
-### Step 0: Verify namespace and topics exist
+### Step 0: Verify namespace and specs exist
 
-`issue start` requires at least one namespace and one topic. These are created during bootstrap.
+`issue start` requires at least one namespace and one spec. These are created during bootstrap.
 
 If `issue start` fails with "No namespace found", the project needs bootstrapping:
 
@@ -235,7 +233,7 @@ If `issue start` fails with "No namespace found", the project needs bootstrappin
 popsicle context bootstrap --generate-prompt --format json
 ```
 
-Bootstrap analyzes the codebase, proposes namespaces (product domains) and topics (document collections), then asks the user to confirm before creating them. Do NOT skip this step.
+Bootstrap analyzes the codebase, proposes namespaces (product domains) and specs (specification documents), then asks the user to confirm before creating them. Do NOT skip this step.
 
 Note: `popsicle init` is a manual step that creates the directory structure — it is NOT your concern. Bootstrap is the automated entry point.
 
@@ -318,7 +316,7 @@ This ensures every new document benefits from cross-run historical context and a
 ### Document & Git
 
 - `popsicle context --format json` — all documents for current run
-- `popsicle doc create <skill> --title "<t>" --run <id>` — create document (must hold Topic lock)
+- `popsicle doc create <skill> --title "<t>" --run <id>` — create document (must hold Spec lock)
 - `popsicle doc summarize <id> --generate-prompt` — get LLM prompt for summarization
 - `popsicle doc summarize <id> --summary "..." --tags "a,b,c"` — write LLM-generated summary/tags
 - `popsicle context search <query>` — search documents across all runs (FTS5)
@@ -328,7 +326,7 @@ This ensures every new document benefits from cross-run historical context and a
 
 - `popsicle pipeline stage start <stage>` — start a pipeline stage (marks it in-progress)
 - `popsicle pipeline stage complete <stage> [--confirm]` — complete a stage; all documents become "final". Use `--confirm` for stages with `requires_approval`
-- `popsicle pipeline unlock` — force-release the Topic lock (for stuck/abandoned runs)
+- `popsicle pipeline unlock` — force-release the Spec lock (for stuck/abandoned runs)
 
 ## Document Summarization (MANDATORY after stage complete)
 
@@ -351,15 +349,15 @@ Do NOT skip this step. Documents without LLM-generated summaries will not appear
 ## Workflow Rules
 
 1. **NEVER write code without an active pipeline run** — no exceptions
-2. **Namespace → Topic → Issue → Pipeline → Skill** — always follow this hierarchy; `issue start` is the ONLY way to create pipeline runs and acquires an exclusive Topic lock
+2. **Namespace → Spec → Issue → Pipeline → Skill** — always follow this hierarchy; `issue start` is the ONLY way to create pipeline runs and acquires an exclusive Spec lock
 3. Always check `popsicle pipeline next` before starting work on a step
 4. Guards enforce upstream **stage completion** before downstream work proceeds
 5. Fill document sections with real content — template placeholders are rejected
 6. Link commits to documents with `popsicle git link`
 7. **STOP after each stage** — after creating all documents for a stage, you MUST STOP, present a summary of what was done, show the `pipeline stage complete <stage>` command, and **wait for the user to confirm before proceeding**. Do NOT auto-execute `pipeline stage complete`. The user decides when a stage is done.
 8. Stages marked `requires_approval`: require `--confirm` flag. The user MUST run the command themselves after review. No exception.
-9. **Namespace and Topic names require human confirmation** — when bootstrap proposes namespaces and topics, you MUST present the proposed names and descriptions to the user and ask for confirmation BEFORE creating them. Do NOT auto-create namespaces or topics with names the user hasn't approved. Let the user rename, merge, or reject proposals.
-9. **Topic lock**: do not attempt to operate on a Topic that is locked by another run. Use `popsicle pipeline unlock` only when explicitly told to force-release.
+9. **Namespace and Spec names require human confirmation** — when bootstrap proposes namespaces and specs, you MUST present the proposed names and descriptions to the user and ask for confirmation BEFORE creating them. Do NOT auto-create namespaces or specs with names the user hasn't approved. Let the user rename, merge, or reject proposals.
+9. **Spec lock**: do not attempt to operate on a Spec that is locked by another run. Use `popsicle pipeline unlock` only when explicitly told to force-release.
 10. **Documents are "active" when created** and become "final" when their stage is completed via `pipeline stage complete`. There is no `doc transition` command.
 11. **NEVER report a task as "complete" unless `popsicle pipeline verify` passes.** If stages remain incomplete, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
 
@@ -674,7 +672,7 @@ Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the syste
 popsicle pipeline status --format json
 ```
 
-If this fails with "not bootstrapped" or "no topics", the project needs bootstrapping first:
+If this fails with "not bootstrapped" or "no specs", the project needs bootstrapping first:
 
 ```bash
 popsicle context bootstrap --generate-prompt --format json
@@ -706,25 +704,25 @@ Then execute the suggested CLI command to create the document.
 
 const SKILL_BOOTSTRAP: &str = r#"---
 name: popsicle-bootstrap
-description: Bootstrap a project by analyzing its structure. Creates Namespaces and Topics — no pipelines or skills involved.
+description: Bootstrap a project by analyzing its structure. Creates Namespaces and Specs — no pipelines or skills involved.
 ---
 
-Bootstrap a project by analyzing its structure and organizing it into namespaces and topics.
+Bootstrap a project by analyzing its structure and organizing it into namespaces and specs.
 
 Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
 
 ## When to Use
 
-- After `popsicle init --module <source>` when the project needs namespace/topic setup
+- After `popsicle init --module <source>` when the project needs namespace/spec setup
 - When starting a new popsicle workflow on a project
-- Any time the project lacks namespaces or topics
+- Any time the project lacks namespaces or specs
 
 ## What Bootstrap Does (and Does NOT Do)
 
 Bootstrap analyzes the project and creates:
 - **Namespaces** — product domains (e.g. "backend-api", "mobile-app")
-- **Topics** — document collections with tags (e.g. "auth-system", "payment-integration")
-- **Reference documents** — imports existing docs into topics
+- **Specs** — specification document collections with tags (e.g. "auth-system", "payment-integration")
+- **Reference documents** — imports existing docs into specs
 
 Bootstrap does **NOT**:
 - Choose or create pipelines (that happens at `issue start`)
@@ -734,8 +732,8 @@ Bootstrap does **NOT**:
 ## Module's bootstrap.md
 
 The active module may provide a `bootstrap.md` file at `.popsicle/modules/<module>/bootstrap.md`.
-This file contains **domain-specific instructions** that guide how the LLM organizes namespaces and topics
-(e.g. recommended naming conventions, required topics, tagging strategies).
+This file contains **domain-specific instructions** that guide how the LLM organizes namespaces and specs
+(e.g. recommended naming conventions, required specs, tagging strategies).
 
 The bootstrap prompt generator (`--generate-prompt`) automatically loads and injects this file
 into the LLM prompt under the "Module Bootstrap Instructions" section. If the file does not exist,
@@ -773,7 +771,7 @@ Send the `prompt` field to your LLM. It will return a JSON bootstrap plan like:
     {
       "name": "backend-api",
       "description": "Backend REST API service",
-      "topics": [
+      "specs": [
         {
           "name": "auth-system",
           "description": "Authentication and authorization",
@@ -789,7 +787,7 @@ Send the `prompt` field to your LLM. It will return a JSON bootstrap plan like:
 }
 ```
 
-**⚠️ IMPORTANT: Before applying the plan, you MUST present the proposed namespace and topic names to the user and ask for confirmation.** The user may want to rename, merge, split, or reject proposals. Do NOT auto-apply.
+**⚠️ IMPORTANT: Before applying the plan, you MUST present the proposed namespace and spec names to the user and ask for confirmation.** The user may want to rename, merge, split, or reject proposals. Do NOT auto-apply.
 
 Once the user approves (or modifies) the plan, apply it:
 
@@ -805,8 +803,8 @@ popsicle context bootstrap --apply @bootstrap-plan.json
 
 ## After Bootstrap
 
-The project now has namespaces and topics. To start working:
-1. Create an issue: `popsicle issue create --topic <topic-id> --title "..."`
+The project now has namespaces and specs. To start working:
+1. Create an issue: `popsicle issue create --spec <spec-id> --title "..."`
 2. Start the issue (creates pipeline run): `popsicle issue start <issue-id>`
 3. Follow the pipeline: `popsicle pipeline next`
 "#;

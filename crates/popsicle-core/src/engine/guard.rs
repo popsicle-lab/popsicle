@@ -299,7 +299,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Background\n\nWe need caching for performance.\n\n## Goals\n\n- Reduce latency to under 200ms\n".into(),
@@ -324,7 +324,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Background\n\nSome content.\n".into(),
@@ -350,7 +350,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body:
@@ -386,7 +386,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Tasks\n\n- [x] Build API\n- [x] Write docs\n".into(),
@@ -412,7 +412,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Tasks\n\n- [x] Build API\n- [ ] Write docs\n- [ ] Deploy\n".into(),
@@ -442,7 +442,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Summary\n\nJust text, no checkboxes.\n".into(),
@@ -468,7 +468,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Open Questions\n\n- [ ] Decide on DB\n\n## Task Checklist\n\n- [x] Build API\n- [x] Write tests\n\n## Notes\n\nSome notes.\n".into(),
@@ -499,7 +499,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Summary\n\nSome content.\n".into(),
@@ -525,7 +525,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Summary\n\nReal content here.\n\n## Checklist\n\n- [x] Done\n".into(),
@@ -561,7 +561,7 @@ mod tests {
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: "## Summary\n\nReal content here.\n\n## Checklist\n\n- [ ] Not done\n".into(),
@@ -708,7 +708,7 @@ workflow:
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: String::new(),
@@ -746,7 +746,7 @@ workflow:
             scale: Some("light".to_string()),
         };
 
-        let run = PipelineRun::new(&pipeline, "Test", "topic-1", "issue-1");
+        let run = PipelineRun::new(&pipeline, "Test", "spec-1", "issue-1");
 
         let doc = Document {
             id: "d1".into(),
@@ -760,7 +760,7 @@ workflow:
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: String::new(),
@@ -768,8 +768,15 @@ workflow:
         };
         let docs: Vec<DocumentRow> = vec![];
 
-        let result =
-            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline), Some(&run)).unwrap();
+        let result = check_guard(
+            "upstream_approved",
+            &doc,
+            &docs,
+            &registry,
+            Some(&pipeline),
+            Some(&run),
+        )
+        .unwrap();
         assert!(
             result.passed,
             "Should pass — rfc/adr not in pipeline: {}",
@@ -809,7 +816,7 @@ workflow:
             scale: Some("full".to_string()),
         };
 
-        let run = PipelineRun::new(&pipeline, "Test", "topic-1", "issue-1");
+        let run = PipelineRun::new(&pipeline, "Test", "spec-1", "issue-1");
         // tech-design is Ready (not Completed), implementation is Blocked
 
         let doc = Document {
@@ -824,7 +831,7 @@ workflow:
             metadata: serde_yaml_ng::Value::Null,
             created_at: None,
             updated_at: None,
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
             body: String::new(),
@@ -832,8 +839,15 @@ workflow:
         };
         let docs: Vec<DocumentRow> = vec![];
 
-        let result =
-            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline), Some(&run)).unwrap();
+        let result = check_guard(
+            "upstream_approved",
+            &doc,
+            &docs,
+            &registry,
+            Some(&pipeline),
+            Some(&run),
+        )
+        .unwrap();
         assert!(
             !result.passed,
             "Should fail — tech-design stage not completed: {}",

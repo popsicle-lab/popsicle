@@ -262,7 +262,7 @@ mod tests {
     use crate::model::document::Document;
 
     fn make_doc(body: &str) -> Document {
-        let mut doc = Document::new("test", "Test Doc", "test-skill", "run-1", "test-topic");
+        let mut doc = Document::new("test", "Test Doc", "test-skill", "run-1", "test-spec");
         doc.body = body.to_string();
         doc
     }

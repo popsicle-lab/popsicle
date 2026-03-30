@@ -65,7 +65,7 @@ pub struct NamespaceEntityInfo {
     pub description: String,
     pub status: String,
     pub tags: Vec<String>,
-    pub topic_count: u32,
+    pub spec_count: u32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -78,7 +78,7 @@ pub struct NamespaceEntityDetail {
     pub description: String,
     pub status: String,
     pub tags: Vec<String>,
-    pub topics: Vec<TopicInfo>,
+    pub specs: Vec<SpecInfo>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -141,7 +141,7 @@ pub struct PipelineRunInfo {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
-    pub topic_id: String,
+    pub spec_id: String,
     pub issue_id: String,
     pub run_type: String,
 }
@@ -286,7 +286,7 @@ pub struct IssueInfo {
     pub issue_type: String,
     pub priority: String,
     pub status: String,
-    pub topic_id: String,
+    pub spec_id: String,
     pub pipeline: Option<String>,
     pub labels: Vec<String>,
     pub created_at: String,
@@ -302,7 +302,7 @@ pub struct IssueFull {
     pub issue_type: String,
     pub priority: String,
     pub status: String,
-    pub topic_id: String,
+    pub spec_id: String,
     pub pipeline: Option<String>,
     pub labels: Vec<String>,
     pub created_at: String,
@@ -314,7 +314,7 @@ pub struct IssueFull {
 #[derive(Serialize)]
 pub struct IssueProgress {
     pub issue_key: String,
-    pub topic_id: String,
+    pub spec_id: String,
     pub pipeline_runs: Vec<PipelineRunInfo>,
     pub stages_total: u32,
     pub stages_completed: u32,
@@ -501,10 +501,10 @@ pub struct AcceptanceCriterionInfo {
     pub test_case_ids: Vec<String>,
 }
 
-// ── Topic ──
+// ── Spec ──
 
 #[derive(Serialize)]
-pub struct TopicInfo {
+pub struct SpecInfo {
     pub id: String,
     pub name: String,
     pub slug: String,
@@ -517,7 +517,7 @@ pub struct TopicInfo {
 }
 
 #[derive(Serialize)]
-pub struct TopicDetailInfo {
+pub struct SpecDetailInfo {
     pub id: String,
     pub name: String,
     pub slug: String,
