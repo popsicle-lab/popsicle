@@ -710,6 +710,7 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueFull, Strin
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn create_issue(
     issue_type: String,
     title: String,
@@ -906,7 +907,7 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
         helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
 
     let docs = db
-        .query_documents(None, None, Some(&run_id))
+        .query_documents(None, None, Some(run_id))
         .map_err(|e| e.to_string())?;
 
     let stages_total = pipeline_def.stages.len() as u32;
@@ -1589,7 +1590,7 @@ pub fn get_spec(spec_name: String, state: State<AppState>) -> Result<SpecDetailI
             })
             .collect(),
         documents: docs.iter().map(doc_row_to_info).collect(),
-        issues: issues.iter().map(|i| issue_to_info(i)).collect(),
+        issues: issues.iter().map(issue_to_info).collect(),
     })
 }
 
@@ -1781,11 +1782,11 @@ pub fn complete_stage(
         let _ = db.release_spec_lock(&run.spec_id, Some(&run.id));
         auto_released = true;
 
-        if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {
-            if issue.status != IssueStatus::Done {
-                issue.status = IssueStatus::Done;
-                let _ = db.update_issue(&issue);
-            }
+        if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id)
+            && issue.status != IssueStatus::Done
+        {
+            issue.status = IssueStatus::Done;
+            let _ = db.update_issue(&issue);
         }
     }
 
