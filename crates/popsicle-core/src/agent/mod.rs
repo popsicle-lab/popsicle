@@ -358,6 +358,7 @@ Do NOT skip this step. Documents without LLM-generated summaries will not appear
 6. Link commits to documents with `popsicle git link`
 7. **STOP after each stage** — after creating all documents for a stage, you MUST STOP, present a summary of what was done, show the `pipeline stage complete <stage>` command, and **wait for the user to confirm before proceeding**. Do NOT auto-execute `pipeline stage complete`. The user decides when a stage is done.
 8. Stages marked `requires_approval`: require `--confirm` flag. The user MUST run the command themselves after review. No exception.
+9. **Namespace and Topic names require human confirmation** — when bootstrap proposes namespaces and topics, you MUST present the proposed names and descriptions to the user and ask for confirmation BEFORE creating them. Do NOT auto-create namespaces or topics with names the user hasn't approved. Let the user rename, merge, or reject proposals.
 9. **Topic lock**: do not attempt to operate on a Topic that is locked by another run. Use `popsicle pipeline unlock` only when explicitly told to force-release.
 10. **Documents are "active" when created** and become "final" when their stage is completed via `pipeline stage complete`. There is no `doc transition` command.
 11. **NEVER report a task as "complete" unless `popsicle pipeline verify` passes.** If stages remain incomplete, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
@@ -705,7 +706,7 @@ Then execute the suggested CLI command to create the document.
 
 const SKILL_BOOTSTRAP: &str = r#"---
 name: popsicle-bootstrap
-description: Bootstrap a project from an installed module. Discovers existing docs, generates an LLM-driven plan, and creates a Topic with imported documents and pipeline run.
+description: Bootstrap a project from an installed module. Discovers existing docs, generates an LLM-driven plan, and creates Namespaces, Topics with imported documents and pipeline runs.
 ---
 
 Bootstrap a project by analyzing its existing documentation and mapping it to module skills.
@@ -739,29 +740,40 @@ This outputs a JSON object with a `prompt` field. The prompt includes:
 - Module's bootstrap instructions (from `bootstrap.md`)
 - Available skills and pipelines
 
-### Step 3: Send prompt to LLM and apply the plan
+### Step 3: Send prompt to LLM, present to user, and apply
 
 Send the `prompt` field to your LLM. It will return a JSON bootstrap plan like:
 
 ```json
 {
-  "topic_name": "my-project",
-  "pipeline": "full-sdlc",
-  "documents": [
-    {"path": "docs/prd.md", "skill": "prd-writer", "doc_type": "prd", "title": "Product Requirements"},
-    {"path": "README.md", "skill": "domain-analysis", "doc_type": "overview", "title": "Project Overview"}
+  "namespaces": [
+    {
+      "name": "backend-api",
+      "description": "Backend REST API service",
+      "topics": [
+        {
+          "name": "auth-system",
+          "pipeline": "full-sdlc",
+          "documents": [
+            {"path": "docs/auth.md", "skill": "domain-analysis", "doc_type": "domain-model", "title": "Auth Design"}
+          ]
+        }
+      ]
+    }
   ],
-  "summary": "Rust CLI project with existing PRD and README"
+  "summary": "Mono-repo with backend API and frontend SPA"
 }
 ```
 
-Apply the plan:
+**⚠️ IMPORTANT: Before applying the plan, you MUST present the proposed namespace and topic names to the user and ask for confirmation.** The user may want to rename, merge, split, or reject proposals. Do NOT auto-apply.
+
+Once the user approves (or modifies) the plan, apply it:
 
 ```bash
 popsicle context bootstrap --apply '<JSON plan>' --start
 ```
 
-Use `--start` to also create a PipelineRun. Omit it to only create the Topic and import documents.
+Use `--start` to also create PipelineRuns. Omit it to only create Namespaces, Topics and import documents.
 
 If the JSON is large, save it to a file and use:
 

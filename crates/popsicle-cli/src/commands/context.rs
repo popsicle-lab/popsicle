@@ -521,11 +521,31 @@ fn execute_bootstrap_apply(
     match format {
         OutputFormat::Text => {
             println!("✓ Bootstrap complete");
-            println!("  Topic: {} ({})", result.topic_name, result.topic_id);
-            if let Some(ref run_id) = result.pipeline_run_id {
-                println!("  Pipeline run: {} ({})", plan.pipeline, run_id);
-            }
+            println!(
+                "  Namespaces created: {}",
+                result.namespaces_created
+            );
+            println!("  Topics created: {}", result.topics_created);
             println!("  Documents imported: {}", result.documents_imported);
+            for ns_detail in &result.details {
+                println!(
+                    "  Namespace: {} ({})",
+                    ns_detail.namespace_name, ns_detail.namespace_id
+                );
+                for topic_detail in &ns_detail.topics {
+                    println!(
+                        "    Topic: {} ({})",
+                        topic_detail.topic_name, topic_detail.topic_id
+                    );
+                    if let Some(ref run_id) = topic_detail.pipeline_run_id {
+                        println!("      Pipeline run: {}", run_id);
+                    }
+                    println!(
+                        "      Documents imported: {}",
+                        topic_detail.documents_imported
+                    );
+                }
+            }
             if !result.summary.is_empty() {
                 println!("  Summary: {}", result.summary);
             }
