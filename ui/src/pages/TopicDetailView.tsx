@@ -88,13 +88,13 @@ export function TopicDetailView({ topicName, setPage }: Props) {
         <div className="flex items-center gap-4 mt-2 text-xs text-[var(--text-secondary)]">
           <span className="font-mono">{topic.slug}</span>
           <span>{new Date(topic.created_at).toLocaleDateString()}</span>
-          {topic.project_id && (
+          {topic.namespace_id && (
             <button
-              onClick={() => setPage({ kind: "project", projectId: topic.project_id! })}
+              onClick={() => setPage({ kind: "namespace", namespaceId: topic.namespace_id! })}
               className="flex items-center gap-1 text-[var(--accent)] hover:underline"
             >
               <FolderOpen size={11} />
-              Project
+              Namespace
             </button>
           )}
           {topic.tags.length > 0 && (

@@ -9,8 +9,8 @@ It organizes the full software development lifecycle through composable **Skills
 - **Module** — A self-contained distribution unit packaging Skills, Pipelines, and a Bootstrap spec; one active module per project, distributed via a git-based [registry](https://popsicle-lab.com/registry)
 - **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `arch-debate`, `rfc-writer`, `implementation`). Skills declare `doc_lifecycle: singleton | cumulative` (see below).
 - **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Topic for continuity and revision support. **The pipeline stage is the single source of truth for document state** — documents are created as "active" and become "final" when their stage is completed
-- **Project** — Required top-level container for Topics. Must be created before any Topics or Issues. Organizes work across multiple themes (e.g., "backend-v2", "mobile-app")
-- **Topic** — Document collection with tags, reusable across Issues; belongs to a Project (required). Tags enable automatic Issue→Topic matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration"). Topics have an **exclusive lock** (`locked_by_run_id`) — only one pipeline run can operate on a Topic at a time
+- **Namespace** — Named scope for organizing Topics. A codebase can have multiple namespaces for different product domains (e.g., "backend-v2", "mobile-app"). Must be created before any Topics or Issues
+- **Topic** — Document collection with tags, reusable across Issues; belongs to a Namespace (required). Tags enable automatic Issue→Topic matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration"). Topics have an **exclusive lock** (`locked_by_run_id`) — only one pipeline run can operate on a Topic at a time
 - **Issue** — Requirement entry point — must be created before any work. Auto-matched to a Topic by tags, or explicitly specified with `--topic`. `issue start` is the **only** way to create a PipelineRun and acquires the Topic lock — rejects if the Topic is already locked by another run
 - **PipelineRun** — State machine on a Topic, triggered exclusively by `issue start`. Cannot be created directly — use `issue start` to begin a run
 - **Document** — Belongs to a PipelineRun and Topic. Created as "active" and becomes "final" when the owning pipeline stage is completed. Documents no longer have their own state machine — the pipeline stage is the source of truth. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness
@@ -122,11 +122,11 @@ popsicle context bootstrap --apply bootstrap-plan.md
 # Or combine generate + apply in one step (requires ANTHROPIC_API_KEY):
 popsicle context bootstrap --start
 
-# 1. Create a project (required)
-popsicle project create "backend-v2" -d "Backend rewrite"
+# 1. Create a namespace (required)
+popsicle namespace create "backend-v2" -d "Backend rewrite"
 
 # 2. Create a topic with tags (required before issues)
-popsicle topic create "jwt-migration" -t auth,security --project "backend-v2"
+popsicle topic create "jwt-migration" -t auth,security --namespace "backend-v2"
 
 # 3. Create an issue — auto-matched to topic by tags, or use --topic
 popsicle issue create --type product --title "Add user authentication" --pipeline full-sdlc
@@ -192,7 +192,7 @@ Generated files include the complete skill registry — agent names, artifact ty
 
 ## CLI Commands
 
-### Project & Pipeline
+### Namespace & Pipeline
 
 | Command | Description |
 |---------|-------------|
@@ -213,20 +213,20 @@ Generated files include the complete skill registry — agent names, artifact ty
 
 | Command | Description |
 |---------|-------------|
-| `popsicle topic create <name> [-d <desc>] [-t <tags>] --project <name>` | Create a new topic under a project (required); tags enable Issue auto-matching |
-| `popsicle topic list [--project <name>]` | List all topics; filter by project |
+| `popsicle topic create <name> [-d <desc>] [-t <tags>] --namespace <name>` | Create a new topic under a namespace (required); tags enable Issue auto-matching |
+| `popsicle topic list [--namespace <name>]` | List all topics; filter by namespace |
 | `popsicle topic show <name>` | Show topic details with issues, runs, and documents |
 | `popsicle topic delete <name> [--force]` | Delete a topic (--force to delete with existing runs) |
 
-### Project Management
+### Namespace Management
 
 | Command | Description |
 |---------|-------------|
-| `popsicle project create <name> [-d <desc>] [-t <tags>]` | Create a new project |
-| `popsicle project list [--status <s>]` | List projects; filter by status (active/completed/archived) |
-| `popsicle project show <name>` | Show project details with associated topics |
-| `popsicle project update <name> [--status/--description/--tags]` | Update project fields |
-| `popsicle project delete <name> [--force]` | Delete a project (--force to delete with existing topics) |
+| `popsicle namespace create <name> [-d <desc>] [-t <tags>]` | Create a new namespace |
+| `popsicle namespace list [--status <s>]` | List namespaces; filter by status (active/completed/archived) |
+| `popsicle namespace show <name>` | Show namespace details with associated topics |
+| `popsicle namespace update <name> [--status/--description/--tags]` | Update namespace fields |
+| `popsicle namespace delete <name> [--force]` | Delete a namespace (--force to delete with existing topics) |
 
 ### Module Management
 
@@ -510,11 +510,11 @@ Use `popsicle pipeline recommend --task "<description>"` to get a recommendation
 Popsicle enforces a strict entity creation order and an exclusive Topic lock:
 
 ```
-Project → Topic (with tags) → Issue → PipelineRun → Document
+Namespace → Topic (with tags) → Issue → PipelineRun → Document
 ```
 
-1. **Create a Project** — `popsicle project create "my-project"`
-2. **Create Topics with tags** — `popsicle topic create "auth" -t security,backend --project "my-project"`
+1. **Create a Namespace** — `popsicle namespace create "my-project"`
+2. **Create Topics with tags** — `popsicle topic create "auth" -t security,backend --namespace "my-project"`
 3. **Create an Issue** — `popsicle issue create --type product --title "Add JWT auth"` (auto-matched to topic by tags, or use `--topic`)
 4. **Start the Issue** — `popsicle issue start PROJ-1` — this is the **only** way to create a PipelineRun. This also **acquires an exclusive lock** on the Topic — if the Topic is already locked by another run, the command is rejected. Direct `pipeline run` no longer exists.
 5. **Follow the pipeline** — `popsicle pipeline next` shows the next step, including cross-run document reuse (singleton docs: skip/update; cumulative docs: new)

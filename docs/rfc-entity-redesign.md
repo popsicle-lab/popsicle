@@ -5,7 +5,7 @@
 Redesign the domain entity hierarchy from a flat, disconnected model to a clear top-down ownership chain:
 
 ```
-Project (optional)
+Namespace (optional)
   └── Topic
         └── Issue
               └── PipelineRun
@@ -18,7 +18,7 @@ The original model had several structural problems:
 
 1. **Topic ↔ Issue disconnection** — Topics and Issues had no direct relationship; both could independently own Documents, creating confusing dual-ownership
 2. **Issue → PipelineRun one-to-one** — An Issue stored a single `pipeline_run_id`, making revision workflows awkward
-3. **No Project concept** — No way to group related Topics under a higher-level initiative
+3. **No Namespace concept** — No way to group related Topics under a higher-level initiative
 4. **Topic documents lacked workflow state** — Documents attached to Topics didn't show pipeline stage/status context
 
 ## Design
@@ -27,8 +27,8 @@ The original model had several structural problems:
 
 | Entity | Parent | Relationship |
 |--------|--------|-------------|
-| **Project** | — | Top-level grouping (required) |
-| **Topic** | Project (required) | `topic.project_id → project.id` |
+| **Namespace** | — | Top-level grouping (required) |
+| **Topic** | Namespace (required) | `topic.namespace_id → namespace.id` |
 | **Issue** | Topic | `issue.topic_id → topic.id` (required) |
 | **PipelineRun** | Issue + Topic | `pipeline_run.issue_id → issue.id` (created exclusively via `issue start`) |
 | **Document** | PipelineRun + Topic | Unchanged — linked via `run_id` and `topic_id` |
@@ -36,8 +36,8 @@ The original model had several structural problems:
 ### Key Changes
 
 #### Added Fields
-- `Project` — New entity with `id`, `name`, `slug`, `description`, `status` (active/completed/archived), `tags`
-- `Topic.project_id: Option<String>` — Optional link to a Project
+- `Namespace` — New entity with `id`, `name`, `slug`, `description`, `status` (active/completed/archived), `tags`
+- `Topic.namespace_id: Option<String>` — Optional link to a Namespace
 - `Issue.topic_id: String` — Required link to a Topic (every Issue belongs to a Topic)
 - `PipelineRun.issue_id: Option<String>` — Optional back-link to the Issue that spawned this run
 
@@ -59,7 +59,7 @@ SQLite doesn't support `DROP COLUMN` easily, so the migration:
 ## CLI Changes
 
 ### New Commands
-- `popsicle project create|list|show|update|delete` — Full CRUD for Project entity
+- `popsicle namespace create|list|show|update|delete` — Full CRUD for Project entity
 
 ### Modified Commands
 - `popsicle issue create` — Now requires `--topic <name>` to specify the parent Topic
@@ -90,7 +90,7 @@ SQLite doesn't support `DROP COLUMN` easily, so the migration:
 - `IssueProgress` — Now contains `topic_id` and `pipeline_runs: Vec<PipelineRunInfo>` (supports multiple runs)
 - `TopicInfo` / `TopicDetailInfo` — Added `project_id` field; detail includes `issues: Vec<IssueInfo>`
 - `PipelineRunInfo` — Added `issue_id` field
-- New: `ProjectEntityInfo`, `ProjectEntityDetail` DTOs
+- New: `NamespaceEntityInfo`, `NamespaceEntityDetail` DTOs
 
 ## Workflow Enforcement
 
@@ -99,10 +99,10 @@ SQLite doesn't support `DROP COLUMN` easily, so the migration:
 The redesign enforces a top-down creation order. Entities cannot be created out of sequence:
 
 ```
-Project → Topic (with tags) → Issue → PipelineRun → Document
+Namespace → Topic (with tags) → Issue → PipelineRun → Document
 ```
 
-- **Project is required** — Topics cannot exist without a parent Project (`topic.project_id` is no longer optional)
+- **Namespace is required** — Topics cannot exist without a parent Namespace (`topic.namespace_id` is no longer optional)
 - **Topic tags drive matching** — `issue create` auto-matches to a Topic by tag overlap; explicit `--topic` overrides
 - **`issue start` is the only way to create PipelineRuns** — `pipeline run` and `pipeline quick` commands are removed. All runs originate from an Issue
 - **`doc create` is stage-gated** — Documents can only be created when the target stage is unblocked (upstream dependencies satisfied)

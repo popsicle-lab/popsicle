@@ -51,7 +51,7 @@ export interface TopicInfo {
   name: string;
   slug: string;
   description: string;
-  project_id: string | null;
+  namespace_id: string | null;
   tags: string[];
   created_at: string;
   run_count: number;
@@ -65,7 +65,7 @@ export interface TopicDetailInfo {
   name: string;
   slug: string;
   description: string;
-  project_id: string | null;
+  namespace_id: string | null;
   tags: string[];
   created_at: string;
   locked_by_run_id: string | null;
