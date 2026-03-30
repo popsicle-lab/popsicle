@@ -6,8 +6,7 @@ use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
 use popsicle_core::model::{
-    Bug, BugSeverity, Issue, IssueStatus, IssueType, Namespace, PipelineRun, Priority, Spec,
-    StageState,
+    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, Spec, StageState,
 };
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
@@ -336,7 +335,6 @@ pub fn verify_pipeline_run(run_id: String, state: State<AppState>) -> Result<Ver
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-    let registry = helpers::load_registry(&dir).map_err(|e| e.to_string())?;
 
     let run = db
         .get_pipeline_run(&run_id)
@@ -854,7 +852,6 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-    let registry = helpers::load_registry(&dir).map_err(|e| e.to_string())?;
 
     let issue = db
         .get_issue(&key)
