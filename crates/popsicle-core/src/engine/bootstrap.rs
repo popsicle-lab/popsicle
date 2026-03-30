@@ -31,9 +31,13 @@ pub struct BootstrapNamespace {
 pub struct BootstrapTopic {
     /// Topic name (e.g. "jwt-migration", "auth-system")
     pub name: String,
-    /// Recommended pipeline name
-    pub pipeline: String,
-    /// Documents to import with skill mappings
+    /// Description of this topic
+    #[serde(default)]
+    pub description: String,
+    /// Tags for matching issues to this topic
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Existing documents to import as references
     #[serde(default)]
     pub documents: Vec<BootstrapDoc>,
 }
@@ -43,9 +47,7 @@ pub struct BootstrapTopic {
 pub struct BootstrapDoc {
     /// Relative file path in the project
     pub path: String,
-    /// Skill to map this document to
-    pub skill: String,
-    /// Document type (e.g. "prd", "rfc", "adr", "imported")
+    /// Document type (e.g. "reference", "imported", "overview")
     pub doc_type: String,
     /// Document title
     #[serde(default)]
@@ -76,7 +78,6 @@ pub struct BootstrapNamespaceResult {
 pub struct BootstrapTopicResult {
     pub topic_name: String,
     pub topic_id: String,
-    pub pipeline_run_id: Option<String>,
     pub documents_imported: usize,
 }
 
@@ -87,19 +88,16 @@ pub struct BootstrapTopicResult {
 /// 2. Project file tree
 /// 3. Discovered documentation with content previews
 /// 4. Module's bootstrap.md instructions
-/// 5. Available skills and pipelines list
-/// 6. Expected JSON response schema
+/// 5. Expected JSON response schema
 pub fn build_bootstrap_prompt(
     project_context: &str,
     file_tree: &str,
     discovered_docs: &[DiscoveredDoc],
     bootstrap_md: Option<&str>,
-    skills: &[String],
-    pipelines: &[String],
 ) -> String {
     let mut prompt = String::new();
 
-    prompt.push_str("You are analyzing a software project to set up a development workflow.\n\n");
+    prompt.push_str("You are analyzing a software project to understand its structure and propose how to organize its documentation.\n\n");
 
     prompt.push_str("## Project Technical Profile\n\n");
     prompt.push_str(project_context);
@@ -132,33 +130,16 @@ pub fn build_bootstrap_prompt(
     }
     prompt.push_str("\n\n");
 
-    prompt.push_str("## Available Skills\n\n");
-    if skills.is_empty() {
-        prompt.push_str("(none)\n");
-    } else {
-        prompt.push_str(&skills.join(", "));
-        prompt.push('\n');
-    }
-    prompt.push('\n');
-
-    prompt.push_str("## Available Pipelines\n\n");
-    if pipelines.is_empty() {
-        prompt.push_str("(none)\n");
-    } else {
-        prompt.push_str(&pipelines.join(", "));
-        prompt.push('\n');
-    }
-    prompt.push('\n');
-
     prompt.push_str("## Your Task\n\n");
     prompt.push_str(
-        "Analyze this project and produce a bootstrap plan as JSON. Organize the project into \
-         namespaces (product domains) and topics (document collections per concern). Choose the \
-         most appropriate pipeline for each topic and map existing documentation to the most \
-         relevant skills.\n\n\
+        "Analyze this project and produce a bootstrap plan as JSON.\n\n\
+         Your job is ONLY to organize the project into namespaces and topics:\n\
+         - **Namespaces** represent product domains (e.g. \"backend-api\", \"mobile-app\", \"shared-infra\")\n\
+         - **Topics** represent document collections for a specific concern (e.g. \"auth-system\", \"payment-integration\")\n\
+         - **Tags** on topics help match future issues to the right topic\n\n\
+         Do NOT choose pipelines or skills — those are selected later when an issue is started.\n\n\
+         Import any existing documentation as reference documents under the appropriate topic.\n\n\
          IMPORTANT: Propose clear, descriptive names for namespaces and topics.\n\
-         Namespaces represent product domains (e.g. \"backend-api\", \"mobile-app\", \"shared-infra\").\n\
-         Topics represent document collections for a specific concern (e.g. \"auth-system\", \"payment-integration\").\n\
          The user will review and may rename them before applying.\n\n\
          Respond with ONLY valid JSON in this format:\n\
          ```json\n\
@@ -166,19 +147,20 @@ pub fn build_bootstrap_prompt(
            \"namespaces\": [\n    \
              {\n      \
                \"name\": \"backend-api\",\n      \
-               \"description\": \"Backend API service\",\n      \
+               \"description\": \"Backend REST API service\",\n      \
                \"topics\": [\n        \
                  {\n          \
                    \"name\": \"auth-system\",\n          \
-                   \"pipeline\": \"full-sdlc\",\n          \
+                   \"description\": \"Authentication and authorization\",\n          \
+                   \"tags\": [\"auth\", \"login\", \"jwt\", \"session\"],\n          \
                    \"documents\": [\n            \
-                     {\"path\": \"docs/auth.md\", \"skill\": \"domain-analysis\", \"doc_type\": \"domain-model\", \"title\": \"Auth System Design\"}\n          \
+                     {\"path\": \"docs/auth.md\", \"doc_type\": \"reference\", \"title\": \"Auth Design Notes\"}\n          \
                    ]\n        \
                  }\n      \
                ]\n    \
              }\n  \
            ],\n  \
-           \"summary\": \"Brief description of what you found and why you chose these namespaces and pipelines\"\n\
+           \"summary\": \"Brief description of what you found and why you chose these namespaces\"\n\
          }\n\
          ```\n",
     );
@@ -186,16 +168,17 @@ pub fn build_bootstrap_prompt(
     prompt
 }
 
-/// Execute a bootstrap plan: create namespaces, topics, import documents, optionally create pipeline runs.
+/// Execute a bootstrap plan: create namespaces, topics, and import reference documents.
+///
+/// Bootstrap does NOT create pipeline runs or map skills — those happen at `issue start`.
 ///
 /// Returns a summary of actions taken.
 pub fn execute_bootstrap_plan(
     plan: &BootstrapPlan,
     project_dir: &Path,
-    start_pipeline: bool,
 ) -> crate::error::Result<BootstrapResult> {
-    use crate::helpers::{find_pipeline, slugify};
-    use crate::model::{Document, Namespace, PipelineRun, Topic};
+    use crate::helpers::slugify;
+    use crate::model::{Document, Namespace, Topic};
     use crate::storage::{FileStorage, IndexDb, ProjectLayout};
 
     let layout = ProjectLayout::new(project_dir);
@@ -208,7 +191,6 @@ pub fn execute_bootstrap_plan(
     let mut details = Vec::new();
 
     for ns_plan in &plan.namespaces {
-        // Create namespace
         let namespace = Namespace::new(&ns_plan.name, &ns_plan.description);
         db.create_namespace(&namespace)?;
         total_ns += 1;
@@ -216,31 +198,17 @@ pub fn execute_bootstrap_plan(
         let mut topic_results = Vec::new();
 
         for topic_plan in &ns_plan.topics {
-            // Create topic linked to namespace
-            let topic = Topic::new(&topic_plan.name, "", &namespace.id);
+            let topic = Topic::new(&topic_plan.name, &topic_plan.description, &namespace.id);
             db.create_topic(&topic)?;
             total_topics += 1;
 
-            // Optionally create pipeline run
-            let pipeline_run_id = if start_pipeline {
-                if let Ok(pipeline_def) = find_pipeline(project_dir, &topic_plan.pipeline) {
-                    let run = PipelineRun::new(&pipeline_def, &topic_plan.name, &topic.id, "");
-                    db.upsert_pipeline_run(&run)?;
-                    Some(run.id)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            // Import documents
+            // Import existing documents as references (no pipeline run, no skill)
             let mut imported = 0usize;
             for doc_spec in &topic_plan.documents {
                 let source_path = project_dir.join(&doc_spec.path);
                 let content = match std::fs::read_to_string(&source_path) {
                     Ok(c) => c,
-                    Err(_) => continue, // skip missing files
+                    Err(_) => continue,
                 };
 
                 let title = if doc_spec.title.is_empty() {
@@ -252,8 +220,8 @@ pub fn execute_bootstrap_plan(
                 let mut document = Document::new(
                     &doc_spec.doc_type,
                     &title,
-                    &doc_spec.skill,
-                    pipeline_run_id.as_deref().unwrap_or(""),
+                    "",  // no skill — assigned at issue start
+                    "",  // no pipeline run — created at issue start
                     &topic.id,
                 );
                 document.status = "final".to_string();
@@ -274,7 +242,6 @@ pub fn execute_bootstrap_plan(
             topic_results.push(BootstrapTopicResult {
                 topic_name: topic_plan.name.clone(),
                 topic_id: topic.id,
-                pipeline_run_id,
                 documents_imported: imported,
             });
         }
@@ -306,20 +273,19 @@ mod tests {
             "src/\n  main.rs",
             &[],
             None,
-            &["prd".into(), "rfc".into()],
-            &["standard".into()],
         );
         assert!(prompt.contains("## Project Technical Profile"));
         assert!(prompt.contains("Rust project"));
         assert!(prompt.contains("## Project File Tree"));
         assert!(prompt.contains("No documentation files found."));
         assert!(prompt.contains("No specific bootstrap instructions provided."));
-        assert!(prompt.contains("prd, rfc"));
-        assert!(prompt.contains("standard"));
         assert!(prompt.contains("## Your Task"));
         assert!(prompt.contains("\"namespaces\""));
         assert!(prompt.contains("\"topics\""));
-        assert!(prompt.contains("Namespaces represent product domains"));
+        assert!(prompt.contains("**Namespaces** represent product domains"));
+        // Should NOT mention pipelines or skills
+        assert!(!prompt.contains("## Available Skills"));
+        assert!(!prompt.contains("## Available Pipelines"));
     }
 
     #[test]
@@ -333,15 +299,13 @@ mod tests {
             "Node project",
             "package.json\nsrc/",
             &docs,
-            Some("Import README as the PRD."),
-            &["product-prd".into()],
-            &["light".into(), "standard".into()],
+            Some("Import README as reference."),
         );
         assert!(prompt.contains("README.md (512 bytes)"));
         assert!(prompt.contains("# My Project"));
-        assert!(prompt.contains("Import README as the PRD."));
-        assert!(prompt.contains("light, standard"));
+        assert!(prompt.contains("Import README as reference."));
         assert!(prompt.contains("\"namespaces\""));
+        assert!(prompt.contains("\"tags\""));
     }
 
     #[test]
@@ -354,9 +318,10 @@ mod tests {
                     "topics": [
                         {
                             "name": "auth-system",
-                            "pipeline": "standard",
+                            "description": "Authentication and authorization",
+                            "tags": ["auth", "login", "jwt"],
                             "documents": [
-                                {"path": "README.md", "skill": "product-prd", "doc_type": "prd", "title": "Product Requirements"}
+                                {"path": "README.md", "doc_type": "reference", "title": "Project Overview"}
                             ]
                         }
                     ]
@@ -370,20 +335,20 @@ mod tests {
         assert_eq!(plan.namespaces[0].description, "Backend API service");
         assert_eq!(plan.namespaces[0].topics.len(), 1);
         assert_eq!(plan.namespaces[0].topics[0].name, "auth-system");
-        assert_eq!(plan.namespaces[0].topics[0].pipeline, "standard");
+        assert_eq!(plan.namespaces[0].topics[0].tags, vec!["auth", "login", "jwt"]);
         assert_eq!(plan.namespaces[0].topics[0].documents.len(), 1);
-        assert_eq!(plan.namespaces[0].topics[0].documents[0].skill, "product-prd");
+        assert_eq!(plan.namespaces[0].topics[0].documents[0].doc_type, "reference");
     }
 
     #[test]
     fn test_bootstrap_plan_deserialize_minimal() {
-        let json = r#"{"namespaces": [{"name": "test", "topics": [{"name": "main", "pipeline": "light"}]}]}"#;
+        let json = r#"{"namespaces": [{"name": "test", "topics": [{"name": "main"}]}]}"#;
         let plan: BootstrapPlan = serde_json::from_str(json).unwrap();
         assert_eq!(plan.namespaces.len(), 1);
         assert_eq!(plan.namespaces[0].name, "test");
         assert_eq!(plan.namespaces[0].description, "");
         assert_eq!(plan.namespaces[0].topics[0].name, "main");
-        assert_eq!(plan.namespaces[0].topics[0].pipeline, "light");
+        assert!(plan.namespaces[0].topics[0].tags.is_empty());
         assert!(plan.namespaces[0].topics[0].documents.is_empty());
         assert!(plan.summary.is_empty());
     }

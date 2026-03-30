@@ -706,18 +706,30 @@ Then execute the suggested CLI command to create the document.
 
 const SKILL_BOOTSTRAP: &str = r#"---
 name: popsicle-bootstrap
-description: Bootstrap a project from an installed module. Discovers existing docs, generates an LLM-driven plan, and creates Namespaces, Topics with imported documents and pipeline runs.
+description: Bootstrap a project by analyzing its structure. Creates Namespaces and Topics — no pipelines or skills involved.
 ---
 
-Bootstrap a project by analyzing its existing documentation and mapping it to module skills.
+Bootstrap a project by analyzing its structure and organizing it into namespaces and topics.
 
 Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
 
 ## When to Use
 
-- After `popsicle init --module <source>` when the project has existing documentation
-- After `popsicle module install <source>` to set up the workflow for the project
-- When starting a new popsicle workflow on a project with existing docs (README, specs, RFCs, etc.)
+- After `popsicle init --module <source>` when the project needs namespace/topic setup
+- When starting a new popsicle workflow on a project
+- Any time the project lacks namespaces or topics
+
+## What Bootstrap Does (and Does NOT Do)
+
+Bootstrap analyzes the project and creates:
+- **Namespaces** — product domains (e.g. "backend-api", "mobile-app")
+- **Topics** — document collections with tags (e.g. "auth-system", "payment-integration")
+- **Reference documents** — imports existing docs into topics
+
+Bootstrap does **NOT**:
+- Choose or create pipelines (that happens at `issue start`)
+- Map documents to skills (that happens at `issue start`)
+- Create pipeline runs
 
 ## 3-Step Bootstrap Flow
 
@@ -738,7 +750,6 @@ This outputs a JSON object with a `prompt` field. The prompt includes:
 - File tree
 - Discovered documentation with content previews
 - Module's bootstrap instructions (from `bootstrap.md`)
-- Available skills and pipelines
 
 ### Step 3: Send prompt to LLM, present to user, and apply
 
@@ -753,9 +764,10 @@ Send the `prompt` field to your LLM. It will return a JSON bootstrap plan like:
       "topics": [
         {
           "name": "auth-system",
-          "pipeline": "full-sdlc",
+          "description": "Authentication and authorization",
+          "tags": ["auth", "login", "jwt", "session"],
           "documents": [
-            {"path": "docs/auth.md", "skill": "domain-analysis", "doc_type": "domain-model", "title": "Auth Design"}
+            {"path": "docs/auth.md", "doc_type": "reference", "title": "Auth Design Notes"}
           ]
         }
       ]
@@ -770,18 +782,19 @@ Send the `prompt` field to your LLM. It will return a JSON bootstrap plan like:
 Once the user approves (or modifies) the plan, apply it:
 
 ```bash
-popsicle context bootstrap --apply '<JSON plan>' --start
+popsicle context bootstrap --apply '<JSON plan>'
 ```
-
-Use `--start` to also create PipelineRuns. Omit it to only create Namespaces, Topics and import documents.
 
 If the JSON is large, save it to a file and use:
 
 ```bash
-popsicle context bootstrap --apply @bootstrap-plan.json --start
+popsicle context bootstrap --apply @bootstrap-plan.json
 ```
 
 ## After Bootstrap
 
-Run `popsicle pipeline next --format json` to see the first recommended action in the new pipeline run.
+The project now has namespaces and topics. To start working:
+1. Create an issue: `popsicle issue create --topic <topic-id> --title "..."`
+2. Start the issue (creates pipeline run): `popsicle issue start <issue-id>`
+3. Follow the pipeline: `popsicle pipeline next`
 "#;

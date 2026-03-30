@@ -117,12 +117,10 @@ popsicle git init
 
 # Bootstrap: generate a project plan from the module's bootstrap spec
 popsicle context bootstrap --generate-prompt   # Outputs an LLM prompt to stdout
-# Feed the prompt to your LLM, save the output as bootstrap-plan.md, then:
-popsicle context bootstrap --apply bootstrap-plan.md
-# Or combine generate + apply in one step (requires ANTHROPIC_API_KEY):
-popsicle context bootstrap --start
+# Feed the prompt to your LLM, save the output as bootstrap-plan.json, then:
+popsicle context bootstrap --apply @bootstrap-plan.json
 
-# 1. Create a namespace (required)
+# 1. Create a namespace (or let bootstrap do it)
 popsicle namespace create "backend-v2" -d "Backend rewrite"
 
 # 2. Create a topic with tags (required before issues)
@@ -384,8 +382,7 @@ When `--topic` is not specified, `issue create` auto-matches the issue to a Topi
 | `popsicle context show [--run <id>] [--stage <s>]` | Full pipeline context with document bodies (JSON) |
 | `popsicle context update --section <name>` | Update a section in project-context.md |
 | `popsicle context bootstrap --generate-prompt` | Generate a bootstrap LLM prompt from the module's `bootstrap.md` |
-| `popsicle context bootstrap --apply <file>` | Apply a bootstrap plan (LLM output) to create project-level configs |
-| `popsicle context bootstrap --start` | Run end-to-end bootstrap: generate prompt → call LLM → apply plan (requires `ANTHROPIC_API_KEY`) |
+| `popsicle context bootstrap --apply <file>` | Apply a bootstrap plan (LLM output) to create namespaces and topics |
 | `popsicle prompt <skill> [--state <s>] [--run <id>]` | AI prompt with upstream context + memory injected |
 | `popsicle migrate --skill <s> <paths...>` | Import existing Markdown docs into a pipeline run |
 | `popsicle completions <zsh/bash/fish>` | Generate shell completions |
@@ -411,13 +408,10 @@ The module includes a `bootstrap.md` that guides LLM-driven project initializati
 popsicle context bootstrap --generate-prompt
 
 # Apply the LLM-generated plan
-popsicle context bootstrap --apply bootstrap-plan.md
-
-# Or run the full loop automatically (requires ANTHROPIC_API_KEY)
-popsicle context bootstrap --start
+popsicle context bootstrap --apply @bootstrap-plan.json
 ```
 
-The bootstrap process produces a structured project plan covering architecture decisions, bounded contexts, entity relationships, conventions, and team workflow — all stored in `.popsicle/bootstrap-plan.md`. This plan feeds into every subsequent pipeline run as shared context.
+The bootstrap process analyzes the project, proposes namespaces (product domains) and topics (document collections with tags), and imports existing documentation as references. It does NOT create pipelines — those are created when you start an issue.
 
 ### Skills (16)
 

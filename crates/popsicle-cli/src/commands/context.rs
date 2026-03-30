@@ -55,10 +55,6 @@ pub struct BootstrapArgs {
     /// Apply a bootstrap plan (JSON string or @file path)
     #[arg(long)]
     apply: Option<String>,
-
-    /// Also create a PipelineRun (used with --apply)
-    #[arg(long)]
-    start: bool,
 }
 
 #[derive(clap::Args)]
@@ -432,7 +428,7 @@ fn execute_bootstrap(args: BootstrapArgs, format: &OutputFormat) -> anyhow::Resu
     }
 
     if let Some(ref input) = args.apply {
-        return execute_bootstrap_apply(input, &cwd, args.start, format);
+        return execute_bootstrap_apply(input, &cwd, format);
     }
 
     anyhow::bail!("Specify --generate-prompt or --apply <json>. See --help for usage.");
@@ -464,20 +460,11 @@ fn execute_bootstrap_generate_prompt(
     // Load module bootstrap.md
     let bootstrap_md = helpers::load_bootstrap_md(cwd);
 
-    // Load available skills and pipelines
-    let registry = helpers::load_registry(cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
-    let skills: Vec<String> = registry.list().iter().map(|s| s.name.clone()).collect();
-
-    let pipelines = helpers::load_pipelines(cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
-    let pipeline_names: Vec<String> = pipelines.iter().map(|p| p.name.clone()).collect();
-
     let prompt = build_bootstrap_prompt(
         &project_context,
         &file_tree,
         &discovered_docs,
         bootstrap_md.as_deref(),
-        &skills,
-        &pipeline_names,
     );
 
     let module_name = helpers::active_module_name(cwd);
@@ -487,8 +474,6 @@ fn execute_bootstrap_generate_prompt(
         OutputFormat::Json => {
             let result = serde_json::json!({
                 "module": module_name,
-                "skills": skills,
-                "pipelines": pipeline_names,
                 "discovered_docs": discovered_docs.len(),
                 "prompt": prompt,
             });
@@ -502,7 +487,6 @@ fn execute_bootstrap_generate_prompt(
 fn execute_bootstrap_apply(
     input: &str,
     cwd: &std::path::Path,
-    start: bool,
     format: &OutputFormat,
 ) -> anyhow::Result<()> {
     // Parse JSON from string or @file
@@ -516,7 +500,7 @@ fn execute_bootstrap_apply(
         .map_err(|e| anyhow::anyhow!("Invalid bootstrap plan JSON: {}", e))?;
 
     let result: BootstrapResult =
-        execute_bootstrap_plan(&plan, cwd, start).map_err(|e| anyhow::anyhow!("{}", e))?;
+        execute_bootstrap_plan(&plan, cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
 
     match format {
         OutputFormat::Text => {
@@ -537,9 +521,6 @@ fn execute_bootstrap_apply(
                         "    Topic: {} ({})",
                         topic_detail.topic_name, topic_detail.topic_id
                     );
-                    if let Some(ref run_id) = topic_detail.pipeline_run_id {
-                        println!("      Pipeline run: {}", run_id);
-                    }
                     println!(
                         "      Documents imported: {}",
                         topic_detail.documents_imported
