@@ -128,7 +128,7 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
     let db = IndexDb::open(&layout.db_path())?;
     let run = get_run(&db, run_id)?;
     let pipeline_def = find_pipeline(&run.pipeline_name)?;
-    let registry = load_registry()?;
+    let _registry = load_registry()?;
 
     let docs = db
         .query_documents(None, None, Some(&run.id))

@@ -453,18 +453,19 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
 
     let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id, &issue.id);
 
+    let run_dir = layout.run_dir(&run.id);
+    std::fs::create_dir_all(&run_dir)?;
+
+    // Insert pipeline run BEFORE acquiring topic lock (FK: topics.locked_by_run_id → pipeline_runs.id)
+    db.upsert_pipeline_run(&run)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
     let acquired = db
         .acquire_topic_lock(&topic.id, &run.id)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     if !acquired {
         anyhow::bail!("Failed to acquire lock on topic '{}'. It may have been locked concurrently.", topic.name);
     }
-
-    let run_dir = layout.run_dir(&run.id);
-    std::fs::create_dir_all(&run_dir)?;
-
-    db.upsert_pipeline_run(&run)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     issue.status = IssueStatus::InProgress;
     db.update_issue(&issue)
