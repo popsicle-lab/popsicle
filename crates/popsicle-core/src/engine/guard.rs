@@ -124,29 +124,29 @@ fn check_upstream_completed(
         }
 
         // Find which stage contains the upstream skill
-        if let Some(pdef) = pipeline {
-            if let Some(run) = run {
-                let upstream_stage = pdef
-                    .stages
-                    .iter()
-                    .find(|s| s.skill_names().contains(&input.from_skill.as_str()));
+        if let Some(pdef) = pipeline
+            && let Some(run) = run
+        {
+            let upstream_stage = pdef
+                .stages
+                .iter()
+                .find(|s| s.skill_names().contains(&input.from_skill.as_str()));
 
-                if let Some(stage) = upstream_stage {
-                    let stage_state = run
-                        .stage_states
-                        .get(&stage.name)
-                        .copied()
-                        .unwrap_or(StageState::Blocked);
+            if let Some(stage) = upstream_stage {
+                let stage_state = run
+                    .stage_states
+                    .get(&stage.name)
+                    .copied()
+                    .unwrap_or(StageState::Blocked);
 
-                    if !matches!(stage_state, StageState::Completed | StageState::Skipped) {
-                        not_completed.push(format!(
-                            "stage '{}' is '{}' (needed for {})",
-                            stage.name, stage_state, input.from_skill
-                        ));
-                    }
+                if !matches!(stage_state, StageState::Completed | StageState::Skipped) {
+                    not_completed.push(format!(
+                        "stage '{}' is '{}' (needed for {})",
+                        stage.name, stage_state, input.from_skill
+                    ));
                 }
-                continue;
             }
+            continue;
         }
 
         // Fallback: no pipeline/run context — just check that doc exists

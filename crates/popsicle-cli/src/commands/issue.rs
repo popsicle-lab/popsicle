@@ -139,7 +139,8 @@ fn load_config(layout: &ProjectLayout) -> anyhow::Result<ProjectConfig> {
 /// Verify the project is properly set up before issue operations.
 /// Checks two gates: (1) namespace must exist, (2) specs must exist (bootstrapped).
 fn check_namespace_ready(db: &IndexDb) -> anyhow::Result<()> {
-    let namespaces = db.list_namespaces(None)
+    let namespaces = db
+        .list_namespaces(None)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     if namespaces.is_empty() {
         anyhow::bail!(
@@ -149,8 +150,7 @@ fn check_namespace_ready(db: &IndexDb) -> anyhow::Result<()> {
              $ popsicle context bootstrap --generate-prompt"
         );
     }
-    let specs = db.list_specs()
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let specs = db.list_specs().map_err(|e| anyhow::anyhow!("{}", e))?;
     if specs.is_empty() {
         anyhow::bail!(
             "Namespace exists but has no specs — not yet bootstrapped.\n  \
@@ -161,6 +161,7 @@ fn check_namespace_ready(db: &IndexDb) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_issue(
     type_str: &str,
     title: &str,
@@ -193,7 +194,12 @@ fn create_issue(
     let spec = if let Some(name) = spec_name {
         db.find_spec_by_name(name)
             .map_err(|e| anyhow::anyhow!("{}", e))?
-            .ok_or_else(|| anyhow::anyhow!("Spec not found: {}. Create it first with 'popsicle spec create'.", name))?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Spec not found: {}. Create it first with 'popsicle spec create'.",
+                    name
+                )
+            })?
     } else {
         let keywords: Vec<String> = title
             .split_whitespace()
@@ -477,7 +483,10 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .acquire_spec_lock(&spec.id, &run.id)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     if !acquired {
-        anyhow::bail!("Failed to acquire lock on spec '{}'. It may have been locked concurrently.", spec.name);
+        anyhow::bail!(
+            "Failed to acquire lock on spec '{}'. It may have been locked concurrently.",
+            spec.name
+        );
     }
 
     issue.status = IssueStatus::InProgress;

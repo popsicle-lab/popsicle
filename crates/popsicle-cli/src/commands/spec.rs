@@ -89,7 +89,11 @@ fn create_spec(
 
     let namespace_id = resolve_namespace_id(&db, namespace)?;
 
-    let mut spec = Spec::new(name.to_string(), description.to_string(), namespace_id.clone());
+    let mut spec = Spec::new(
+        name.to_string(),
+        description.to_string(),
+        namespace_id.clone(),
+    );
     spec.tags = tag_list;
     db.create_spec(&spec).context("Failed to create spec")?;
 
@@ -180,13 +184,18 @@ fn show_spec(name: &str, format: &OutputFormat) -> Result<()> {
 
     let runs = db.list_spec_runs(&spec.id).unwrap_or_default();
     let docs = db.query_spec_documents(&spec.id).unwrap_or_default();
-    let issues = db.query_issues(None, None, None, Some(&spec.id)).unwrap_or_default();
+    let issues = db
+        .query_issues(None, None, None, Some(&spec.id))
+        .unwrap_or_default();
 
     // Resolve namespace name if present
     let namespace_name = if spec.namespace_id.is_empty() {
         None
     } else {
-        db.get_namespace(&spec.namespace_id).ok().flatten().map(|p| p.name)
+        db.get_namespace(&spec.namespace_id)
+            .ok()
+            .flatten()
+            .map(|p| p.name)
     };
 
     match format {
@@ -307,8 +316,7 @@ fn delete_spec(name: &str, force: bool, format: &OutputFormat) -> Result<()> {
         }
     }
 
-    db.delete_spec(&spec.id)
-        .context("Failed to delete spec")?;
+    db.delete_spec(&spec.id).context("Failed to delete spec")?;
 
     match format {
         OutputFormat::Text => println!("🗑  Spec deleted: {}", spec.name),

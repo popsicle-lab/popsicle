@@ -396,7 +396,9 @@ fn get_run(db: &IndexDb, run_id: Option<&str>) -> anyhow::Result<PipelineRun> {
             .list_pipeline_runs()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         let latest = runs.first().ok_or_else(|| {
-            anyhow::anyhow!("No pipeline runs found. Use `popsicle issue start <KEY>` to create one.")
+            anyhow::anyhow!(
+                "No pipeline runs found. Use `popsicle issue start <KEY>` to create one."
+            )
         })?;
         db.get_pipeline_run(&latest.id)
             .map_err(|e| anyhow::anyhow!("{}", e))?
@@ -533,8 +535,7 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     // Load all docs from the same spec for cross-run visibility
-    let spec_docs = db.query_spec_documents(&run.spec_id)
-        .unwrap_or_default();
+    let spec_docs = db.query_spec_documents(&run.spec_id).unwrap_or_default();
 
     let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &spec_docs);
     let hints = collect_context_hints(&layout);
@@ -882,11 +883,9 @@ fn stage_complete(
         if stage_skills.contains(&doc_row.skill_name.as_str()) && doc_row.status != "final" {
             let _ = db.update_document_status(&doc_row.id, "final");
             // Update file on disk
-            if let Ok(mut doc) =
-                popsicle_core::storage::FileStorage::read_document(std::path::Path::new(
-                    &doc_row.file_path,
-                ))
-            {
+            if let Ok(mut doc) = popsicle_core::storage::FileStorage::read_document(
+                std::path::Path::new(&doc_row.file_path),
+            ) {
                 doc.status = "final".to_string();
                 doc.updated_at = Some(chrono::Utc::now());
                 let _ = popsicle_core::storage::FileStorage::write_document(
@@ -918,11 +917,11 @@ fn stage_complete(
         let _ = db.release_spec_lock(&run.spec_id, Some(&run.id));
         auto_released = true;
 
-        if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {
-            if issue.status != IssueStatus::Done {
-                issue.status = IssueStatus::Done;
-                let _ = db.update_issue(&issue);
-            }
+        if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id)
+            && issue.status != IssueStatus::Done
+        {
+            issue.status = IssueStatus::Done;
+            let _ = db.update_issue(&issue);
         }
     }
 

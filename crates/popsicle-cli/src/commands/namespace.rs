@@ -86,7 +86,12 @@ fn resolve_namespace(db: &IndexDb, name_or_id: &str) -> Result<Namespace> {
         .ok_or_else(|| anyhow::anyhow!("Namespace not found: {}", name_or_id))
 }
 
-fn create_namespace(name: &str, description: &str, tags: &str, format: &OutputFormat) -> Result<()> {
+fn create_namespace(
+    name: &str,
+    description: &str,
+    tags: &str,
+    format: &OutputFormat,
+) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
     let tag_list: Vec<String> = if tags.is_empty() {
@@ -102,7 +107,10 @@ fn create_namespace(name: &str, description: &str, tags: &str, format: &OutputFo
 
     match format {
         OutputFormat::Text => {
-            println!("✅ Namespace created: {} ({})", namespace.name, namespace.slug);
+            println!(
+                "✅ Namespace created: {} ({})",
+                namespace.name, namespace.slug
+            );
             println!("   ID: {}", namespace.id);
         }
         OutputFormat::Json => {
@@ -146,10 +154,7 @@ fn list_namespaces(status_filter: Option<&str>, format: &OutputFormat) -> Result
                 } else {
                     p.description.clone()
                 };
-                println!(
-                    "{:<36}  {:<20}  {:<10}  {}",
-                    p.id, p.name, p.status, desc
-                );
+                println!("{:<36}  {:<20}  {:<10}  {}", p.id, p.name, p.status, desc);
             }
             println!("\n{} namespace(s)", namespaces.len());
         }

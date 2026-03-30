@@ -6,8 +6,8 @@ use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
 use popsicle_core::model::{
-    Bug, BugSeverity, Issue, IssueStatus, IssueType, Namespace, PipelineRun, Priority, StageState,
-    Spec,
+    Bug, BugSeverity, Issue, IssueStatus, IssueType, Namespace, PipelineRun, Priority, Spec,
+    StageState,
 };
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
@@ -291,8 +291,7 @@ pub fn get_next_steps(run_id: String, state: State<AppState>) -> Result<Vec<Next
         .map_err(|e| e.to_string())?;
 
     // Load all docs from the same spec for cross-run visibility
-    let spec_docs = db.query_spec_documents(&run.spec_id)
-        .unwrap_or_default();
+    let spec_docs = db.query_spec_documents(&run.spec_id).unwrap_or_default();
 
     let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &spec_docs);
     Ok(steps
@@ -674,7 +673,12 @@ pub fn list_issues(
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
 
     let issues = db
-        .query_issues(issue_type.as_deref(), status.as_deref(), label.as_deref(), None)
+        .query_issues(
+            issue_type.as_deref(),
+            status.as_deref(),
+            label.as_deref(),
+            None,
+        )
         .map_err(|e| e.to_string())?;
 
     Ok(issues.iter().map(issue_to_info).collect())
@@ -736,7 +740,10 @@ pub fn create_issue(
     }
 
     // Resolve or create the spec
-    let spec = if let Some(t) = db.find_spec_by_name(&spec_name).map_err(|e| e.to_string())? {
+    let spec = if let Some(t) = db
+        .find_spec_by_name(&spec_name)
+        .map_err(|e| e.to_string())?
+    {
         t
     } else {
         let t = Spec::new(&spec_name, "", "");
@@ -1592,9 +1599,7 @@ pub fn get_spec(spec_name: String, state: State<AppState>) -> Result<SpecDetailI
 // ── Namespace entity commands ──
 
 #[tauri::command]
-pub fn list_namespace_entities(
-    state: State<AppState>,
-) -> Result<Vec<NamespaceEntityInfo>, String> {
+pub fn list_namespace_entities(state: State<AppState>) -> Result<Vec<NamespaceEntityInfo>, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
@@ -1754,10 +1759,7 @@ pub fn complete_stage(
             {
                 doc.status = "final".to_string();
                 doc.updated_at = Some(chrono::Utc::now());
-                let _ = FileStorage::write_document(
-                    &doc,
-                    std::path::Path::new(&doc_row.file_path),
-                );
+                let _ = FileStorage::write_document(&doc, std::path::Path::new(&doc_row.file_path));
             }
         }
     }

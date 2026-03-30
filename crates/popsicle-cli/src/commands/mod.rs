@@ -9,15 +9,15 @@ mod issue;
 mod memory;
 mod migrate;
 mod module;
-mod pipeline;
 mod namespace;
+mod pipeline;
 mod prompt;
 pub(crate) mod registry;
 mod skill;
+mod spec;
 mod story;
 mod test;
 mod tool;
-mod spec;
 
 use clap::Subcommand;
 use clap_complete::Shell;

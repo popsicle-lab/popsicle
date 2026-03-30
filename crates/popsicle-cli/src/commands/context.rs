@@ -505,10 +505,7 @@ fn execute_bootstrap_apply(
     match format {
         OutputFormat::Text => {
             println!("✓ Bootstrap complete");
-            println!(
-                "  Namespaces created: {}",
-                result.namespaces_created
-            );
+            println!("  Namespaces created: {}", result.namespaces_created);
             println!("  Specs created: {}", result.specs_created);
             println!("  Documents imported: {}", result.documents_imported);
             for ns_detail in &result.details {

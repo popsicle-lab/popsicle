@@ -184,7 +184,8 @@ fn create_doc(
         for stage in &pipeline_def.stages {
             if stage.skill_names().contains(&skill_name) {
                 if let Some(StageState::Ready) = pipeline_run.stage_states.get(&stage.name) {
-                    pipeline_run.stage_states
+                    pipeline_run
+                        .stage_states
                         .insert(stage.name.clone(), StageState::InProgress);
                     pipeline_run.updated_at = chrono::Utc::now();
                     db.upsert_pipeline_run(&pipeline_run)
