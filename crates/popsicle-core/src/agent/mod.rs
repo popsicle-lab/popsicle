@@ -148,7 +148,11 @@ fn build_skill_command(skill: &SkillDef) -> String {
     s.push_str("# View the created document\n");
     s.push_str("popsicle doc show <doc-id>\n\n");
 
-    s.push_str("# Complete the stage (documents become \"final\")\n");
+    s.push_str("# ⚠ STOP — Do NOT auto-complete stages\n");
+    s.push_str("# After creating all documents for a stage, STOP and show the user:\n");
+    s.push_str("#   1. What documents were created\n");
+    s.push_str("#   2. The stage completion command below\n");
+    s.push_str("# Let the user review and decide when to complete the stage.\n");
     s.push_str("popsicle pipeline stage complete <stage-name>\n\n");
 
     // Check if any transition in this skill requires approval
@@ -158,9 +162,9 @@ fn build_skill_command(skill: &SkillDef) -> String {
         .iter()
         .any(|(_, sd)| sd.transitions.iter().any(|t| t.requires_approval));
     if has_approval {
-        s.push_str("# ⚠ If the stage requires approval, the user must run:\n");
+        s.push_str("# ⚠ This stage requires --confirm (approval gate):\n");
         s.push_str(
-            "# 禁止代用户执行。必须由用户本人审阅/参与讨论后，由用户自己在终端执行：\n",
+            "# 禁止代用户执行。必须由用户本人审阅后在终端执行：\n",
         );
         s.push_str("popsicle pipeline stage complete <stage-name> --confirm\n");
     }
@@ -206,6 +210,16 @@ Then use `$POPSICLE` in place of `popsicle` for all commands.
 
 You MUST follow this checklist before writing ANY code or making ANY changes.
 No exceptions — not for "small" fixes, not for low-level modules, not for "just one line".
+
+### Step 0: Verify project is bootstrapped
+
+`issue start` will refuse to run if the project has no topics. A bootstrapped project has at least one topic with imported documents. If `issue start` fails with "not bootstrapped", run:
+
+```bash
+popsicle context bootstrap --generate-prompt --format json
+```
+
+Then apply the plan. `popsicle init` only creates the directory structure — bootstrap populates the project with topics and documents. Do NOT confuse them.
 
 ### Step 1: Check for an active pipeline run
 
@@ -324,9 +338,11 @@ Do NOT skip this step. Documents without LLM-generated summaries will not appear
 4. Guards enforce upstream **stage completion** before downstream work proceeds
 5. Fill document sections with real content — template placeholders are rejected
 6. Link commits to documents with `popsicle git link`
-7. Stages marked `requires_approval`: do NOT run `pipeline stage complete` with `--confirm` for the user. You must STOP, show the user the suggested command, and ask them to review and run it themselves in their terminal. No exception.
-8. **Topic lock**: do not attempt to operate on a Topic that is locked by another run. Use `popsicle pipeline unlock` only when explicitly told to force-release.
-9. **Documents are "active" when created** and become "final" when their stage is completed via `pipeline stage complete`. There is no `doc transition` command.
+7. **STOP after each stage** — after creating all documents for a stage, you MUST STOP, present a summary of what was done, show the `pipeline stage complete <stage>` command, and **wait for the user to confirm before proceeding**. Do NOT auto-execute `pipeline stage complete`. The user decides when a stage is done.
+8. Stages marked `requires_approval`: require `--confirm` flag. The user MUST run the command themselves after review. No exception.
+9. **Topic lock**: do not attempt to operate on a Topic that is locked by another run. Use `popsicle pipeline unlock` only when explicitly told to force-release.
+10. **Documents are "active" when created** and become "final" when their stage is completed via `pipeline stage complete`. There is no `doc transition` command.
+11. **NEVER report a task as "complete" unless `popsicle pipeline verify` passes.** If stages remain incomplete, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
 
 ## Memory Management
 
@@ -602,10 +618,16 @@ Check what to do next in the Popsicle pipeline and follow the recommended action
 
 Prefer the project-root binary (`./popsicle` or `.\popsicle.exe`) over the system PATH one.
 
-## Step 1: Ensure a pipeline run exists
+## Step 1: Ensure project is bootstrapped and a pipeline run exists
 
 ```bash
 popsicle pipeline status --format json
+```
+
+If this fails with "not bootstrapped" or "no topics", the project needs bootstrapping first:
+
+```bash
+popsicle context bootstrap --generate-prompt --format json
 ```
 
 If no active pipeline run exists, do NOT proceed. First create an issue and start it:
@@ -621,7 +643,13 @@ popsicle issue start <ISSUE-KEY>
 popsicle pipeline next --format json
 ```
 
-Then execute the suggested CLI command. If a step has `requires_approval: true`, STOP and ask the user to review before proceeding.
+Then execute the suggested CLI command to create the document.
+
+**CRITICAL RULES:**
+- After creating all documents for a stage, **STOP and present a summary** to the user. Show the `pipeline stage complete <stage>` command and wait for the user to decide when to proceed.
+- Do NOT auto-execute `pipeline stage complete` — the user must confirm each stage transition.
+- If a step has `requires_approval: true`, STOP and ask the user to review before proceeding.
+- Do NOT report the task as "complete" unless `popsicle pipeline verify` passes. Always show remaining stages.
 
 **Important**: When a step includes a `context_command` field, run it FIRST to get the enriched prompt (with historical references and project memories), then use that prompt to guide document creation.
 "#;
