@@ -7,7 +7,7 @@ use popsicle_core::helpers;
 use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
 use popsicle_core::model::{
     Bug, BugSeverity, Issue, IssueStatus, IssueType, Namespace, PipelineRun, Priority, StageState,
-    Topic,
+    Spec,
 };
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
@@ -160,7 +160,7 @@ pub fn list_pipeline_runs(state: State<AppState>) -> Result<Vec<PipelineRunInfo>
             title: r.title.clone(),
             created_at: r.created_at.clone(),
             updated_at: r.updated_at.clone(),
-            topic_id: r.topic_id.clone(),
+            spec_id: r.spec_id.clone(),
             issue_id: r.issue_id.clone(),
             run_type: r.run_type.clone(),
         })
@@ -290,11 +290,11 @@ pub fn get_next_steps(run_id: String, state: State<AppState>) -> Result<Vec<Next
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
 
-    // Load all docs from the same topic for cross-run visibility
-    let topic_docs = db.query_topic_documents(&run.topic_id)
+    // Load all docs from the same spec for cross-run visibility
+    let spec_docs = db.query_spec_documents(&run.spec_id)
         .unwrap_or_default();
 
-    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &topic_docs);
+    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &spec_docs);
     Ok(steps
         .iter()
         .map(|s| NextStepInfo {
@@ -654,7 +654,7 @@ fn issue_to_info(i: &Issue) -> IssueInfo {
         issue_type: i.issue_type.to_string(),
         priority: i.priority.to_string(),
         status: i.status.to_string(),
-        topic_id: i.topic_id.clone(),
+        spec_id: i.spec_id.clone(),
         pipeline: i.pipeline.clone(),
         labels: i.labels.clone(),
         created_at: i.created_at.to_rfc3339(),
@@ -699,7 +699,7 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueFull, Strin
         issue_type: issue.issue_type.to_string(),
         priority: issue.priority.to_string(),
         status: issue.status.to_string(),
-        topic_id: issue.topic_id,
+        spec_id: issue.spec_id,
         pipeline: issue.pipeline,
         labels: issue.labels,
         created_at: issue.created_at.to_rfc3339(),
@@ -711,7 +711,7 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueFull, Strin
 pub fn create_issue(
     issue_type: String,
     title: String,
-    topic_name: String,
+    spec_name: String,
     description: Option<String>,
     priority: Option<String>,
     pipeline: Option<String>,
@@ -735,12 +735,12 @@ pub fn create_issue(
             .map_err(|_| format!("Pipeline template not found: {}", name))?;
     }
 
-    // Resolve or create the topic
-    let topic = if let Some(t) = db.find_topic_by_name(&topic_name).map_err(|e| e.to_string())? {
+    // Resolve or create the spec
+    let spec = if let Some(t) = db.find_spec_by_name(&spec_name).map_err(|e| e.to_string())? {
         t
     } else {
-        let t = Topic::new(&topic_name, "", "");
-        db.create_topic(&t).map_err(|e| e.to_string())?;
+        let t = Spec::new(&spec_name, "", "");
+        db.create_spec(&t).map_err(|e| e.to_string())?;
         t
     };
 
@@ -748,7 +748,7 @@ pub fn create_issue(
     let seq = db.next_issue_seq(prefix).map_err(|e| e.to_string())?;
     let key = format!("{}-{}", prefix, seq);
 
-    let mut issue = Issue::new(key, &title, it, &topic.id);
+    let mut issue = Issue::new(key, &title, it, &spec.id);
     issue.description = description.unwrap_or_default();
     issue.priority = pr;
     issue.pipeline = pipeline;
@@ -782,13 +782,13 @@ pub fn start_issue(key: String, state: State<AppState>) -> Result<IssueInfo, Str
         helpers::find_pipeline(&dir, &resolved.pipeline_name).map_err(|e| e.to_string())?;
     pipeline_def.validate().map_err(|e| e.to_string())?;
 
-    // Issue already has topic_id
-    let topic = db
-        .get_topic(&issue.topic_id)
+    // Issue already has spec_id
+    let spec = db
+        .get_spec(&issue.spec_id)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Topic not found for issue: {}", issue.topic_id))?;
+        .ok_or_else(|| format!("Spec not found for issue: {}", issue.spec_id))?;
 
-    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id, &issue.id);
+    let run = PipelineRun::new(&pipeline_def, &issue.title, &spec.id, &issue.id);
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir).map_err(|e| e.to_string())?;
 
@@ -867,7 +867,7 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
             title: r.title.clone(),
             created_at: r.created_at.clone(),
             updated_at: r.updated_at.clone(),
-            topic_id: r.topic_id.clone(),
+            spec_id: r.spec_id.clone(),
             issue_id: r.issue_id.clone(),
             run_type: r.run_type.clone(),
         })
@@ -878,7 +878,7 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
         None => {
             return Ok(IssueProgress {
                 issue_key: issue.key,
-                topic_id: issue.topic_id,
+                spec_id: issue.spec_id,
                 pipeline_runs: run_info_list,
                 stages_total: 0,
                 stages_completed: 0,
@@ -955,7 +955,7 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
 
     Ok(IssueProgress {
         issue_key: issue.key,
-        topic_id: issue.topic_id,
+        spec_id: issue.spec_id,
         pipeline_runs: run_info_list,
         stages_total,
         stages_completed,
@@ -1512,23 +1512,23 @@ pub fn get_memory(id: u32, state: State<AppState>) -> Result<MemoryInfo, String>
 }
 
 #[tauri::command]
-pub fn list_topics(state: State<AppState>) -> Result<Vec<TopicInfo>, String> {
+pub fn list_specs(state: State<AppState>) -> Result<Vec<SpecInfo>, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-    let topics = db.list_topics().map_err(|e| e.to_string())?;
-    Ok(topics
+    let specs = db.list_specs().map_err(|e| e.to_string())?;
+    Ok(specs
         .iter()
         .map(|t| {
             let run_count = db
-                .list_topic_runs(&t.id)
+                .list_spec_runs(&t.id)
                 .map(|r| r.len() as u32)
                 .unwrap_or(0);
             let doc_count = db
-                .query_topic_documents(&t.id)
+                .query_spec_documents(&t.id)
                 .map(|d| d.len() as u32)
                 .unwrap_or(0);
-            TopicInfo {
+            SpecInfo {
                 id: t.id.clone(),
                 name: t.name.clone(),
                 slug: t.slug.clone(),
@@ -1544,33 +1544,33 @@ pub fn list_topics(state: State<AppState>) -> Result<Vec<TopicInfo>, String> {
 }
 
 #[tauri::command]
-pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDetailInfo, String> {
+pub fn get_spec(spec_name: String, state: State<AppState>) -> Result<SpecDetailInfo, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
 
-    let topic = db
-        .find_topic_by_name(&topic_name)
+    let spec = db
+        .find_spec_by_name(&spec_name)
         .map_err(|e| e.to_string())?
-        .or_else(|| db.get_topic(&topic_name).ok().flatten())
-        .ok_or_else(|| format!("Topic not found: {}", topic_name))?;
+        .or_else(|| db.get_spec(&spec_name).ok().flatten())
+        .ok_or_else(|| format!("Spec not found: {}", spec_name))?;
 
-    let runs = db.list_topic_runs(&topic.id).map_err(|e| e.to_string())?;
+    let runs = db.list_spec_runs(&spec.id).map_err(|e| e.to_string())?;
     let docs = db
-        .query_topic_documents(&topic.id)
+        .query_spec_documents(&spec.id)
         .map_err(|e| e.to_string())?;
     let issues = db
-        .query_issues(None, None, None, Some(&topic.id))
+        .query_issues(None, None, None, Some(&spec.id))
         .map_err(|e| e.to_string())?;
 
-    Ok(TopicDetailInfo {
-        id: topic.id.clone(),
-        name: topic.name.clone(),
-        slug: topic.slug.clone(),
-        description: topic.description.clone(),
-        namespace_id: topic.namespace_id.clone(),
-        tags: topic.tags.clone(),
-        created_at: topic.created_at.to_rfc3339(),
+    Ok(SpecDetailInfo {
+        id: spec.id.clone(),
+        name: spec.name.clone(),
+        slug: spec.slug.clone(),
+        description: spec.description.clone(),
+        namespace_id: spec.namespace_id.clone(),
+        tags: spec.tags.clone(),
+        created_at: spec.created_at.to_rfc3339(),
         runs: runs
             .iter()
             .map(|r| PipelineRunInfo {
@@ -1579,7 +1579,7 @@ pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDeta
                 title: r.title.clone(),
                 created_at: r.created_at.clone(),
                 updated_at: r.updated_at.clone(),
-                topic_id: r.topic_id.clone(),
+                spec_id: r.spec_id.clone(),
                 issue_id: r.issue_id.clone(),
                 run_type: r.run_type.clone(),
             })
@@ -1602,8 +1602,8 @@ pub fn list_namespace_entities(
     Ok(namespaces
         .iter()
         .map(|p| {
-            let topic_count = db
-                .list_topics_by_namespace(Some(&p.id))
+            let spec_count = db
+                .list_specs_by_namespace(Some(&p.id))
                 .map(|t| t.len() as u32)
                 .unwrap_or(0);
             NamespaceEntityInfo {
@@ -1613,7 +1613,7 @@ pub fn list_namespace_entities(
                 description: p.description.clone(),
                 status: p.status.to_string(),
                 tags: p.tags.clone(),
-                topic_count,
+                spec_count,
                 created_at: p.created_at.to_rfc3339(),
                 updated_at: p.updated_at.to_rfc3339(),
             }
@@ -1637,8 +1637,8 @@ pub fn get_namespace_entity(
         .or_else(|| db.get_namespace(&namespace_id).ok().flatten())
         .ok_or_else(|| format!("Namespace not found: {}", namespace_id))?;
 
-    let topics = db
-        .list_topics_by_namespace(Some(&namespace.id))
+    let specs = db
+        .list_specs_by_namespace(Some(&namespace.id))
         .map_err(|e| e.to_string())?;
 
     Ok(NamespaceEntityDetail {
@@ -1648,18 +1648,18 @@ pub fn get_namespace_entity(
         description: namespace.description.clone(),
         status: namespace.status.to_string(),
         tags: namespace.tags.clone(),
-        topics: topics
+        specs: specs
             .iter()
             .map(|t| {
                 let run_count = db
-                    .list_topic_runs(&t.id)
+                    .list_spec_runs(&t.id)
                     .map(|r| r.len() as u32)
                     .unwrap_or(0);
                 let doc_count = db
-                    .query_topic_documents(&t.id)
+                    .query_spec_documents(&t.id)
                     .map(|d| d.len() as u32)
                     .unwrap_or(0);
-                TopicInfo {
+                SpecInfo {
                     id: t.id.clone(),
                     name: t.name.clone(),
                     slug: t.slug.clone(),
@@ -1769,7 +1769,7 @@ pub fn complete_stage(
     run.updated_at = chrono::Utc::now();
     db.upsert_pipeline_run(&run).map_err(|e| e.to_string())?;
 
-    // Check if all stages are done → auto-release topic lock + mark issue done
+    // Check if all stages are done → auto-release spec lock + mark issue done
     let all_done = pipeline_def.stages.iter().all(|s| {
         matches!(
             run.stage_states.get(&s.name),
@@ -1779,7 +1779,7 @@ pub fn complete_stage(
 
     let mut auto_released = false;
     if all_done {
-        let _ = db.release_topic_lock(&run.topic_id, Some(&run.id));
+        let _ = db.release_spec_lock(&run.spec_id, Some(&run.id));
         auto_released = true;
 
         if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {

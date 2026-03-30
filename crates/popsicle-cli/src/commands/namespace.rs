@@ -30,7 +30,7 @@ pub enum NamespaceCommand {
         #[arg(long)]
         status: Option<String>,
     },
-    /// Show namespace details with associated topics
+    /// Show namespace details with associated specs
     Show {
         /// Namespace name or ID
         name: String,
@@ -179,9 +179,9 @@ fn show_namespace(name: &str, format: &OutputFormat) -> Result<()> {
     let db = IndexDb::open(&layout.db_path())?;
     let namespace = resolve_namespace(&db, name)?;
 
-    let topics = db
-        .list_topics_by_namespace(Some(&namespace.id))
-        .or_else(|_| db.list_topics())
+    let specs = db
+        .list_specs_by_namespace(Some(&namespace.id))
+        .or_else(|_| db.list_specs())
         .unwrap_or_default()
         .into_iter()
         .filter(|t| t.namespace_id == namespace.id)
@@ -203,11 +203,11 @@ fn show_namespace(name: &str, format: &OutputFormat) -> Result<()> {
             );
             println!();
 
-            if topics.is_empty() {
-                println!("  No topics.");
+            if specs.is_empty() {
+                println!("  No specs.");
             } else {
-                println!("  Topics ({}):", topics.len());
-                for t in &topics {
+                println!("  Specs ({}):", specs.len());
+                for t in &specs {
                     let tag_str = if t.tags.is_empty() {
                         String::new()
                     } else {
@@ -228,7 +228,7 @@ fn show_namespace(name: &str, format: &OutputFormat) -> Result<()> {
                     "status": namespace.status.to_string(),
                     "tags": namespace.tags,
                     "created_at": namespace.created_at.to_rfc3339(),
-                    "topics": topics.iter().map(|t| serde_json::json!({
+                    "specs": specs.iter().map(|t| serde_json::json!({
                         "id": t.id,
                         "name": t.name,
                         "slug": t.slug,
@@ -294,14 +294,14 @@ fn delete_namespace(name: &str, force: bool, format: &OutputFormat) -> Result<()
     let namespace = resolve_namespace(&db, name)?;
 
     if !force {
-        let topics = db
-            .list_topics_by_namespace(Some(&namespace.id))
+        let specs = db
+            .list_specs_by_namespace(Some(&namespace.id))
             .unwrap_or_default();
-        if !topics.is_empty() {
+        if !specs.is_empty() {
             anyhow::bail!(
-                "Namespace '{}' has {} topic(s). Use --force to delete anyway.",
+                "Namespace '{}' has {} spec(s). Use --force to delete anyway.",
                 namespace.name,
-                topics.len()
+                specs.len()
             );
         }
     }

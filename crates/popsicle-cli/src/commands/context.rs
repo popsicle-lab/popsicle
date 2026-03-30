@@ -509,21 +509,21 @@ fn execute_bootstrap_apply(
                 "  Namespaces created: {}",
                 result.namespaces_created
             );
-            println!("  Topics created: {}", result.topics_created);
+            println!("  Specs created: {}", result.specs_created);
             println!("  Documents imported: {}", result.documents_imported);
             for ns_detail in &result.details {
                 println!(
                     "  Namespace: {} ({})",
                     ns_detail.namespace_name, ns_detail.namespace_id
                 );
-                for topic_detail in &ns_detail.topics {
+                for spec_detail in &ns_detail.specs {
                     println!(
-                        "    Topic: {} ({})",
-                        topic_detail.topic_name, topic_detail.topic_id
+                        "    Spec: {} ({})",
+                        spec_detail.spec_name, spec_detail.spec_id
                     );
                     println!(
                         "      Documents imported: {}",
-                        topic_detail.documents_imported
+                        spec_detail.documents_imported
                     );
                 }
             }

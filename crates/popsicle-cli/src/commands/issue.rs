@@ -16,9 +16,9 @@ pub enum IssueCommand {
         /// Short title
         #[arg(long)]
         title: String,
-        /// Explicitly specify topic by name or ID (if omitted, matches by tags)
+        /// Explicitly specify spec by name or ID (if omitted, matches by tags)
         #[arg(long)]
-        topic: Option<String>,
+        spec: Option<String>,
         /// Detailed description
         #[arg(short, long, default_value = "")]
         description: String,
@@ -43,9 +43,9 @@ pub enum IssueCommand {
         /// Filter by label
         #[arg(short, long)]
         label: Option<String>,
-        /// Filter by topic name
+        /// Filter by spec name
         #[arg(long)]
-        topic: Option<String>,
+        spec: Option<String>,
     },
     /// Show issue details
     Show {
@@ -81,7 +81,7 @@ pub fn execute(cmd: IssueCommand, format: &OutputFormat) -> anyhow::Result<()> {
         IssueCommand::Create {
             issue_type,
             title,
-            topic,
+            spec,
             description,
             priority,
             pipeline,
@@ -89,7 +89,7 @@ pub fn execute(cmd: IssueCommand, format: &OutputFormat) -> anyhow::Result<()> {
         } => create_issue(
             &issue_type,
             &title,
-            topic.as_deref(),
+            spec.as_deref(),
             &description,
             &priority,
             pipeline.as_deref(),
@@ -100,12 +100,12 @@ pub fn execute(cmd: IssueCommand, format: &OutputFormat) -> anyhow::Result<()> {
             issue_type,
             status,
             label,
-            topic,
+            spec,
         } => list_issues(
             issue_type.as_deref(),
             status.as_deref(),
             label.as_deref(),
-            topic.as_deref(),
+            spec.as_deref(),
             format,
         ),
         IssueCommand::Show { key } => show_issue(&key, format),
@@ -137,7 +137,7 @@ fn load_config(layout: &ProjectLayout) -> anyhow::Result<ProjectConfig> {
 }
 
 /// Verify the project is properly set up before issue operations.
-/// Checks two gates: (1) namespace must exist, (2) topics must exist (bootstrapped).
+/// Checks two gates: (1) namespace must exist, (2) specs must exist (bootstrapped).
 fn check_namespace_ready(db: &IndexDb) -> anyhow::Result<()> {
     let namespaces = db.list_namespaces(None)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -145,17 +145,17 @@ fn check_namespace_ready(db: &IndexDb) -> anyhow::Result<()> {
         anyhow::bail!(
             "No namespace found. Create one first:\n  \
              $ popsicle namespace create --name \"<name>\" --description \"<desc>\"\n\n\
-             Then bootstrap the project to create topics and import documents:\n  \
+             Then bootstrap the project to create specs and import documents:\n  \
              $ popsicle context bootstrap --generate-prompt"
         );
     }
-    let topics = db.list_topics()
+    let specs = db.list_specs()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    if topics.is_empty() {
+    if specs.is_empty() {
         anyhow::bail!(
-            "Namespace exists but has no topics — not yet bootstrapped.\n  \
+            "Namespace exists but has no specs — not yet bootstrapped.\n  \
              $ popsicle context bootstrap --generate-prompt\n\
-             Then apply the plan to create topics and import documents."
+             Then apply the plan to create specs and import documents."
         );
     }
     Ok(())
@@ -164,7 +164,7 @@ fn check_namespace_ready(db: &IndexDb) -> anyhow::Result<()> {
 fn create_issue(
     type_str: &str,
     title: &str,
-    topic_name: Option<&str>,
+    spec_name: Option<&str>,
     description: &str,
     priority_str: &str,
     pipeline: Option<&str>,
@@ -189,11 +189,11 @@ fn create_issue(
             .map_err(|_| anyhow::anyhow!("Pipeline template not found: {}", name))?;
     }
 
-    // Resolve topic: explicit name or tag-based matching
-    let topic = if let Some(name) = topic_name {
-        db.find_topic_by_name(name)
+    // Resolve spec: explicit name or tag-based matching
+    let spec = if let Some(name) = spec_name {
+        db.find_spec_by_name(name)
             .map_err(|e| anyhow::anyhow!("{}", e))?
-            .ok_or_else(|| anyhow::anyhow!("Topic not found: {}. Create it first with 'popsicle topic create'.", name))?
+            .ok_or_else(|| anyhow::anyhow!("Spec not found: {}. Create it first with 'popsicle spec create'.", name))?
     } else {
         let keywords: Vec<String> = title
             .split_whitespace()
@@ -201,19 +201,19 @@ fn create_issue(
             .map(|w| w.to_string())
             .collect();
         let matches = db
-            .match_topics_by_tags(&keywords)
+            .match_specs_by_tags(&keywords)
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        if let Some((matched_topic, score)) = matches.into_iter().next() {
+        if let Some((matched_spec, score)) = matches.into_iter().next() {
             eprintln!(
-                "  Matched topic: {} (score: {}, tags: {})",
-                matched_topic.name,
+                "  Matched spec: {} (score: {}, tags: {})",
+                matched_spec.name,
                 score,
-                matched_topic.tags.join(", ")
+                matched_spec.tags.join(", ")
             );
-            matched_topic
+            matched_spec
         } else {
             anyhow::bail!(
-                "No matching topic found. Use --topic to specify one, or create a topic first with 'popsicle topic create'."
+                "No matching spec found. Use --spec to specify one, or create a spec first with 'popsicle spec create'."
             );
         }
     };
@@ -224,7 +224,7 @@ fn create_issue(
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     let key = format!("{}-{}", prefix, seq);
 
-    let mut issue = Issue::new(key.clone(), title, issue_type, &topic.id);
+    let mut issue = Issue::new(key.clone(), title, issue_type, &spec.id);
     issue.description = description.to_string();
     issue.priority = priority;
     issue.pipeline = pipeline.map(|s| s.to_string());
@@ -244,7 +244,7 @@ fn create_issue(
             println!("  Title:   {}", title);
             println!("  Type:    {}", issue.issue_type);
             println!("  Priority:{}", issue.priority);
-            println!("  Topic:   {}", topic.name);
+            println!("  Spec:   {}", spec.name);
             if let Some(ref p) = issue.pipeline {
                 println!("  Pipeline: {} (explicit)", p);
             } else if let Some(p) = effective_pipeline {
@@ -263,8 +263,8 @@ fn create_issue(
                 "issue_type": issue.issue_type.to_string(),
                 "priority": issue.priority.to_string(),
                 "status": issue.status.to_string(),
-                "topic_id": issue.topic_id,
-                "topic_name": topic.name,
+                "spec_id": issue.spec_id,
+                "spec_name": spec.name,
                 "pipeline": issue.pipeline,
                 "effective_pipeline": effective_pipeline,
                 "labels": labels,
@@ -279,25 +279,25 @@ fn list_issues(
     issue_type: Option<&str>,
     status: Option<&str>,
     label: Option<&str>,
-    topic: Option<&str>,
+    spec: Option<&str>,
     format: &OutputFormat,
 ) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
-    // Resolve topic name to ID if provided
-    let topic_id = if let Some(name) = topic {
+    // Resolve spec name to ID if provided
+    let spec_id = if let Some(name) = spec {
         let t = db
-            .find_topic_by_name(name)
+            .find_spec_by_name(name)
             .map_err(|e| anyhow::anyhow!("{}", e))?
-            .ok_or_else(|| anyhow::anyhow!("Topic not found: {}", name))?;
+            .ok_or_else(|| anyhow::anyhow!("Spec not found: {}", name))?;
         Some(t.id)
     } else {
         None
     };
 
     let issues = db
-        .query_issues(issue_type, status, label, topic_id.as_deref())
+        .query_issues(issue_type, status, label, spec_id.as_deref())
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     match format {
@@ -329,7 +329,7 @@ fn list_issues(
                         "issue_type": i.issue_type.to_string(),
                         "priority": i.priority.to_string(),
                         "status": i.status.to_string(),
-                        "topic_id": i.topic_id,
+                        "spec_id": i.spec_id,
                         "pipeline": i.pipeline,
                         "labels": i.labels,
                         "created_at": i.created_at.to_rfc3339(),
@@ -357,12 +357,12 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .find_runs_by_issue(&issue.id)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // Fetch topic name
-    let topic_name = db
-        .get_topic(&issue.topic_id)
+    // Fetch spec name
+    let spec_name = db
+        .get_spec(&issue.spec_id)
         .map_err(|e| anyhow::anyhow!("{}", e))?
         .map(|t| t.name)
-        .unwrap_or_else(|| issue.topic_id.clone());
+        .unwrap_or_else(|| issue.spec_id.clone());
 
     match format {
         OutputFormat::Text => {
@@ -370,7 +370,7 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
             println!("  Type:     {}", issue.issue_type);
             println!("  Priority: {}", issue.priority);
             println!("  Status:   {}", issue.status);
-            println!("  Topic:    {}", topic_name);
+            println!("  Spec:    {}", spec_name);
             if let Some(ref p) = issue.pipeline {
                 println!("  Pipeline: {} (bound)", p);
             }
@@ -409,8 +409,8 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 "issue_type": issue.issue_type.to_string(),
                 "priority": issue.priority.to_string(),
                 "status": issue.status.to_string(),
-                "topic_id": issue.topic_id,
-                "topic_name": topic_name,
+                "spec_id": issue.spec_id,
+                "spec_name": spec_name,
                 "pipeline": issue.pipeline,
                 "pipeline_runs": run_list,
                 "labels": issue.labels,
@@ -448,36 +448,36 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .validate()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // Issue already has a topic_id; ensure the topic exists
-    let topic = db
-        .get_topic(&issue.topic_id)
+    // Issue already has a spec_id; ensure the spec exists
+    let spec = db
+        .get_spec(&issue.spec_id)
         .map_err(|e| anyhow::anyhow!("{}", e))?
-        .ok_or_else(|| anyhow::anyhow!("Topic not found for issue: {}", issue.topic_id))?;
+        .ok_or_else(|| anyhow::anyhow!("Spec not found for issue: {}", issue.spec_id))?;
 
-    // Acquire exclusive lock on the topic
-    if let Some(ref existing_lock) = topic.locked_by_run_id {
+    // Acquire exclusive lock on the spec
+    if let Some(ref existing_lock) = spec.locked_by_run_id {
         anyhow::bail!(
-            "Topic '{}' is locked by pipeline run '{}'. Release it first with:\n  popsicle pipeline unlock --topic {}",
-            topic.name,
+            "Spec '{}' is locked by pipeline run '{}'. Release it first with:\n  popsicle pipeline unlock --spec {}",
+            spec.name,
             existing_lock,
-            topic.id
+            spec.id
         );
     }
 
-    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id, &issue.id);
+    let run = PipelineRun::new(&pipeline_def, &issue.title, &spec.id, &issue.id);
 
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir)?;
 
-    // Insert pipeline run BEFORE acquiring topic lock (FK: topics.locked_by_run_id → pipeline_runs.id)
+    // Insert pipeline run BEFORE acquiring spec lock (FK: specs.locked_by_run_id → pipeline_runs.id)
     db.upsert_pipeline_run(&run)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let acquired = db
-        .acquire_topic_lock(&topic.id, &run.id)
+        .acquire_spec_lock(&spec.id, &run.id)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     if !acquired {
-        anyhow::bail!("Failed to acquire lock on topic '{}'. It may have been locked concurrently.", topic.name);
+        anyhow::bail!("Failed to acquire lock on spec '{}'. It may have been locked concurrently.", spec.name);
     }
 
     issue.status = IssueStatus::InProgress;
@@ -492,7 +492,7 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 resolved.pipeline_name, resolved.reason
             );
             println!("  Run ID:   {}", run.id);
-            println!("  Topic:    {}", topic.name);
+            println!("  Spec:    {}", spec.name);
             println!("  Status:   {}", issue.status);
             println!("\nNext step:");
             println!("  $ popsicle pipeline next --run {}", run.id);
@@ -503,7 +503,7 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 "pipeline": resolved.pipeline_name,
                 "pipeline_reason": resolved.reason,
                 "run_id": run.id,
-                "topic_id": topic.id,
+                "spec_id": spec.id,
                 "status": issue.status.to_string(),
                 "next_command": format!("popsicle pipeline next --run {}", run.id),
             });

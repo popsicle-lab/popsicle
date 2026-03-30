@@ -65,11 +65,11 @@ pub enum PipelineCommand {
         #[command(subcommand)]
         action: StageAction,
     },
-    /// Force-release the topic lock held by a pipeline run
+    /// Force-release the spec lock held by a pipeline run
     Unlock {
-        /// Topic ID to unlock (omit to unlock the topic of the latest run)
+        /// Spec ID to unlock (omit to unlock the spec of the latest run)
         #[arg(long)]
-        topic: Option<String>,
+        spec: Option<String>,
     },
 }
 
@@ -114,7 +114,7 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
             revise_pipeline(&run, &stage_list, format)
         }
         PipelineCommand::Stage { action } => execute_stage_action(action, format),
-        PipelineCommand::Unlock { topic } => unlock_topic(topic.as_deref(), format),
+        PipelineCommand::Unlock { spec } => unlock_spec(spec.as_deref(), format),
     }
 }
 
@@ -532,11 +532,11 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
         .query_documents(None, None, Some(&run.id))
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // Load all docs from the same topic for cross-run visibility
-    let topic_docs = db.query_topic_documents(&run.topic_id)
+    // Load all docs from the same spec for cross-run visibility
+    let spec_docs = db.query_spec_documents(&run.spec_id)
         .unwrap_or_default();
 
-    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &topic_docs);
+    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &spec_docs);
     let hints = collect_context_hints(&layout);
 
     match format {
@@ -905,7 +905,7 @@ fn stage_complete(
     db.upsert_pipeline_run(&run)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    // Check if all stages are done → auto-release topic lock + mark issue done
+    // Check if all stages are done → auto-release spec lock + mark issue done
     let all_done = pipeline_def.stages.iter().all(|s| {
         matches!(
             run.stage_states.get(&s.name),
@@ -915,7 +915,7 @@ fn stage_complete(
 
     let mut auto_released = false;
     if all_done {
-        let _ = db.release_topic_lock(&run.topic_id, Some(&run.id));
+        let _ = db.release_spec_lock(&run.spec_id, Some(&run.id));
         auto_released = true;
 
         if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {
@@ -933,7 +933,7 @@ fn stage_complete(
             if all_done {
                 println!("  All stages completed!");
                 if auto_released {
-                    println!("  Topic lock released.");
+                    println!("  Spec lock released.");
                 }
             } else {
                 for s in &pipeline_def.stages {
@@ -960,38 +960,38 @@ fn stage_complete(
     Ok(())
 }
 
-fn unlock_topic(topic_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
+fn unlock_spec(spec_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
-    let tid = match topic_id {
+    let sid = match spec_id {
         Some(t) => t.to_string(),
         None => {
             let run = get_run(&db, None)?;
-            run.topic_id.clone()
+            run.spec_id.clone()
         }
     };
 
-    let topic = db
-        .get_topic(&tid)
+    let spec = db
+        .get_spec(&sid)
         .map_err(|e| anyhow::anyhow!("{}", e))?
-        .ok_or_else(|| anyhow::anyhow!("Topic not found: {}", tid))?;
+        .ok_or_else(|| anyhow::anyhow!("Spec not found: {}", sid))?;
 
-    match &topic.locked_by_run_id {
+    match &spec.locked_by_run_id {
         Some(run_id) => {
-            db.release_topic_lock(&tid, None)
+            db.release_spec_lock(&sid, None)
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
             match format {
                 OutputFormat::Text => {
                     println!(
-                        "Unlocked topic '{}' (was locked by run '{}')",
-                        topic.name, run_id
+                        "Unlocked spec '{}' (was locked by run '{}')",
+                        spec.name, run_id
                     );
                 }
                 OutputFormat::Json => {
                     let out = serde_json::json!({
-                        "topic_id": tid,
-                        "topic_name": topic.name,
+                        "spec_id": sid,
+                        "spec_name": spec.name,
                         "released_from": run_id,
                     });
                     println!("{}", serde_json::to_string_pretty(&out)?);
@@ -999,10 +999,10 @@ fn unlock_topic(topic_id: Option<&str>, format: &OutputFormat) -> anyhow::Result
             }
         }
         None => match format {
-            OutputFormat::Text => println!("Topic '{}' is not locked.", topic.name),
+            OutputFormat::Text => println!("Spec '{}' is not locked.", spec.name),
             OutputFormat::Json => {
                 let out = serde_json::json!({
-                    "topic_id": tid,
+                    "spec_id": sid,
                     "locked": false,
                 });
                 println!("{}", serde_json::to_string_pretty(&out)?);

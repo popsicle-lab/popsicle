@@ -412,10 +412,10 @@ fn build_input_context(
         })
         .unwrap_or_default();
 
-    // Pre-fetch topic-level documents for cross-run resolution
-    let topic_docs: Vec<popsicle_core::storage::DocumentRow> = current_run
+    // Pre-fetch spec-level documents for cross-run resolution
+    let spec_docs: Vec<popsicle_core::storage::DocumentRow> = current_run
         .as_ref()
-        .and_then(|run| db.query_topic_documents(&run.topic_id).ok())
+        .and_then(|run| db.query_spec_documents(&run.spec_id).ok())
         .unwrap_or_default();
 
     let mut context_inputs = Vec::new();
@@ -427,8 +427,8 @@ fn build_input_context(
             .collect();
 
         if upstream_docs.is_empty() {
-            // Fallback: try topic-level documents from other runs
-            let fallback_docs: Vec<_> = topic_docs
+            // Fallback: try spec-level documents from other runs
+            let fallback_docs: Vec<_> = spec_docs
                 .iter()
                 .filter(|d| d.skill_name == input.from_skill)
                 .collect();
@@ -441,7 +441,7 @@ fn build_input_context(
 
                     context_inputs.push(ContextInput {
                         artifact_type: input.artifact_type.clone(),
-                        title: format!("{} (from topic)", doc_row.title),
+                        title: format!("{} (from spec)", doc_row.title),
                         status: doc_row.status.clone(),
                         body,
                         relevance: input.relevance,
@@ -637,7 +637,7 @@ mod tests {
             updated_at: None,
             summary: "Authentication design document".into(),
             doc_tags: "[\"rfc\", \"auth\"]".into(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
         }]);
@@ -676,7 +676,7 @@ mod tests {
             updated_at: None,
             summary: "old summary".into(),
             doc_tags: "[]".into(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
         }]);

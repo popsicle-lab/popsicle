@@ -114,7 +114,7 @@ fn create_doc(
 
     let db = IndexDb::open(&layout.db_path())?;
 
-    // Get the topic_id from the pipeline run
+    // Get the spec_id from the pipeline run
     let mut pipeline_run = db
         .get_pipeline_run(run_id)
         .map_err(|e| anyhow::anyhow!("{}", e))?
@@ -136,21 +136,21 @@ fn create_doc(
         }
     }
 
-    // Verify this run holds the topic lock
-    let topic_lock = db
-        .get_topic_lock(&pipeline_run.topic_id)
+    // Verify this run holds the spec lock
+    let spec_lock = db
+        .get_spec_lock(&pipeline_run.spec_id)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    match topic_lock {
+    match spec_lock {
         Some(ref lock_run_id) if lock_run_id != run_id => {
             anyhow::bail!(
-                "Topic is locked by a different pipeline run '{}'. This run ('{}') cannot create documents.",
+                "Spec is locked by a different pipeline run '{}'. This run ('{}') cannot create documents.",
                 lock_run_id,
                 run_id
             );
         }
         None => {
             anyhow::bail!(
-                "Topic is not locked by any pipeline run. Start an issue first with `popsicle issue start`."
+                "Spec is not locked by any pipeline run. Start an issue first with `popsicle issue start`."
             );
         }
         _ => {} // lock held by this run — OK
@@ -161,7 +161,7 @@ fn create_doc(
         title,
         skill_name,
         run_id,
-        &pipeline_run.topic_id,
+        &pipeline_run.spec_id,
     );
     doc.status = "active".to_string();
 
@@ -541,7 +541,7 @@ mod tests {
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
         };
@@ -571,7 +571,7 @@ mod tests {
             updated_at: None,
             summary: String::new(),
             doc_tags: "[]".to_string(),
-            topic_id: "test-topic".to_string(),
+            spec_id: "test-spec".to_string(),
             version: 1,
             parent_doc_id: None,
         };

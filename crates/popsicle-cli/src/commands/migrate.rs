@@ -115,9 +115,9 @@ fn import_file(
         .to_string();
 
     let mut doc = Document::new("imported", &title, skill, run_id, "");
-    // Resolve topic_id from the pipeline run
+    // Resolve spec_id from the pipeline run
     if let Ok(Some(run)) = db.get_pipeline_run(run_id) {
-        doc.topic_id = run.topic_id;
+        doc.spec_id = run.spec_id;
     }
     doc.status = "final".to_string();
     doc.body = content;

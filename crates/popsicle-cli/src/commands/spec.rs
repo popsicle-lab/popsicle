@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Subcommand;
 
-use popsicle_core::model::Topic;
+use popsicle_core::model::Spec;
 use popsicle_core::storage::{IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -12,10 +12,10 @@ fn project_layout() -> Result<ProjectLayout> {
 }
 
 #[derive(Subcommand)]
-pub enum TopicCommand {
-    /// Create a new topic
+pub enum SpecCommand {
+    /// Create a new spec
     Create {
-        /// Topic name (e.g. "jwt-migration")
+        /// Spec name (e.g. "jwt-migration")
         name: String,
         /// Short description
         #[arg(short, long, default_value = "")]
@@ -23,24 +23,24 @@ pub enum TopicCommand {
         /// Comma-separated tags
         #[arg(short, long, default_value = "")]
         tags: String,
-        /// Namespace this topic belongs to (name or ID) — required
+        /// Namespace this spec belongs to (name or ID) — required
         #[arg(long)]
         namespace: String,
     },
-    /// List all topics
+    /// List all specs
     List {
         /// Filter by namespace (name or ID)
         #[arg(long)]
         namespace: Option<String>,
     },
-    /// Show details of a topic
+    /// Show details of a spec
     Show {
-        /// Topic name or ID
+        /// Spec name or ID
         name: String,
     },
-    /// Delete a topic
+    /// Delete a spec
     Delete {
-        /// Topic name or ID
+        /// Spec name or ID
         name: String,
         /// Skip confirmation
         #[arg(short, long)]
@@ -48,17 +48,17 @@ pub enum TopicCommand {
     },
 }
 
-pub fn execute(cmd: TopicCommand, format: &OutputFormat) -> Result<()> {
+pub fn execute(cmd: SpecCommand, format: &OutputFormat) -> Result<()> {
     match cmd {
-        TopicCommand::Create {
+        SpecCommand::Create {
             name,
             description,
             tags,
             namespace,
-        } => create_topic(&name, &description, &tags, &namespace, format),
-        TopicCommand::List { namespace } => list_topics(namespace.as_deref(), format),
-        TopicCommand::Show { name } => show_topic(&name, format),
-        TopicCommand::Delete { name, force } => delete_topic(&name, force, format),
+        } => create_spec(&name, &description, &tags, &namespace, format),
+        SpecCommand::List { namespace } => list_specs(namespace.as_deref(), format),
+        SpecCommand::Show { name } => show_spec(&name, format),
+        SpecCommand::Delete { name, force } => delete_spec(&name, force, format),
     }
 }
 
@@ -72,7 +72,7 @@ fn resolve_namespace_id(db: &IndexDb, name_or_id: &str) -> Result<String> {
     anyhow::bail!("Namespace not found: {}", name_or_id)
 }
 
-fn create_topic(
+fn create_spec(
     name: &str,
     description: &str,
     tags: &str,
@@ -89,26 +89,26 @@ fn create_topic(
 
     let namespace_id = resolve_namespace_id(&db, namespace)?;
 
-    let mut topic = Topic::new(name.to_string(), description.to_string(), namespace_id.clone());
-    topic.tags = tag_list;
-    db.create_topic(&topic).context("Failed to create topic")?;
+    let mut spec = Spec::new(name.to_string(), description.to_string(), namespace_id.clone());
+    spec.tags = tag_list;
+    db.create_spec(&spec).context("Failed to create spec")?;
 
     match format {
         OutputFormat::Text => {
-            println!("✅ Topic created: {} ({})", topic.name, topic.slug);
-            println!("   ID: {}", topic.id);
+            println!("✅ Spec created: {} ({})", spec.name, spec.slug);
+            println!("   ID: {}", spec.id);
             println!("   Namespace: {}", namespace_id);
         }
         OutputFormat::Json => {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "id": topic.id,
-                    "name": topic.name,
-                    "slug": topic.slug,
-                    "description": topic.description,
-                    "tags": topic.tags,
-                    "namespace_id": topic.namespace_id,
+                    "id": spec.id,
+                    "name": spec.name,
+                    "slug": spec.slug,
+                    "description": spec.description,
+                    "tags": spec.tags,
+                    "namespace_id": spec.namespace_id,
                 }))?,
             );
         }
@@ -116,7 +116,7 @@ fn create_topic(
     Ok(())
 }
 
-fn list_topics(namespace: Option<&str>, format: &OutputFormat) -> Result<()> {
+fn list_specs(namespace: Option<&str>, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
@@ -125,20 +125,20 @@ fn list_topics(namespace: Option<&str>, format: &OutputFormat) -> Result<()> {
         None => None,
     };
 
-    let topics = db
-        .list_topics_by_namespace(namespace_id.as_deref())
-        .or_else(|_| db.list_topics())
-        .context("Failed to list topics")?;
+    let specs = db
+        .list_specs_by_namespace(namespace_id.as_deref())
+        .or_else(|_| db.list_specs())
+        .context("Failed to list specs")?;
 
     match format {
         OutputFormat::Text => {
-            if topics.is_empty() {
-                println!("No topics found.");
+            if specs.is_empty() {
+                println!("No specs found.");
                 return Ok(());
             }
             println!("{:<36}  {:<24}  {:<20}  TAGS", "ID", "NAME", "SLUG");
             println!("{}", "-".repeat(100));
-            for t in &topics {
+            for t in &specs {
                 let tags = if t.tags.is_empty() {
                     String::new()
                 } else {
@@ -146,10 +146,10 @@ fn list_topics(namespace: Option<&str>, format: &OutputFormat) -> Result<()> {
                 };
                 println!("{:<36}  {:<24}  {:<20}  {}", t.id, t.name, t.slug, tags);
             }
-            println!("\n{} topic(s)", topics.len());
+            println!("\n{} spec(s)", specs.len());
         }
         OutputFormat::Json => {
-            let items: Vec<_> = topics
+            let items: Vec<_> = specs
                 .iter()
                 .map(|t| {
                     serde_json::json!({
@@ -168,42 +168,42 @@ fn list_topics(namespace: Option<&str>, format: &OutputFormat) -> Result<()> {
     Ok(())
 }
 
-fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
+fn show_spec(name: &str, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
-    let topic = db
-        .find_topic_by_name(name)
-        .context("Failed to look up topic")?
-        .or_else(|| db.get_topic(name).ok().flatten())
-        .ok_or_else(|| anyhow::anyhow!("Topic not found: {}", name))?;
+    let spec = db
+        .find_spec_by_name(name)
+        .context("Failed to look up spec")?
+        .or_else(|| db.get_spec(name).ok().flatten())
+        .ok_or_else(|| anyhow::anyhow!("Spec not found: {}", name))?;
 
-    let runs = db.list_topic_runs(&topic.id).unwrap_or_default();
-    let docs = db.query_topic_documents(&topic.id).unwrap_or_default();
-    let issues = db.query_issues(None, None, None, Some(&topic.id)).unwrap_or_default();
+    let runs = db.list_spec_runs(&spec.id).unwrap_or_default();
+    let docs = db.query_spec_documents(&spec.id).unwrap_or_default();
+    let issues = db.query_issues(None, None, None, Some(&spec.id)).unwrap_or_default();
 
     // Resolve namespace name if present
-    let namespace_name = if topic.namespace_id.is_empty() {
+    let namespace_name = if spec.namespace_id.is_empty() {
         None
     } else {
-        db.get_namespace(&topic.namespace_id).ok().flatten().map(|p| p.name)
+        db.get_namespace(&spec.namespace_id).ok().flatten().map(|p| p.name)
     };
 
     match format {
         OutputFormat::Text => {
-            println!("Topic: {}", topic.name);
-            println!("  ID:          {}", topic.id);
-            println!("  Slug:        {}", topic.slug);
-            println!("  Description: {}", topic.description);
+            println!("Spec: {}", spec.name);
+            println!("  ID:          {}", spec.id);
+            println!("  Slug:        {}", spec.slug);
+            println!("  Description: {}", spec.description);
             if let Some(ref pname) = namespace_name {
                 println!("  Namespace:     {}", pname);
             }
-            if !topic.tags.is_empty() {
-                println!("  Tags:        {}", topic.tags.join(", "));
+            if !spec.tags.is_empty() {
+                println!("  Tags:        {}", spec.tags.join(", "));
             }
             println!(
                 "  Created:     {}",
-                topic.created_at.format("%Y-%m-%d %H:%M")
+                spec.created_at.format("%Y-%m-%d %H:%M")
             );
             println!();
 
@@ -252,14 +252,14 @@ fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "id": topic.id,
-                    "name": topic.name,
-                    "slug": topic.slug,
-                    "description": topic.description,
-                    "namespace_id": topic.namespace_id,
+                    "id": spec.id,
+                    "name": spec.name,
+                    "slug": spec.slug,
+                    "description": spec.description,
+                    "namespace_id": spec.namespace_id,
                     "namespace_name": namespace_name,
-                    "tags": topic.tags,
-                    "created_at": topic.created_at.to_rfc3339(),
+                    "tags": spec.tags,
+                    "created_at": spec.created_at.to_rfc3339(),
                     "issues": issues.iter().map(|i| serde_json::json!({
                         "key": i.key,
                         "title": i.title,
@@ -286,36 +286,36 @@ fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
     Ok(())
 }
 
-fn delete_topic(name: &str, force: bool, format: &OutputFormat) -> Result<()> {
+fn delete_spec(name: &str, force: bool, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
-    let topic = db
-        .find_topic_by_name(name)
-        .context("Failed to look up topic")?
-        .or_else(|| db.get_topic(name).ok().flatten())
-        .ok_or_else(|| anyhow::anyhow!("Topic not found: {}", name))?;
+    let spec = db
+        .find_spec_by_name(name)
+        .context("Failed to look up spec")?
+        .or_else(|| db.get_spec(name).ok().flatten())
+        .ok_or_else(|| anyhow::anyhow!("Spec not found: {}", name))?;
 
     if !force {
-        let runs = db.list_topic_runs(&topic.id).unwrap_or_default();
+        let runs = db.list_spec_runs(&spec.id).unwrap_or_default();
         if !runs.is_empty() {
             anyhow::bail!(
-                "Topic '{}' has {} pipeline run(s). Use --force to delete anyway.",
-                topic.name,
+                "Spec '{}' has {} pipeline run(s). Use --force to delete anyway.",
+                spec.name,
                 runs.len()
             );
         }
     }
 
-    db.delete_topic(&topic.id)
-        .context("Failed to delete topic")?;
+    db.delete_spec(&spec.id)
+        .context("Failed to delete spec")?;
 
     match format {
-        OutputFormat::Text => println!("🗑  Topic deleted: {}", topic.name),
+        OutputFormat::Text => println!("🗑  Spec deleted: {}", spec.name),
         OutputFormat::Json => {
             println!(
                 "{}",
-                serde_json::json!({"deleted": topic.id, "name": topic.name})
+                serde_json::json!({"deleted": spec.id, "name": spec.name})
             );
         }
     }

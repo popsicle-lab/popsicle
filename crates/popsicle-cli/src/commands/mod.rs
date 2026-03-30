@@ -17,7 +17,7 @@ mod skill;
 mod story;
 mod test;
 mod tool;
-mod topic;
+mod spec;
 
 use clap::Subcommand;
 use clap_complete::Shell;
@@ -80,11 +80,11 @@ pub enum Command {
     #[command(subcommand)]
     Tool(tool::ToolCommand),
 
-    /// Manage topics (group related pipeline runs and documents)
+    /// Manage specs (group related pipeline runs and documents)
     #[command(subcommand)]
-    Topic(topic::TopicCommand),
+    Spec(spec::SpecCommand),
 
-    /// Manage namespaces (group related topics)
+    /// Manage namespaces (group related specs)
     #[command(subcommand)]
     Namespace(namespace::NamespaceCommand),
 
@@ -131,7 +131,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Migrate(args) => migrate::execute(args, format),
         Command::Module(sub) => module::execute(sub, format),
         Command::Tool(sub) => tool::execute(sub, format),
-        Command::Topic(sub) => topic::execute(sub, format),
+        Command::Spec(sub) => spec::execute(sub, format),
         Command::Namespace(sub) => namespace::execute(sub, format),
         Command::Registry(sub) => registry::execute(sub, format),
         Command::Context(sub) => context::execute(sub, format),
