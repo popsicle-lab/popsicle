@@ -139,7 +139,8 @@ targets = [{}]
     let skill_refs: Vec<&popsicle_core::model::SkillDef> = skill_list.into_iter().collect();
 
     let agent_files = if !args.no_agent_files {
-        AgentInstaller::install(&project_root, &targets, &skill_refs)
+        let module_name = popsicle_core::helpers::active_module_name(&project_root);
+        AgentInstaller::install(&project_root, &targets, &skill_refs, &module_name)
             .context("Failed to install agent instruction files")?
     } else {
         vec![]

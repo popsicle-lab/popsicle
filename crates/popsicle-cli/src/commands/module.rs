@@ -334,7 +334,8 @@ pub(super) fn regenerate_agent_files(
     let skill_list = registry.list();
     let skill_refs: Vec<&popsicle_core::model::SkillDef> = skill_list.into_iter().collect();
 
-    let files = AgentInstaller::install(project_dir, &targets, &skill_refs)
+    let module_name = popsicle_core::helpers::active_module_name(project_dir);
+    let files = AgentInstaller::install(project_dir, &targets, &skill_refs, &module_name)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     Ok(files)
 }

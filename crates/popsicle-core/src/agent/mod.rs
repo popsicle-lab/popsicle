@@ -33,6 +33,7 @@ impl AgentInstaller {
         project_root: &Path,
         targets: &[AgentTarget],
         skills: &[&SkillDef],
+        module_name: &str,
     ) -> Result<Vec<String>> {
         let targets = if targets.is_empty() {
             vec![AgentTarget::Claude]
@@ -40,16 +41,29 @@ impl AgentInstaller {
             targets.to_vec()
         };
 
-        let overview = build_overview(skills);
+        let core_rules = build_core_rules();
+        let module_section = build_module_section(skills, module_name);
         let mut installed = Vec::new();
 
         for target in &targets {
             match target {
                 AgentTarget::Claude => {
-                    installed.extend(install_claude(project_root, skills, &overview)?);
+                    installed.extend(install_claude(
+                        project_root,
+                        skills,
+                        &core_rules,
+                        &module_section,
+                        module_name,
+                    )?);
                 }
                 AgentTarget::Cursor => {
-                    installed.extend(install_cursor(project_root, skills, &overview)?);
+                    installed.extend(install_cursor(
+                        project_root,
+                        skills,
+                        &core_rules,
+                        &module_section,
+                        module_name,
+                    )?);
                 }
             }
         }
@@ -181,9 +195,9 @@ fn build_skill_command(skill: &SkillDef) -> String {
     s
 }
 
-/// Build the overview section: skill catalog + pipeline info.
-fn build_overview(skills: &[&SkillDef]) -> String {
-    let mut s = String::from(
+/// Build the core Popsicle platform rules (module-agnostic).
+fn build_core_rules() -> String {
+    String::from(
         r#"This project uses Popsicle for spec-driven development orchestration.
 
 ## Binary Resolution
@@ -372,10 +386,21 @@ Project memories persist bugs, decisions, patterns, and gotchas across sessions.
 2. **Detail is optional but precise** — root cause, not symptoms; solution, not narrative
 3. **Tag related files** — use `--files` so the memory can be matched to future prompts and auto-detected as stale
 "#,
-    );
+    )
+}
+
+/// Build the module-specific section: skill catalog attributed to the module.
+fn build_module_section(skills: &[&SkillDef], module_name: &str) -> String {
+    let mut s = String::new();
+
+    s.push_str(&format!("## Module: {}\n\n", module_name));
+    s.push_str(&format!(
+        "The following skills and pipelines are provided by the `{}` module.\n",
+        module_name
+    ));
 
     if !skills.is_empty() {
-        s.push_str("\n## Skill Catalog\n\n");
+        s.push_str("\n### Skill Catalog\n\n");
         s.push_str("| Skill | Artifact | Inputs | States |\n");
         s.push_str("|-------|----------|--------|--------|\n");
         for skill in skills {
@@ -408,11 +433,20 @@ Project memories persist bugs, decisions, patterns, and gotchas across sessions.
     s
 }
 
-fn install_claude(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<Vec<String>> {
+fn install_claude(
+    root: &Path,
+    skills: &[&SkillDef],
+    core_rules: &str,
+    module_section: &str,
+    module_name: &str,
+) -> Result<Vec<String>> {
     let claude_dir = root.join(".claude");
     std::fs::create_dir_all(&claude_dir)?;
 
-    let instructions = format!("# Popsicle — Claude Code Instructions\n\n{}\n", overview);
+    let instructions = format!(
+        "# Popsicle — Claude Code Instructions\n\n{}\n\n---\n\n{}\n",
+        core_rules, module_section
+    );
     std::fs::write(claude_dir.join("CLAUDE.md"), instructions)?;
 
     let mut installed = vec![".claude/CLAUDE.md".to_string()];
@@ -422,7 +456,7 @@ fn install_claude(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
         let skill_dir = skills_dir.join(format!("popsicle-{}", skill.name));
         std::fs::create_dir_all(&skill_dir)?;
 
-        let content = build_agent_skill(skill);
+        let content = build_agent_skill(skill, module_name);
         std::fs::write(skill_dir.join("SKILL.md"), &content)?;
         installed.push(format!(".claude/skills/popsicle-{}/SKILL.md", skill.name));
     }
@@ -450,13 +484,19 @@ fn install_claude(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
     Ok(installed)
 }
 
-fn install_cursor(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<Vec<String>> {
+fn install_cursor(
+    root: &Path,
+    skills: &[&SkillDef],
+    core_rules: &str,
+    module_section: &str,
+    module_name: &str,
+) -> Result<Vec<String>> {
     let rules_dir = root.join(".cursor").join("rules");
     std::fs::create_dir_all(&rules_dir)?;
 
     let rules = format!(
-        "---\ndescription: Popsicle spec-driven development workflow\nglobs:\nalwaysApply: true\n---\n\n# Popsicle Workflow\n\n{}\n",
-        overview
+        "---\ndescription: Popsicle spec-driven development workflow\nglobs:\nalwaysApply: true\n---\n\n# Popsicle Workflow\n\n{}\n\n---\n\n{}\n",
+        core_rules, module_section
     );
     std::fs::write(rules_dir.join("popsicle.mdc"), rules)?;
 
@@ -467,7 +507,7 @@ fn install_cursor(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
         let skill_dir = skills_dir.join(format!("popsicle-{}", skill.name));
         std::fs::create_dir_all(&skill_dir)?;
 
-        let content = build_agent_skill(skill);
+        let content = build_agent_skill(skill, module_name);
         std::fs::write(skill_dir.join("SKILL.md"), &content)?;
         installed.push(format!(".cursor/skills/popsicle-{}/SKILL.md", skill.name));
     }
@@ -492,12 +532,17 @@ fn install_cursor(root: &Path, skills: &[&SkillDef], overview: &str) -> Result<V
 
 /// Build a SKILL.md file following the Agent Skills open standard.
 /// Used by both Claude Code (.claude/skills/) and Cursor (.cursor/skills/).
-fn build_agent_skill(skill: &SkillDef) -> String {
+fn build_agent_skill(skill: &SkillDef, module_name: &str) -> String {
     let mut s = String::new();
 
     s.push_str(&format!(
-        "---\nname: popsicle-{}\ndescription: {}\n---\n\n",
-        skill.name, skill.description
+        "---\nname: popsicle-{}\ndescription: {} (from module: {})\n---\n\n",
+        skill.name, skill.description, module_name
+    ));
+
+    s.push_str(&format!(
+        "> This skill is provided by the **{}** module.\n\n",
+        module_name
     ));
 
     s.push_str(&build_skill_command(skill));
