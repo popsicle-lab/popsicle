@@ -42,6 +42,7 @@ export interface PipelineRunInfo {
   created_at: string;
   updated_at: string;
   topic_id: string;
+  issue_id: string | null;
   run_type: string;
 }
 
@@ -50,10 +51,13 @@ export interface TopicInfo {
   name: string;
   slug: string;
   description: string;
+  project_id: string | null;
   tags: string[];
   created_at: string;
   run_count: number;
   doc_count: number;
+  locked_by_run_id: string | null;
+  locked_at: string | null;
 }
 
 export interface TopicDetailInfo {
@@ -61,10 +65,14 @@ export interface TopicDetailInfo {
   name: string;
   slug: string;
   description: string;
+  project_id: string | null;
   tags: string[];
   created_at: string;
+  locked_by_run_id: string | null;
+  locked_at: string | null;
   runs: PipelineRunInfo[];
   documents: DocInfo[];
+  issues: IssueInfo[];
 }
 
 export interface PipelineStatusFull {
@@ -302,8 +310,8 @@ export interface IssueInfo {
   issue_type: string;
   priority: string;
   status: string;
+  topic_id: string;
   pipeline: string | null;
-  pipeline_run_id: string | null;
   labels: string[];
   created_at: string;
   updated_at: string;
@@ -328,6 +336,7 @@ export async function getIssue(key: string): Promise<IssueFull> {
 export async function createIssue(params: {
   issueType: string;
   title: string;
+  topicName: string;
   description?: string;
   priority?: string;
   pipeline?: string;
@@ -354,8 +363,8 @@ export async function updateIssue(params: {
 
 export interface IssueProgress {
   issue_key: string;
-  pipeline_run_id: string | null;
-  pipeline_name: string | null;
+  topic_id: string;
+  pipeline_runs: PipelineRunInfo[];
   stages_total: number;
   stages_completed: number;
   docs_total: number;
@@ -643,4 +652,32 @@ export async function getMemoryStats(): Promise<MemoryStatsInfo> {
 
 export async function getMemory(id: number): Promise<MemoryInfo> {
   return invoke("get_memory", { id });
+}
+
+// ── Project entity types ──
+
+export interface ProjectEntityInfo {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: string;
+  tags: string[];
+  topic_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectEntityDetail extends ProjectEntityInfo {
+  topics: TopicInfo[];
+}
+
+export async function listProjectEntities(): Promise<ProjectEntityInfo[]> {
+  return invoke("list_project_entities");
+}
+
+export async function getProjectEntity(
+  projectId: string
+): Promise<ProjectEntityDetail> {
+  return invoke("get_project_entity", { projectId });
 }

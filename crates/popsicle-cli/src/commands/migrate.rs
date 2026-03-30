@@ -119,7 +119,7 @@ fn import_file(
     if let Ok(Some(run)) = db.get_pipeline_run(run_id) {
         doc.topic_id = run.topic_id;
     }
-    doc.status = "approved".to_string();
+    doc.status = "final".to_string();
     doc.body = content;
 
     let dest = layout.run_dir(run_id).join(format!("{}.imported.md", slug));

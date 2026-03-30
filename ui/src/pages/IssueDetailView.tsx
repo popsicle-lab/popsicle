@@ -83,7 +83,7 @@ export function IssueDetailView({ issueKey, setPage, initialTab }: Props) {
       .then((p) => {
         setProgress(p);
 
-        const runId = p.pipeline_run_id ?? undefined;
+        const runId = p.pipeline_runs.length > 0 ? p.pipeline_runs[0].id : undefined;
 
         const loads: Promise<void>[] = [];
         if (runId) {
@@ -140,7 +140,7 @@ export function IssueDetailView({ issueKey, setPage, initialTab }: Props) {
   if (!issue)
     return <div className="text-[var(--text-secondary)]">Loading...</div>;
 
-  const canStart = !issue.pipeline_run_id && issue.issue_type !== "idea";
+  const canStart = (!progress || progress.pipeline_runs.length === 0) && issue.issue_type !== "idea";
 
   const counts = {
     stories: stories.length,
@@ -310,7 +310,7 @@ function OverviewTab({
       </div>
 
       {/* Progress Overview */}
-      {progress && progress.pipeline_run_id && (
+      {progress && progress.pipeline_runs.length > 0 && (
         <div className="bg-[var(--bg-secondary)] rounded-xl p-5 border border-[var(--border)]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-[var(--text-secondary)]">
@@ -349,12 +349,12 @@ function OverviewTab({
             <h3 className="text-sm font-medium text-[var(--text-secondary)]">
               Pipeline Stages
             </h3>
-            {progress.pipeline_run_id && (
+            {progress.pipeline_runs.length > 0 && (
               <button
                 onClick={() =>
                   setPage({
                     kind: "pipeline",
-                    runId: progress.pipeline_run_id!,
+                    runId: progress.pipeline_runs[0].id,
                   })
                 }
                 className="text-xs text-[var(--accent)] hover:underline"

@@ -122,3 +122,62 @@ Skills declare how their documents behave across pipeline runs:
 
 - `pipeline run <pipeline> --title <t>` — Replaced by `issue start <key>`
 - `pipeline quick --title <t>` — Removed; use an appropriate pipeline via `issue start` instead
+
+---
+
+## Pipeline Lock & Stage-as-State-Source Redesign
+
+### Summary
+
+This follow-up redesign eliminates the dual-state problem where both documents and pipeline stages tracked progression independently. The pipeline stage is now the **single source of truth** for document state, and Topics gain an **exclusive lock** to prevent concurrent pipeline runs from conflicting.
+
+### Motivation
+
+The original entity redesign left documents with their own state machine (`draft → review → approved`) separate from the pipeline stage status. This created:
+
+1. **Dual-state inconsistency** — A stage could be "complete" while its document was still in "draft", or vice versa
+2. **Redundant commands** — `doc transition` and `pipeline stage complete` were two paths to express the same intent
+3. **Concurrent run conflicts** — Multiple pipeline runs on the same Topic could modify shared singleton documents simultaneously
+
+### Design Changes
+
+#### Stage as Single Source of Truth
+
+- Documents are created as **"active"** when `doc create` is called
+- Documents become **"final"** when their owning pipeline stage is completed via `pipeline stage complete`
+- Documents no longer have their own state machine — there are no draft/review/approved transitions
+- The `doc transition` command has been **removed**
+
+#### Topic Lock
+
+Topics now carry an exclusive lock (`locked_by_run_id`):
+
+- `issue start` **acquires** the lock on the Topic — if the Topic is already locked by another run, the command is rejected
+- The lock **auto-releases** when all pipeline stages complete
+- `pipeline unlock` **force-releases** the lock (e.g., for stuck or abandoned runs)
+- `doc create` **verifies** that the current run holds the Topic lock before allowing document creation
+
+#### Stage-Level Approval
+
+- `requires_approval` has moved from skill workflow transitions to the **pipeline stage definition**
+- `pipeline stage complete <stage> --confirm` is now the approval point
+- Stages with `requires_approval: true` reject completion without `--confirm`
+
+#### Guard Changes
+
+- The `upstream_approved` guard now checks upstream **stage completion** (not document status)
+- This aligns with the single-state model: a stage being complete implies all its documents are final
+
+### New / Changed CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `pipeline stage start <stage>` | Start a pipeline stage (marks it in-progress) |
+| `pipeline stage complete <stage> [--confirm]` | Complete a stage; all documents become "final"; `--confirm` for approval stages |
+| `pipeline unlock` | Force-release the Topic lock held by a pipeline run |
+
+### Removed Commands
+
+| Command | Reason |
+|---------|--------|
+| `doc transition <id> <action>` | Documents no longer have independent state transitions; stage completion finalizes documents |

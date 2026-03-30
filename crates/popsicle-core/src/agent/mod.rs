@@ -148,32 +148,23 @@ fn build_skill_command(skill: &SkillDef) -> String {
     s.push_str("# View the created document\n");
     s.push_str("popsicle doc show <doc-id>\n\n");
 
-    let non_final_states: Vec<(&String, &crate::model::skill::StateDef)> = skill
+    s.push_str("# Complete the stage (documents become \"final\")\n");
+    s.push_str("popsicle pipeline stage complete <stage-name>\n\n");
+
+    // Check if any transition in this skill requires approval
+    let has_approval = skill
         .workflow
         .states
         .iter()
-        .filter(|(_, sd)| !sd.r#final)
-        .collect();
-    for (state, sd) in &non_final_states {
-        for t in &sd.transitions {
-            if t.requires_approval {
-                s.push_str(&format!(
-                    "# From '{}': {} (⚠ requires human approval)\n",
-                    state, t.action
-                ));
-                s.push_str(
-                    "# 禁止代用户执行。必须由用户本人审阅/参与讨论后，由用户自己在终端执行：\n",
-                );
-                s.push_str(&format!(
-                    "popsicle doc transition <doc-id> {} --confirm\n",
-                    t.action
-                ));
-            } else {
-                s.push_str(&format!("# From '{}': {}\n", state, t.action));
-                s.push_str(&format!("popsicle doc transition <doc-id> {}\n", t.action));
-            }
-        }
+        .any(|(_, sd)| sd.transitions.iter().any(|t| t.requires_approval));
+    if has_approval {
+        s.push_str("# ⚠ If the stage requires approval, the user must run:\n");
+        s.push_str(
+            "# 禁止代用户执行。必须由用户本人审阅/参与讨论后，由用户自己在终端执行：\n",
+        );
+        s.push_str("popsicle pipeline stage complete <stage-name> --confirm\n");
     }
+
     s.push_str("```\n");
 
     // Writing guide (from guide.md — your core asset)
@@ -226,7 +217,7 @@ If an active pipeline run exists → skip to **Step 4**.
 
 ### Step 2: If NO active pipeline run — find or create an Issue first
 
-An Issue is REQUIRED before any pipeline run can start. Do NOT create a pipeline run directly.
+An Issue is REQUIRED before any pipeline run can start. `issue start` is the ONLY way to create a pipeline run.
 
 **2a. Check for an existing issue:**
 
@@ -258,15 +249,7 @@ Show the created issue key to the user before proceeding.
 popsicle issue start <ISSUE-KEY>
 ```
 
-This automatically creates the appropriate pipeline run linked to the issue. Do NOT use `popsicle pipeline run` directly — always go through `issue start` so the issue-pipeline association is preserved.
-
-**Exception — quick mode for trivial changes:** For single-line fixes, typos, or config tweaks where creating an issue would be excessive overhead, you may use:
-
-```bash
-popsicle pipeline quick --title "<description>"
-```
-
-But when in doubt, create an issue. It is always better to have traceability than to skip it.
+This automatically creates the appropriate pipeline run linked to the issue. `issue start` is the ONLY way to create a pipeline run — there are no shortcuts or alternatives.
 
 ### Step 4: Follow the pipeline
 
@@ -298,21 +281,26 @@ This ensures every new document benefits from cross-run historical context and a
 - `popsicle pipeline next --format json` — what to do next (with CLI command + guide)
 - `popsicle pipeline status` — current pipeline state
 - `popsicle pipeline recommend --task "<desc>"` — recommend pipeline for task
-- `popsicle pipeline quick --title "<t>"` — quick single-stage run for trivial changes only
+- `popsicle pipeline verify` — verify pipeline completion
 
 ### Document & Git
 
 - `popsicle context --format json` — all documents for current run
-- `popsicle doc create <skill> --title "<t>" --run <id>` — create document
-- `popsicle doc transition <id> <action>` — advance workflow (guards enforced)
+- `popsicle doc create <skill> --title "<t>" --run <id>` — create document (must hold Topic lock)
 - `popsicle doc summarize <id> --generate-prompt` — get LLM prompt for summarization
 - `popsicle doc summarize <id> --summary "..." --tags "a,b,c"` — write LLM-generated summary/tags
 - `popsicle context search <query>` — search documents across all runs (FTS5)
 - `popsicle git link --doc <id> --stage <s>` — link commit to document
 
-## Document Summarization (MANDATORY after approve)
+### Pipeline Stage Progression
 
-When `popsicle doc transition` outputs `[ACTION REQUIRED]` (text mode) or a `llm_summarize` field (JSON mode), you **MUST** immediately execute the LLM summarize workflow. Without this step, the document will NOT be indexed for cross-run search.
+- `popsicle pipeline stage start <stage>` — start a pipeline stage (marks it in-progress)
+- `popsicle pipeline stage complete <stage> [--confirm]` — complete a stage; all documents become "final". Use `--confirm` for stages with `requires_approval`
+- `popsicle pipeline unlock` — force-release the Topic lock (for stuck/abandoned runs)
+
+## Document Summarization (MANDATORY after stage complete)
+
+When `popsicle pipeline stage complete` outputs `[ACTION REQUIRED]` (text mode) or a `llm_summarize` field (JSON mode), you **MUST** immediately execute the LLM summarize workflow for each document in the completed stage. Without this step, documents will NOT be indexed for cross-run search.
 
 1. Run `step1_generate_prompt` — this outputs a structured prompt with the document content
 2. Send the `prompt` field to your LLM, parse the JSON response: `{"summary": "...", "tags": [...]}`
@@ -331,12 +319,14 @@ Do NOT skip this step. Documents without LLM-generated summaries will not appear
 ## Workflow Rules
 
 1. **NEVER write code without an active pipeline run** — no exceptions
-2. **Issue → Pipeline → Skill** — always follow this order; do NOT create pipeline runs directly, use `issue start`
+2. **Issue → Pipeline → Skill** — always follow this order; `issue start` is the ONLY way to create pipeline runs and acquires an exclusive Topic lock
 3. Always check `popsicle pipeline next` before starting work on a step
-4. Guards enforce upstream document approval before downstream work proceeds
+4. Guards enforce upstream **stage completion** before downstream work proceeds
 5. Fill document sections with real content — template placeholders are rejected
 6. Link commits to documents with `popsicle git link`
-7. Transitions marked `requires_approval` (e.g. discussion conclude, doc approve): do NOT run the command with `--confirm` for the user. You must STOP, show the user the suggested command, and ask them to review and run it themselves in their terminal. No exception.
+7. Stages marked `requires_approval`: do NOT run `pipeline stage complete` with `--confirm` for the user. You must STOP, show the user the suggested command, and ask them to review and run it themselves in their terminal. No exception.
+8. **Topic lock**: do not attempt to operate on a Topic that is locked by another run. Use `popsicle pipeline unlock` only when explicitly told to force-release.
+9. **Documents are "active" when created** and become "final" when their stage is completed via `pipeline stage complete`. There is no `doc transition` command.
 
 ## Memory Management
 

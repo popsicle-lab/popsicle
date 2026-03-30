@@ -64,7 +64,7 @@ impl Document {
             id: uuid::Uuid::new_v4().to_string(),
             doc_type: doc_type.into(),
             title: title.into(),
-            status: "draft".to_string(),
+            status: "active".to_string(),
             skill_name: skill_name.into(),
             pipeline_run_id: pipeline_run_id.into(),
             topic_id: topic_id.into(),
@@ -81,14 +81,14 @@ impl Document {
     }
 
     /// Create a new revision of this document.
-    /// Bumps version, links to parent, resets status to draft.
+    /// Bumps version, links to parent, resets status to active.
     pub fn new_revision(&self, new_run_id: impl Into<String>) -> Self {
         let now = Utc::now();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             doc_type: self.doc_type.clone(),
             title: self.title.clone(),
-            status: "draft".to_string(),
+            status: "active".to_string(),
             skill_name: self.skill_name.clone(),
             pipeline_run_id: new_run_id.into(),
             topic_id: self.topic_id.clone(),
@@ -185,7 +185,7 @@ Some body content.
         assert_eq!(rev.parent_doc_id, Some(doc.id.clone()));
         assert_eq!(rev.topic_id, "topic-001");
         assert_eq!(rev.pipeline_run_id, "run-002");
-        assert_eq!(rev.status, "draft");
+        assert_eq!(rev.status, "active");
         assert_ne!(rev.id, doc.id);
     }
 }

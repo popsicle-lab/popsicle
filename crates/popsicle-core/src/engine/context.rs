@@ -119,7 +119,7 @@ mod tests {
             ContextInput {
                 artifact_type: "domain-model".into(),
                 title: "Domain".into(),
-                status: "approved".into(),
+                status: "final".into(),
                 body: "## Entities\n\nUser, Order.\n\n## Boundaries\n\nCore domain.\n".into(),
                 relevance: Relevance::Low,
                 sections: None,
@@ -127,7 +127,7 @@ mod tests {
             ContextInput {
                 artifact_type: "prd".into(),
                 title: "PRD".into(),
-                status: "approved".into(),
+                status: "final".into(),
                 body: "## Problem\n\nThe problem.\n\n## Goals\n\nGoal 1.\n".into(),
                 relevance: Relevance::Medium,
                 sections: Some(vec!["Problem".into()]),
@@ -146,7 +146,7 @@ mod tests {
         let inputs = vec![ContextInput {
             artifact_type: "domain-model".into(),
             title: "Domain".into(),
-            status: "approved".into(),
+            status: "final".into(),
             body:
                 "Overview of the domain.\n\n## Entities\n\nUser, Order.\n\n## Boundaries\n\nCore.\n"
                     .into(),
@@ -165,7 +165,7 @@ mod tests {
         let inputs = vec![ContextInput {
             artifact_type: "prd".into(),
             title: "PRD".into(),
-            status: "approved".into(),
+            status: "final".into(),
             body: "## Problem\n\nThe problem statement.\n\n## Goals\n\nGoal list.\n\n## Scope\n\nOut of scope.\n".into(),
             relevance: Relevance::Medium,
             sections: Some(vec!["Problem".into(), "Goals".into()]),
@@ -182,7 +182,7 @@ mod tests {
         let inputs = vec![ContextInput {
             artifact_type: "prd".into(),
             title: "PRD".into(),
-            status: "approved".into(),
+            status: "final".into(),
             body: "## Problem\n\nContent.\n".into(),
             relevance: Relevance::Medium,
             sections: None,
@@ -215,7 +215,7 @@ mod tests {
             ContextInput {
                 artifact_type: "domain".into(),
                 title: "D".into(),
-                status: "approved".into(),
+                status: "final".into(),
                 body: "## X\n\nContent.\n".into(),
                 relevance: Relevance::Low,
                 sections: None,

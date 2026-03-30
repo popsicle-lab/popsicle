@@ -176,6 +176,7 @@ mod tests {
                     skill: Some("test".to_string()),
                     description: "Test".to_string(),
                     depends_on: vec![],
+                    requires_approval: false,
                 }],
                 keywords: vec![
                     "test".to_string(),

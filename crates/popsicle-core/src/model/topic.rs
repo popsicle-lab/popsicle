@@ -12,8 +12,16 @@ pub struct Topic {
     pub slug: String,
     #[serde(default)]
     pub description: String,
+    /// Parent project this topic belongs to (required).
+    #[serde(default)]
+    pub project_id: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Exclusive lock: the pipeline run currently operating on this topic.
+    #[serde(default)]
+    pub locked_by_run_id: Option<String>,
+    #[serde(default)]
+    pub locked_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -21,7 +29,7 @@ pub struct Topic {
 impl Topic {
     /// Create a new topic. The slug is auto-generated from `name` if not
     /// supplied (lowercased, spaces/underscores → hyphens, non-alphanumeric stripped).
-    pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, description: impl Into<String>, project_id: impl Into<String>) -> Self {
         let name = name.into();
         let slug = slugify(&name);
         let now = Utc::now();
@@ -30,7 +38,10 @@ impl Topic {
             name,
             slug,
             description: description.into(),
+            project_id: project_id.into(),
             tags: Vec::new(),
+            locked_by_run_id: None,
+            locked_at: None,
             created_at: now,
             updated_at: now,
         }
@@ -78,7 +89,7 @@ mod tests {
 
     #[test]
     fn test_new_topic_generates_slug() {
-        let topic = Topic::new("Add User Auth", "Implement JWT auth");
+        let topic = Topic::new("Add User Auth", "Implement JWT auth", "proj-1");
         assert_eq!(topic.slug, "add-user-auth");
         assert_eq!(topic.name, "Add User Auth");
         assert_eq!(topic.description, "Implement JWT auth");
@@ -88,7 +99,7 @@ mod tests {
     #[test]
     fn test_new_topic_timestamps() {
         let before = Utc::now();
-        let topic = Topic::new("Test", "");
+        let topic = Topic::new("Test", "", "proj-1");
         let after = Utc::now();
         assert!(topic.created_at >= before && topic.created_at <= after);
         assert!(topic.updated_at >= before && topic.updated_at <= after);

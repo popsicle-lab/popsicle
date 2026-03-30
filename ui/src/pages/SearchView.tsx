@@ -92,10 +92,8 @@ export function SearchView({ setPage }: Props) {
           className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm"
         >
           <option value="">All Statuses</option>
-          <option value="approved">Approved</option>
-          <option value="accepted">Accepted</option>
-          <option value="draft">Draft</option>
-          <option value="review">Review</option>
+          <option value="active">Active</option>
+          <option value="final">Final</option>
         </select>
         <input
           type="text"

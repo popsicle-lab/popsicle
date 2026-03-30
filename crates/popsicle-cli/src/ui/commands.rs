@@ -6,7 +6,8 @@ use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
 use popsicle_core::model::{
-    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, StageState, Topic,
+    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, Project, StageState,
+    Topic,
 };
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
@@ -87,6 +88,7 @@ pub fn list_skills(state: State<AppState>) -> Result<Vec<SkillInfo>, String> {
                 .iter()
                 .map(|a| a.artifact_type.clone())
                 .collect(),
+            doc_lifecycle: s.doc_lifecycle.to_string(),
             workflow_initial: s.workflow.initial.clone(),
             inputs: s
                 .inputs
@@ -159,6 +161,7 @@ pub fn list_pipeline_runs(state: State<AppState>) -> Result<Vec<PipelineRunInfo>
             created_at: r.created_at.clone(),
             updated_at: r.updated_at.clone(),
             topic_id: r.topic_id.clone(),
+            issue_id: r.issue_id.clone(),
             run_type: r.run_type.clone(),
         })
         .collect())
@@ -286,7 +289,11 @@ pub fn get_next_steps(run_id: String, state: State<AppState>) -> Result<Vec<Next
         .query_documents(None, None, Some(&run_id))
         .map_err(|e| e.to_string())?;
 
-    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs);
+    // Load all docs from the same topic for cross-run visibility
+    let topic_docs = db.query_topic_documents(&run.topic_id)
+        .unwrap_or_default();
+
+    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &topic_docs);
     Ok(steps
         .iter()
         .map(|s| NextStepInfo {
@@ -299,6 +306,7 @@ pub fn get_next_steps(run_id: String, state: State<AppState>) -> Result<Vec<Next
             blocked_by: s.blocked_by.clone(),
             requires_approval: s.requires_approval,
             context_command: s.context_command.clone(),
+            hints: s.hints.clone(),
         })
         .collect())
 }
@@ -365,9 +373,7 @@ pub fn verify_pipeline_run(run_id: String, state: State<AppState>) -> Result<Ver
                 issues.push(format!("No documents for skill '{}'", skill_name));
             }
             for d in &skill_docs {
-                if let Ok(skill) = registry.get(&d.skill_name)
-                    && !skill.is_final_state(&d.status)
-                {
+                if d.status != "final" {
                     issues.push(format!("'{}' is '{}', not final", d.title, d.status));
                 }
             }
@@ -647,8 +653,8 @@ fn issue_to_info(i: &Issue) -> IssueInfo {
         issue_type: i.issue_type.to_string(),
         priority: i.priority.to_string(),
         status: i.status.to_string(),
+        topic_id: i.topic_id.clone(),
         pipeline: i.pipeline.clone(),
-        pipeline_run_id: i.pipeline_run_id.clone(),
         labels: i.labels.clone(),
         created_at: i.created_at.to_rfc3339(),
         updated_at: i.updated_at.to_rfc3339(),
@@ -667,7 +673,7 @@ pub fn list_issues(
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
 
     let issues = db
-        .query_issues(issue_type.as_deref(), status.as_deref(), label.as_deref())
+        .query_issues(issue_type.as_deref(), status.as_deref(), label.as_deref(), None)
         .map_err(|e| e.to_string())?;
 
     Ok(issues.iter().map(issue_to_info).collect())
@@ -692,8 +698,8 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueFull, Strin
         issue_type: issue.issue_type.to_string(),
         priority: issue.priority.to_string(),
         status: issue.status.to_string(),
+        topic_id: issue.topic_id,
         pipeline: issue.pipeline,
-        pipeline_run_id: issue.pipeline_run_id,
         labels: issue.labels,
         created_at: issue.created_at.to_rfc3339(),
         updated_at: issue.updated_at.to_rfc3339(),
@@ -704,6 +710,7 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueFull, Strin
 pub fn create_issue(
     issue_type: String,
     title: String,
+    topic_name: String,
     description: Option<String>,
     priority: Option<String>,
     pipeline: Option<String>,
@@ -727,11 +734,20 @@ pub fn create_issue(
             .map_err(|_| format!("Pipeline template not found: {}", name))?;
     }
 
+    // Resolve or create the topic
+    let topic = if let Some(t) = db.find_topic_by_name(&topic_name).map_err(|e| e.to_string())? {
+        t
+    } else {
+        let t = Topic::new(&topic_name, "", "");
+        db.create_topic(&t).map_err(|e| e.to_string())?;
+        t
+    };
+
     let prefix = config.project.key_prefix_or_default();
     let seq = db.next_issue_seq(prefix).map_err(|e| e.to_string())?;
     let key = format!("{}-{}", prefix, seq);
 
-    let mut issue = Issue::new(key, &title, it);
+    let mut issue = Issue::new(key, &title, it, &topic.id);
     issue.description = description.unwrap_or_default();
     issue.priority = pr;
     issue.pipeline = pipeline;
@@ -753,10 +769,6 @@ pub fn start_issue(key: String, state: State<AppState>) -> Result<IssueInfo, Str
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Issue not found: {}", key))?;
 
-    if issue.pipeline_run_id.is_some() {
-        return Err(format!("Issue {} already has a pipeline run", key));
-    }
-
     let pipelines = helpers::load_pipelines(&dir).map_err(|e| e.to_string())?;
     let resolved = helpers::resolve_pipeline_for_issue(&issue, &pipelines).ok_or_else(|| {
         format!(
@@ -769,23 +781,18 @@ pub fn start_issue(key: String, state: State<AppState>) -> Result<IssueInfo, Str
         helpers::find_pipeline(&dir, &resolved.pipeline_name).map_err(|e| e.to_string())?;
     pipeline_def.validate().map_err(|e| e.to_string())?;
 
-    let topic = {
-        let name = &issue.title;
-        if let Some(t) = db.find_topic_by_name(name).map_err(|e| e.to_string())? {
-            t
-        } else {
-            let t = Topic::new(name, "");
-            db.create_topic(&t).map_err(|e| e.to_string())?;
-            t
-        }
-    };
-    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id);
+    // Issue already has topic_id
+    let topic = db
+        .get_topic(&issue.topic_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Topic not found for issue: {}", issue.topic_id))?;
+
+    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id, &issue.id);
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir).map_err(|e| e.to_string())?;
 
     db.upsert_pipeline_run(&run).map_err(|e| e.to_string())?;
 
-    issue.pipeline_run_id = Some(run.id);
     issue.status = IssueStatus::InProgress;
     db.update_issue(&issue).map_err(|e| e.to_string())?;
 
@@ -846,13 +853,32 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Issue not found: {}", key))?;
 
-    let run_id = match &issue.pipeline_run_id {
-        Some(id) => id.clone(),
+    // Get the latest pipeline run for this issue
+    let runs = db
+        .find_runs_by_issue(&issue.id)
+        .map_err(|e| e.to_string())?;
+
+    let run_info_list: Vec<PipelineRunInfo> = runs
+        .iter()
+        .map(|r| PipelineRunInfo {
+            id: r.id.clone(),
+            pipeline_name: r.pipeline_name.clone(),
+            title: r.title.clone(),
+            created_at: r.created_at.clone(),
+            updated_at: r.updated_at.clone(),
+            topic_id: r.topic_id.clone(),
+            issue_id: r.issue_id.clone(),
+            run_type: r.run_type.clone(),
+        })
+        .collect();
+
+    let latest_run = match runs.first() {
+        Some(r) => r,
         None => {
             return Ok(IssueProgress {
                 issue_key: issue.key,
-                pipeline_run_id: None,
-                pipeline_name: None,
+                topic_id: issue.topic_id,
+                pipeline_runs: run_info_list,
                 stages_total: 0,
                 stages_completed: 0,
                 docs_total: 0,
@@ -865,8 +891,9 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
         }
     };
 
+    let run_id = &latest_run.id;
     let run = db
-        .get_pipeline_run(&run_id)
+        .get_pipeline_run(run_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Run not found: {}", run_id))?;
 
@@ -911,11 +938,7 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
                 total_cl_checked += info.checklist_checked;
                 total_cl_total += info.checklist_total;
                 docs_total += 1;
-                if registry
-                    .get(&d.skill_name)
-                    .map(|s| s.is_final_state(&d.status))
-                    .unwrap_or(false)
-                {
+                if d.status == "final" {
                     docs_final += 1;
                 }
                 info
@@ -931,8 +954,8 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
 
     Ok(IssueProgress {
         issue_key: issue.key,
-        pipeline_run_id: Some(run_id),
-        pipeline_name: Some(run.pipeline_name),
+        topic_id: issue.topic_id,
+        pipeline_runs: run_info_list,
         stages_total,
         stages_completed,
         docs_total,
@@ -1509,6 +1532,7 @@ pub fn list_topics(state: State<AppState>) -> Result<Vec<TopicInfo>, String> {
                 name: t.name.clone(),
                 slug: t.slug.clone(),
                 description: t.description.clone(),
+                project_id: t.project_id.clone(),
                 tags: t.tags.clone(),
                 created_at: t.created_at.to_rfc3339(),
                 run_count,
@@ -1534,12 +1558,16 @@ pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDeta
     let docs = db
         .query_topic_documents(&topic.id)
         .map_err(|e| e.to_string())?;
+    let issues = db
+        .query_issues(None, None, None, Some(&topic.id))
+        .map_err(|e| e.to_string())?;
 
     Ok(TopicDetailInfo {
         id: topic.id.clone(),
         name: topic.name.clone(),
         slug: topic.slug.clone(),
         description: topic.description.clone(),
+        project_id: topic.project_id.clone(),
         tags: topic.tags.clone(),
         created_at: topic.created_at.to_rfc3339(),
         runs: runs
@@ -1551,9 +1579,99 @@ pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDeta
                 created_at: r.created_at.clone(),
                 updated_at: r.updated_at.clone(),
                 topic_id: r.topic_id.clone(),
+                issue_id: r.issue_id.clone(),
                 run_type: r.run_type.clone(),
             })
             .collect(),
         documents: docs.iter().map(doc_row_to_info).collect(),
+        issues: issues.iter().map(|i| issue_to_info(i)).collect(),
+    })
+}
+
+// ── Project entity commands ──
+
+#[tauri::command]
+pub fn list_project_entities(
+    state: State<AppState>,
+) -> Result<Vec<ProjectEntityInfo>, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+    let projects = db.list_projects(None).map_err(|e| e.to_string())?;
+    Ok(projects
+        .iter()
+        .map(|p| {
+            let topic_count = db
+                .list_topics_by_project(Some(&p.id))
+                .map(|t| t.len() as u32)
+                .unwrap_or(0);
+            ProjectEntityInfo {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                slug: p.slug.clone(),
+                description: p.description.clone(),
+                status: p.status.to_string(),
+                tags: p.tags.clone(),
+                topic_count,
+                created_at: p.created_at.to_rfc3339(),
+                updated_at: p.updated_at.to_rfc3339(),
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_project_entity(
+    project_id: String,
+    state: State<AppState>,
+) -> Result<ProjectEntityDetail, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let project = db
+        .find_project_by_name(&project_id)
+        .ok()
+        .flatten()
+        .or_else(|| db.get_project(&project_id).ok().flatten())
+        .ok_or_else(|| format!("Project not found: {}", project_id))?;
+
+    let topics = db
+        .list_topics_by_project(Some(&project.id))
+        .map_err(|e| e.to_string())?;
+
+    Ok(ProjectEntityDetail {
+        id: project.id.clone(),
+        name: project.name.clone(),
+        slug: project.slug.clone(),
+        description: project.description.clone(),
+        status: project.status.to_string(),
+        tags: project.tags.clone(),
+        topics: topics
+            .iter()
+            .map(|t| {
+                let run_count = db
+                    .list_topic_runs(&t.id)
+                    .map(|r| r.len() as u32)
+                    .unwrap_or(0);
+                let doc_count = db
+                    .query_topic_documents(&t.id)
+                    .map(|d| d.len() as u32)
+                    .unwrap_or(0);
+                TopicInfo {
+                    id: t.id.clone(),
+                    name: t.name.clone(),
+                    slug: t.slug.clone(),
+                    description: t.description.clone(),
+                    project_id: t.project_id.clone(),
+                    tags: t.tags.clone(),
+                    created_at: t.created_at.to_rfc3339(),
+                    run_count,
+                    doc_count,
+                }
+            })
+            .collect(),
+        created_at: project.created_at.to_rfc3339(),
+        updated_at: project.updated_at.to_rfc3339(),
     })
 }

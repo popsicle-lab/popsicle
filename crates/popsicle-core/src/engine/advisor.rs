@@ -30,13 +30,17 @@ pub struct NextStep {
 
 impl Advisor {
     /// Compute all available next steps for a pipeline run.
-    /// Takes existing documents into account for InProgress stages.
-    /// Generates hints when skills have upstream dependencies skipped by the pipeline.
+    ///
+    /// With the pipeline-as-state-source model, the advisor only looks at stage states:
+    /// - Ready/InProgress: suggest doc create for missing skills, stage complete when all docs exist
+    /// - Blocked: show which upstream stages are blocking
+    /// - Completed/Skipped: no action needed
     pub fn next_steps(
         pipeline_def: &PipelineDef,
         run: &PipelineRun,
         registry: &SkillRegistry,
         docs: &[DocumentRow],
+        topic_docs: &[DocumentRow],
     ) -> Vec<NextStep> {
         let mut steps = Vec::new();
         let pipeline_skills = pipeline_def.all_skill_names();
@@ -49,70 +53,153 @@ impl Advisor {
                 .unwrap_or(StageState::Blocked);
 
             match state {
-                StageState::Ready => {
+                StageState::Ready | StageState::InProgress => {
+                    let mut all_skills_have_docs = true;
+
                     for skill_name in stage.skill_names() {
-                        let has_doc = docs.iter().any(|d| d.skill_name == skill_name);
+                        let has_doc_in_run = docs.iter().any(|d| d.skill_name == skill_name);
 
-                        if has_doc {
-                            Self::add_doc_steps(
-                                &mut steps,
-                                &stage.name,
-                                skill_name,
-                                registry,
-                                docs,
-                                run,
-                                pipeline_def,
-                                &pipeline_skills,
-                            );
-                        } else {
-                            let description = registry
-                                .get(skill_name)
-                                .map(|s| s.description.clone())
-                                .unwrap_or_else(|_| format!("Execute skill: {}", skill_name));
+                        if has_doc_in_run {
+                            // Doc exists — no action needed for this skill
+                            continue;
+                        }
 
-                            let prompt = registry
-                                .get(skill_name)
-                                .ok()
-                                .and_then(|s| s.prompts.get(&s.workflow.initial).cloned());
+                        all_skills_have_docs = false;
 
-                            let hints =
-                                Self::build_skill_hints(skill_name, registry, &pipeline_skills);
+                        // Check topic-level docs from other runs
+                        let topic_skill_docs: Vec<&DocumentRow> = topic_docs
+                            .iter()
+                            .filter(|d| {
+                                d.skill_name == skill_name && d.pipeline_run_id != run.id
+                            })
+                            .collect();
 
-                            let context_command = Some(format!(
+                        let is_cumulative = registry
+                            .get(skill_name)
+                            .map(|s| s.is_cumulative())
+                            .unwrap_or(false);
+
+                        if !is_cumulative && !topic_skill_docs.is_empty() {
+                            let latest = &topic_skill_docs[0];
+                            if latest.status == "final" {
+                                // Already final in another run — suggest skip
+                                steps.push(NextStep {
+                                    stage: stage.name.clone(),
+                                    skill: skill_name.to_string(),
+                                    action: "skip".to_string(),
+                                    description: format!(
+                                        "Existing finalized '{}' (v{}) from topic — stage can be skipped",
+                                        latest.title, latest.version
+                                    ),
+                                    cli_command: String::new(),
+                                    prompt: None,
+                                    blocked_by: vec![],
+                                    requires_approval: false,
+                                    context_command: None,
+                                    hints: vec![format!(
+                                        "Document '{}' already finalized in a previous run",
+                                        latest.title
+                                    )],
+                                });
+                                // Count as "has doc" for stage completion check
+                                continue;
+                            } else {
+                                // Exists but not final — suggest update
+                                let hints =
+                                    Self::build_skill_hints(skill_name, registry, &pipeline_skills);
+                                steps.push(NextStep {
+                                    stage: stage.name.clone(),
+                                    skill: skill_name.to_string(),
+                                    action: "update".to_string(),
+                                    description: format!(
+                                        "Update existing document '{}' (v{}, status: {})",
+                                        latest.title, latest.version, latest.status
+                                    ),
+                                    cli_command: format!(
+                                        "popsicle doc create {} --title \"{}\" --run {}",
+                                        skill_name, latest.title, run.id
+                                    ),
+                                    prompt: registry
+                                        .get(skill_name)
+                                        .ok()
+                                        .and_then(|s| s.prompts.get("active").cloned()),
+                                    blocked_by: vec![],
+                                    requires_approval: false,
+                                    context_command: Some(format!(
+                                        "popsicle prompt {} --run {} --related --format json",
+                                        skill_name, run.id
+                                    )),
+                                    hints,
+                                });
+                                continue;
+                            }
+                        }
+
+                        // No existing docs or cumulative — suggest create
+                        let description = registry
+                            .get(skill_name)
+                            .map(|s| s.description.clone())
+                            .unwrap_or_else(|_| format!("Execute skill: {}", skill_name));
+
+                        let prompt = registry
+                            .get(skill_name)
+                            .ok()
+                            .and_then(|s| s.prompts.get("active").cloned().or_else(|| {
+                                s.prompts.values().next().cloned()
+                            }));
+
+                        let hints =
+                            Self::build_skill_hints(skill_name, registry, &pipeline_skills);
+
+                        steps.push(NextStep {
+                            stage: stage.name.clone(),
+                            skill: skill_name.to_string(),
+                            action: "create".to_string(),
+                            description,
+                            cli_command: format!(
+                                "popsicle doc create {} --title \"<title>\" --run {}",
+                                skill_name, run.id
+                            ),
+                            prompt,
+                            blocked_by: vec![],
+                            requires_approval: false,
+                            context_command: Some(format!(
                                 "popsicle prompt {} --run {} --related --format json",
                                 skill_name, run.id
-                            ));
-
-                            steps.push(NextStep {
-                                stage: stage.name.clone(),
-                                skill: skill_name.to_string(),
-                                action: "create".to_string(),
-                                description,
-                                cli_command: format!(
-                                    "popsicle doc create {} --title \"<title>\" --run {}",
-                                    skill_name, run.id
-                                ),
-                                prompt,
-                                blocked_by: vec![],
-                                requires_approval: false,
-                                context_command,
-                                hints,
-                            });
-                        }
+                            )),
+                            hints,
+                        });
                     }
-                }
-                StageState::InProgress => {
-                    for skill_name in stage.skill_names() {
-                        Self::add_doc_steps(
-                            &mut steps,
-                            &stage.name,
-                            skill_name,
-                            registry,
-                            docs,
-                            run,
-                            pipeline_def,
-                            &pipeline_skills,
-                        );
+
+                    // If all skills have docs, suggest stage complete
+                    if all_skills_have_docs {
+                        steps.push(NextStep {
+                            stage: stage.name.clone(),
+                            skill: String::new(),
+                            action: "complete_stage".to_string(),
+                            description: format!(
+                                "All documents created for '{}' — ready to complete",
+                                stage.name
+                            ),
+                            cli_command: format!(
+                                "popsicle pipeline stage complete {}{}",
+                                stage.name,
+                                if stage.requires_approval {
+                                    " --confirm"
+                                } else {
+                                    ""
+                                }
+                            ),
+                            prompt: None,
+                            blocked_by: vec![],
+                            requires_approval: stage.requires_approval,
+                            context_command: None,
+                            hints: if stage.requires_approval {
+                                vec!["Requires human review and approval".to_string()]
+                            } else {
+                                vec![]
+                            },
+                        });
                     }
                 }
                 StageState::Blocked => {
@@ -156,8 +243,9 @@ impl Advisor {
         run: &PipelineRun,
         registry: &SkillRegistry,
         docs: &[DocumentRow],
+        topic_docs: &[DocumentRow],
     ) -> bool {
-        Self::next_steps(pipeline_def, run, registry, docs)
+        Self::next_steps(pipeline_def, run, registry, docs, topic_docs)
             .iter()
             .any(|s| s.action != "blocked")
     }
@@ -184,90 +272,6 @@ impl Advisor {
             }
         }
         hints
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn add_doc_steps(
-        steps: &mut Vec<NextStep>,
-        stage_name: &str,
-        skill_name: &str,
-        registry: &SkillRegistry,
-        docs: &[DocumentRow],
-        run: &PipelineRun,
-        pipeline_def: &PipelineDef,
-        pipeline_skills: &[&str],
-    ) {
-        let skill_docs: Vec<&DocumentRow> = docs
-            .iter()
-            .filter(|d| d.skill_name == skill_name && d.pipeline_run_id == run.id)
-            .collect();
-
-        for doc in skill_docs {
-            if let Ok(skill) = registry.get(skill_name) {
-                if skill.is_final_state(&doc.status) {
-                    continue;
-                }
-                let actions = skill.available_actions(&doc.status);
-                for transition in actions {
-                    let prompt = skill.prompts.get(&doc.status).cloned();
-                    let mut hints = Self::build_skill_hints(skill_name, registry, pipeline_skills);
-
-                    // Pre-check guard: if the transition has a guard with upstream_approved,
-                    // verify it would pass with pipeline-aware logic
-                    if let Some(ref guard_expr) = transition.guard
-                        && guard_expr.contains("upstream_approved")
-                    {
-                        let full_doc = crate::model::Document {
-                            id: doc.id.clone(),
-                            doc_type: doc.doc_type.clone(),
-                            title: doc.title.clone(),
-                            status: doc.status.clone(),
-                            skill_name: doc.skill_name.clone(),
-                            pipeline_run_id: doc.pipeline_run_id.clone(),
-                            topic_id: doc.topic_id.clone(),
-                            version: doc.version,
-                            parent_doc_id: doc.parent_doc_id.clone(),
-                            tags: vec![],
-                            summary: String::new(),
-                            metadata: serde_yaml_ng::Value::Null,
-                            created_at: None,
-                            updated_at: None,
-                            body: String::new(),
-                            file_path: std::path::PathBuf::new(),
-                        };
-                        if let Ok(result) = super::guard::check_guard(
-                            "upstream_approved",
-                            &full_doc,
-                            docs,
-                            registry,
-                            Some(pipeline_def),
-                        ) && !result.passed
-                        {
-                            hints.push(format!("Guard will block: {}", result.message));
-                        }
-                    }
-
-                    steps.push(NextStep {
-                        stage: stage_name.to_string(),
-                        skill: skill_name.to_string(),
-                        action: transition.action.clone(),
-                        description: format!(
-                            "{}: {} ({})",
-                            doc.title, transition.action, doc.status
-                        ),
-                        cli_command: format!(
-                            "popsicle doc transition {} {}",
-                            doc.id, transition.action
-                        ),
-                        prompt,
-                        blocked_by: vec![],
-                        requires_approval: transition.requires_approval,
-                        context_command: None,
-                        hints,
-                    });
-                }
-            }
-        }
     }
 }
 
@@ -324,6 +328,7 @@ prompts:
                     skill: Some("domain-analysis".to_string()),
                     description: "Domain".to_string(),
                     depends_on: vec![],
+                    requires_approval: false,
                 },
                 StageDef {
                     name: "design".to_string(),
@@ -331,6 +336,7 @@ prompts:
                     skill: Some("domain-analysis".to_string()),
                     description: "Design".to_string(),
                     depends_on: vec!["domain".to_string()],
+                    requires_approval: false,
                 },
             ],
             keywords: vec![],
@@ -342,10 +348,10 @@ prompts:
     fn test_next_steps_ready_no_docs() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
+        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
         let docs: Vec<DocumentRow> = vec![];
 
-        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
+        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &[]);
 
         let actionable: Vec<_> = steps.iter().filter(|s| s.action != "blocked").collect();
         assert_eq!(actionable.len(), 1);
@@ -358,15 +364,17 @@ prompts:
     }
 
     #[test]
-    fn test_next_steps_with_draft_doc() {
+    fn test_next_steps_with_doc_suggests_stage_complete() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
+        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
+        run.stage_states
+            .insert("domain".to_string(), StageState::InProgress);
         let docs = vec![DocumentRow {
             id: "d1".to_string(),
             doc_type: "domain-model".to_string(),
             title: "Domain Doc".to_string(),
-            status: "draft".to_string(),
+            status: "active".to_string(),
             skill_name: "domain-analysis".to_string(),
             pipeline_run_id: run.id.clone(),
             file_path: "test.md".to_string(),
@@ -379,10 +387,11 @@ prompts:
             parent_doc_id: None,
         }];
 
-        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
+        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &[]);
         let actionable: Vec<_> = steps.iter().filter(|s| s.action != "blocked").collect();
         assert_eq!(actionable.len(), 1);
-        assert_eq!(actionable[0].action, "submit");
+        assert_eq!(actionable[0].action, "complete_stage");
+        assert!(actionable[0].cli_command.contains("pipeline stage complete"));
     }
 
     #[test]
@@ -397,11 +406,12 @@ prompts:
                 skill: Some("domain-analysis".to_string()),
                 description: "Domain".to_string(),
                 depends_on: vec![],
+                requires_approval: false,
             }],
             keywords: vec![],
             scale: None,
         };
-        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
+        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
         run.stage_states
             .insert("domain".to_string(), StageState::Completed);
 
@@ -409,7 +419,7 @@ prompts:
             id: "d1".to_string(),
             doc_type: "domain-model".to_string(),
             title: "Done".to_string(),
-            status: "approved".to_string(),
+            status: "final".to_string(),
             skill_name: "domain-analysis".to_string(),
             pipeline_run_id: run.id.clone(),
             file_path: "test.md".to_string(),
@@ -422,7 +432,7 @@ prompts:
             parent_doc_id: None,
         }];
 
-        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
+        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &[]);
         assert!(steps.is_empty());
     }
 
@@ -430,50 +440,17 @@ prompts:
     fn test_has_actionable_steps() {
         let registry = make_registry();
         let pipeline = make_pipeline();
-        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
+        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
         let docs: Vec<DocumentRow> = vec![];
 
         assert!(Advisor::has_actionable_steps(
-            &pipeline, &run, &registry, &docs
+            &pipeline, &run, &registry, &docs, &[]
         ));
     }
 
-    fn sample_skill_with_approval() -> &'static str {
-        r#"
-name: domain-analysis
-description: Domain boundary analysis
-version: "0.1.0"
-artifacts:
-  - type: domain-model
-    template: templates/domain.md
-    file_pattern: "{slug}.domain.md"
-workflow:
-  initial: draft
-  states:
-    draft:
-      transitions:
-        - to: review
-          action: submit
-    review:
-      transitions:
-        - to: approved
-          action: approve
-          requires_approval: true
-        - to: draft
-          action: revise
-    approved:
-      final: true
-prompts:
-  draft: "Analyze the domain..."
-"#
-    }
-
     #[test]
-    fn test_requires_approval_propagated_to_next_step() {
-        let mut registry = SkillRegistry::new();
-        let skill: crate::model::SkillDef =
-            serde_yaml_ng::from_str(sample_skill_with_approval()).unwrap();
-        registry.register(skill);
+    fn test_stage_requires_approval_propagated() {
+        let registry = make_registry();
 
         let pipeline = PipelineDef {
             name: "test".to_string(),
@@ -484,16 +461,19 @@ prompts:
                 skill: Some("domain-analysis".to_string()),
                 description: "Domain".to_string(),
                 depends_on: vec![],
+                requires_approval: true, // Stage requires approval
             }],
             keywords: vec![],
             scale: None,
         };
-        let run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string());
+        let mut run = PipelineRun::new(&pipeline, "Test", "test-topic".to_string(), "");
+        run.stage_states
+            .insert("domain".to_string(), StageState::InProgress);
         let docs = vec![DocumentRow {
             id: "d1".to_string(),
             doc_type: "domain-model".to_string(),
             title: "Domain Doc".to_string(),
-            status: "review".to_string(),
+            status: "active".to_string(),
             skill_name: "domain-analysis".to_string(),
             pipeline_run_id: run.id.clone(),
             file_path: "test.md".to_string(),
@@ -506,11 +486,56 @@ prompts:
             parent_doc_id: None,
         }];
 
-        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs);
-        let approve_step = steps.iter().find(|s| s.action == "approve").unwrap();
-        assert!(approve_step.requires_approval);
+        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &[]);
+        let complete_step = steps
+            .iter()
+            .find(|s| s.action == "complete_stage")
+            .unwrap();
+        assert!(complete_step.requires_approval);
+        assert!(complete_step.cli_command.contains("--confirm"));
+    }
 
-        let revise_step = steps.iter().find(|s| s.action == "revise").unwrap();
-        assert!(!revise_step.requires_approval);
+    #[test]
+    fn test_next_steps_cross_run_singleton_skip() {
+        let registry = make_registry();
+        let pipeline = PipelineDef {
+            name: "test".to_string(),
+            description: "Test".to_string(),
+            stages: vec![StageDef {
+                name: "domain".to_string(),
+                skills: vec![],
+                skill: Some("domain-analysis".to_string()),
+                description: "Domain".to_string(),
+                depends_on: vec![],
+                requires_approval: false,
+            }],
+            keywords: vec![],
+            scale: None,
+        };
+        let run = PipelineRun::new(&pipeline, "Test", "test-topic", "");
+        let docs: Vec<DocumentRow> = vec![]; // No docs in current run
+
+        // Finalized doc from another run in same topic
+        let topic_docs = vec![DocumentRow {
+            id: "d-prev".to_string(),
+            doc_type: "domain-model".to_string(),
+            title: "Previous Domain Doc".to_string(),
+            status: "final".to_string(),
+            skill_name: "domain-analysis".to_string(),
+            pipeline_run_id: "other-run-id".to_string(),
+            topic_id: "test-topic".to_string(),
+            version: 1,
+            parent_doc_id: None,
+            file_path: "test.md".to_string(),
+            created_at: None,
+            updated_at: None,
+            summary: String::new(),
+            doc_tags: "[]".to_string(),
+        }];
+
+        let steps = Advisor::next_steps(&pipeline, &run, &registry, &docs, &topic_docs);
+        let actionable: Vec<_> = steps.iter().filter(|s| s.action != "blocked").collect();
+        assert_eq!(actionable.len(), 1);
+        assert_eq!(actionable[0].action, "skip");
     }
 }

@@ -1,11 +1,9 @@
 use std::env;
 
 use anyhow::Context;
-use popsicle_core::engine::guard;
 use popsicle_core::engine::hooks::{self, HookContext, HookEvent};
 use popsicle_core::helpers;
-use popsicle_core::model::{Document, IssueStatus, PipelineDef, StageState};
-use popsicle_core::registry::SkillRegistry;
+use popsicle_core::model::{Document, PipelineDef, StageState};
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -40,16 +38,6 @@ pub enum DocCommand {
         /// Document ID
         id: String,
     },
-    /// Transition a document to a new state via a workflow action
-    Transition {
-        /// Document ID
-        id: String,
-        /// Action name (e.g., submit, approve, revise)
-        action: String,
-        /// Confirm human approval (required for transitions with requires_approval)
-        #[arg(long, default_value_t = false)]
-        confirm: bool,
-    },
     /// Generate summary and tags for a document (for document index)
     Summarize {
         /// Document ID (if omitted, processes all unsummarized documents in the run)
@@ -76,11 +64,6 @@ pub fn execute(cmd: DocCommand, format: &OutputFormat) -> anyhow::Result<()> {
             list_docs(skill.as_deref(), status.as_deref(), run.as_deref(), format)
         }
         DocCommand::Show { id } => show_doc(&id, format),
-        DocCommand::Transition {
-            id,
-            action,
-            confirm,
-        } => transition_doc(&id, &action, confirm, format),
         DocCommand::Summarize {
             id,
             run,
@@ -132,10 +115,46 @@ fn create_doc(
     let db = IndexDb::open(&layout.db_path())?;
 
     // Get the topic_id from the pipeline run
-    let pipeline_run = db
+    let mut pipeline_run = db
         .get_pipeline_run(run_id)
         .map_err(|e| anyhow::anyhow!("{}", e))?
         .ok_or_else(|| anyhow::anyhow!("Pipeline run '{}' not found", run_id))?;
+
+    // Reject document creation if the stage is Blocked
+    if let Some(pipeline_def) = find_pipeline(&pipeline_run.pipeline_name)? {
+        for stage in &pipeline_def.stages {
+            if stage.skill_names().contains(&skill_name) {
+                if let Some(StageState::Blocked) = pipeline_run.stage_states.get(&stage.name) {
+                    anyhow::bail!(
+                        "Stage '{}' is blocked. Complete upstream dependencies first.\n  Run `popsicle pipeline next --run {}` to see what to do.",
+                        stage.name,
+                        run_id
+                    );
+                }
+                break;
+            }
+        }
+    }
+
+    // Verify this run holds the topic lock
+    let topic_lock = db
+        .get_topic_lock(&pipeline_run.topic_id)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    match topic_lock {
+        Some(ref lock_run_id) if lock_run_id != run_id => {
+            anyhow::bail!(
+                "Topic is locked by a different pipeline run '{}'. This run ('{}') cannot create documents.",
+                lock_run_id,
+                run_id
+            );
+        }
+        None => {
+            anyhow::bail!(
+                "Topic is not locked by any pipeline run. Start an issue first with `popsicle issue start`."
+            );
+        }
+        _ => {} // lock held by this run — OK
+    }
 
     let mut doc = Document::new(
         &artifact.artifact_type,
@@ -144,7 +163,7 @@ fn create_doc(
         run_id,
         &pipeline_run.topic_id,
     );
-    doc.status = skill.workflow.initial.clone();
+    doc.status = "active".to_string();
 
     // Try to load template body
     let template_path = skill.source_dir.join(&artifact.template);
@@ -159,6 +178,22 @@ fn create_doc(
     FileStorage::write_document(&doc, &file_path)?;
 
     db.upsert_document(&doc)?;
+
+    // Auto-transition stage: Ready → InProgress when first doc created
+    if let Some(ref pipeline_def) = find_pipeline(&pipeline_run.pipeline_name)? {
+        for stage in &pipeline_def.stages {
+            if stage.skill_names().contains(&skill_name) {
+                if let Some(StageState::Ready) = pipeline_run.stage_states.get(&stage.name) {
+                    pipeline_run.stage_states
+                        .insert(stage.name.clone(), StageState::InProgress);
+                    pipeline_run.updated_at = chrono::Utc::now();
+                    db.upsert_pipeline_run(&pipeline_run)
+                        .map_err(|e| anyhow::anyhow!("{}", e))?;
+                }
+                break;
+            }
+        }
+    }
 
     let hook_ctx = HookContext::from_document(&doc, "artifact_created");
     let hook_result = hooks::run_hook(&skill.hooks, HookEvent::OnArtifactCreated, &hook_ctx)
@@ -303,274 +338,6 @@ fn find_pipeline(name: &str) -> anyhow::Result<Option<PipelineDef>> {
         Err(popsicle_core::error::PopsicleError::Storage(_)) => Ok(None),
         Err(e) => Err(anyhow::anyhow!("{}", e)),
     }
-}
-
-/// After a document reaches a final state, check if the Pipeline Stage
-/// should be updated (Ready → InProgress, or InProgress → Completed).
-fn sync_pipeline_stage(
-    db: &IndexDb,
-    doc: &Document,
-    skill_is_final: bool,
-    registry: &SkillRegistry,
-) -> anyhow::Result<Option<String>> {
-    let run_id = &doc.pipeline_run_id;
-    let mut run = match db
-        .get_pipeline_run(run_id)
-        .map_err(|e| anyhow::anyhow!("{}", e))?
-    {
-        Some(r) => r,
-        None => return Ok(None),
-    };
-
-    let pipeline_def = match find_pipeline(&run.pipeline_name)? {
-        Some(p) => p,
-        None => return Ok(None),
-    };
-
-    let stage = pipeline_def
-        .stages
-        .iter()
-        .find(|s| s.skill_names().contains(&doc.skill_name.as_str()));
-
-    let stage = match stage {
-        Some(s) => s,
-        None => return Ok(None),
-    };
-
-    let current_state = run
-        .stage_states
-        .get(&stage.name)
-        .copied()
-        .unwrap_or(StageState::Blocked);
-
-    if current_state == StageState::Ready {
-        run.stage_states
-            .insert(stage.name.clone(), StageState::InProgress);
-    }
-
-    if skill_is_final && current_state != StageState::Completed {
-        let all_docs = db
-            .query_documents(None, None, Some(run_id))
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-        let all_skills_done = stage.skill_names().iter().all(|skill_name| {
-            let skill_docs: Vec<_> = all_docs
-                .iter()
-                .filter(|d| &d.skill_name == skill_name)
-                .collect();
-
-            if skill_docs.is_empty() {
-                return false;
-            }
-
-            skill_docs.iter().all(|d| {
-                registry
-                    .get(&d.skill_name)
-                    .map(|s| s.is_final_state(&d.status))
-                    .unwrap_or(false)
-            })
-        });
-
-        if all_skills_done {
-            run.stage_states
-                .insert(stage.name.clone(), StageState::Completed);
-            run.refresh_states(&pipeline_def);
-
-            let all_pipeline_done = pipeline_def.stages.iter().all(|s| {
-                matches!(
-                    run.stage_states.get(&s.name),
-                    Some(StageState::Completed | StageState::Skipped)
-                )
-            });
-            if all_pipeline_done
-                && let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id)
-                && issue.status != IssueStatus::Done
-            {
-                issue.status = IssueStatus::Done;
-                let _ = db.update_issue(&issue);
-            }
-        }
-    }
-
-    run.updated_at = chrono::Utc::now();
-    db.upsert_pipeline_run(&run)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    let new_state = run.stage_states.get(&stage.name).copied();
-    Ok(new_state.map(|s| format!("Stage '{}' → {}", stage.name, s)))
-}
-
-fn transition_doc(
-    id: &str,
-    action: &str,
-    confirmed: bool,
-    format: &OutputFormat,
-) -> anyhow::Result<()> {
-    let layout = project_layout()?;
-    let registry = load_registry()?;
-    let db = IndexDb::open(&layout.db_path())?;
-
-    let docs = db
-        .query_documents(None, None, None)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    let doc_row = docs
-        .iter()
-        .find(|d| d.id == id)
-        .context(format!("Document not found: {}", id))?;
-
-    let mut doc = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    if doc.skill_name.is_empty() {
-        doc.skill_name = doc_row.skill_name.clone();
-    }
-
-    let skill = registry
-        .get(&doc.skill_name)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    let transition = skill
-        .available_actions(&doc.status)
-        .into_iter()
-        .find(|t| t.action == action)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "Action '{}' not available from state '{}'",
-                action,
-                doc.status
-            )
-        })?;
-
-    if transition.requires_approval && !confirmed {
-        anyhow::bail!(
-            "Action '{}' on '{}' requires human approval. Review the document and re-run with --confirm:\n  popsicle doc transition {} {} --confirm",
-            action,
-            doc.title,
-            id,
-            action
-        );
-    }
-
-    if let Some(ref guard_expr) = transition.guard {
-        let all_docs = db
-            .query_documents(None, None, Some(&doc.pipeline_run_id))
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-        let pipeline_def = db
-            .get_pipeline_run(&doc.pipeline_run_id)
-            .map_err(|e| anyhow::anyhow!("{}", e))?
-            .and_then(|run| find_pipeline(&run.pipeline_name).ok().flatten());
-
-        let guard_result = guard::check_guard(
-            guard_expr,
-            &doc,
-            &all_docs,
-            &registry,
-            pipeline_def.as_ref(),
-        )
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-        if !guard_result.passed {
-            anyhow::bail!(
-                "Guard '{}' failed: {}",
-                guard_result.guard_name,
-                guard_result.message
-            );
-        }
-    }
-
-    let new_state = skill
-        .try_transition(&doc.status, action)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    let old_status = doc.status.clone();
-    let is_final = skill.is_final_state(&new_state);
-    doc.status = new_state.clone();
-    doc.updated_at = Some(chrono::Utc::now());
-
-    FileStorage::write_document(&doc, std::path::Path::new(&doc_row.file_path))?;
-    db.upsert_document(&doc)?;
-
-    let stage_update = sync_pipeline_stage(&db, &doc, is_final, &registry)?;
-
-    let hook_ctx = HookContext::from_document(&doc, if is_final { "complete" } else { "enter" });
-    let hook_event = if is_final {
-        HookEvent::OnComplete
-    } else {
-        HookEvent::OnEnter
-    };
-    let hook_result = hooks::run_hook(&skill.hooks, hook_event, &hook_ctx)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    // When document reaches final state, output LLM summarize instructions
-    let llm_summarize = if is_final {
-        Some(serde_json::json!({
-            "action": "llm_summarize",
-            "description": "Generate summary and tags with LLM for document index",
-            "step1_generate_prompt": format!(
-                "popsicle doc summarize {} --generate-prompt --format json", doc.id
-            ),
-            "step2_write_result": format!(
-                "popsicle doc summarize {} --summary \"<LLM summary>\" --tags \"<comma,separated,tags>\"",
-                doc.id
-            ),
-        }))
-    } else {
-        None
-    };
-
-    match format {
-        OutputFormat::Text => {
-            println!(
-                "Transitioned document '{}': {} --{}--> {}",
-                doc.title, old_status, action, new_state
-            );
-            if let Some(stage_msg) = &stage_update {
-                println!("  {}", stage_msg);
-            }
-            if let Some(ref result) = hook_result {
-                println!(
-                    "  Hook [{}]: {}",
-                    result.event,
-                    if result.success { "ok" } else { "failed" }
-                );
-                if !result.stdout.trim().is_empty() {
-                    println!("    {}", result.stdout.trim());
-                }
-            }
-            if llm_summarize.is_some() {
-                println!("  [ACTION REQUIRED] Generate summary with LLM:");
-                println!(
-                    "    Step 1: popsicle doc summarize {} --generate-prompt --format json",
-                    doc.id
-                );
-                println!(
-                    "    Step 2: popsicle doc summarize {} --summary \"<LLM output>\" --tags \"<LLM tags>\"",
-                    doc.id
-                );
-            }
-        }
-        OutputFormat::Json => {
-            let result = serde_json::json!({
-                "id": doc.id,
-                "action": action,
-                "from": old_status,
-                "to": new_state,
-                "title": doc.title,
-                "is_final": is_final,
-                "stage_update": stage_update,
-                "llm_summarize": llm_summarize,
-                "hook": hook_result.as_ref().map(|r| serde_json::json!({
-                    "event": r.event.to_string(),
-                    "success": r.success,
-                    "stdout": r.stdout.trim(),
-                })),
-            });
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-    }
-
-    Ok(())
 }
 
 /// Build a prompt that an LLM can use to generate a high-quality summary and tags.
@@ -766,7 +533,7 @@ mod tests {
             id: "doc-123".to_string(),
             doc_type: "rfc".to_string(),
             title: "JWT Authentication".to_string(),
-            status: "approved".to_string(),
+            status: "final".to_string(),
             skill_name: "rfc-writer".to_string(),
             pipeline_run_id: "run-1".to_string(),
             file_path: "test.md".to_string(),
@@ -796,7 +563,7 @@ mod tests {
             id: "doc-456".to_string(),
             doc_type: "adr".to_string(),
             title: "Choose Redis for Session".to_string(),
-            status: "approved".to_string(),
+            status: "final".to_string(),
             skill_name: "adr-writer".to_string(),
             pipeline_run_id: "run-2".to_string(),
             file_path: "test.md".to_string(),

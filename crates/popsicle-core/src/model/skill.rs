@@ -21,6 +21,10 @@ pub struct SkillDef {
     #[serde(default)]
     pub hooks: HooksDef,
 
+    /// How documents produced by this skill accumulate within a Topic.
+    #[serde(default)]
+    pub doc_lifecycle: DocLifecycle,
+
     #[serde(skip)]
     pub source_dir: PathBuf,
     /// Writing guide loaded from guide.md (not part of skill.yaml).
@@ -30,6 +34,26 @@ pub struct SkillDef {
 
 fn default_version() -> String {
     "0.1.0".to_string()
+}
+
+/// How documents produced by this skill accumulate within a Topic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DocLifecycle {
+    /// One document per topic — new pipeline runs update the existing doc (default).
+    #[default]
+    Singleton,
+    /// Each pipeline run creates a new document — history accumulates (e.g. ADRs).
+    Cumulative,
+}
+
+impl std::fmt::Display for DocLifecycle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Singleton => write!(f, "singleton"),
+            Self::Cumulative => write!(f, "cumulative"),
+        }
+    }
 }
 
 /// How important an upstream input is to the current Skill.
@@ -134,6 +158,11 @@ impl SkillDef {
 
         skill.source_dir = dir;
         Ok(skill)
+    }
+
+    /// Returns true if this skill produces cumulative documents (like ADRs).
+    pub fn is_cumulative(&self) -> bool {
+        self.doc_lifecycle == DocLifecycle::Cumulative
     }
 
     /// Get the template file path (resolved relative to skill source directory).
@@ -364,5 +393,56 @@ workflow:
         assert_eq!(Relevance::Low.to_string(), "low");
         assert_eq!(Relevance::Medium.to_string(), "medium");
         assert_eq!(Relevance::High.to_string(), "high");
+    }
+
+    #[test]
+    fn test_doc_lifecycle_default_is_singleton() {
+        let yaml = r#"
+name: test-skill
+description: Test
+version: "0.1.0"
+artifacts:
+  - type: test-doc
+    template: t.md
+    file_pattern: "{slug}.test.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: done
+          action: finish
+    done:
+      final: true
+"#;
+        let skill: SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(skill.doc_lifecycle, DocLifecycle::Singleton);
+        assert!(!skill.is_cumulative());
+    }
+
+    #[test]
+    fn test_doc_lifecycle_cumulative() {
+        let yaml = r#"
+name: adr-writer
+description: Architecture decisions
+version: "0.1.0"
+doc_lifecycle: cumulative
+artifacts:
+  - type: adr
+    template: t.md
+    file_pattern: "{slug}.adr.md"
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: done
+          action: finish
+    done:
+      final: true
+"#;
+        let skill: SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(skill.doc_lifecycle, DocLifecycle::Cumulative);
+        assert!(skill.is_cumulative());
     }
 }

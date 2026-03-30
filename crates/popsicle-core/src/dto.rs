@@ -55,12 +55,41 @@ pub struct ProjectInfo {
     pub initialized: bool,
 }
 
+// ── Project entity ──
+
+#[derive(Serialize)]
+pub struct ProjectEntityInfo {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub topic_count: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct ProjectEntityDetail {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub topics: Vec<TopicInfo>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Serialize)]
 pub struct SkillInfo {
     pub name: String,
     pub description: String,
     pub version: String,
     pub artifact_types: Vec<String>,
+    pub doc_lifecycle: String,
     pub workflow_initial: String,
     pub inputs: Vec<SkillInputInfo>,
     pub workflow_states: Vec<WorkflowStateInfo>,
@@ -113,6 +142,7 @@ pub struct PipelineRunInfo {
     pub created_at: String,
     pub updated_at: String,
     pub topic_id: String,
+    pub issue_id: String,
     pub run_type: String,
 }
 
@@ -190,6 +220,8 @@ pub struct NextStepInfo {
     pub requires_approval: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_command: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hints: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -243,8 +275,8 @@ pub struct IssueInfo {
     pub issue_type: String,
     pub priority: String,
     pub status: String,
+    pub topic_id: String,
     pub pipeline: Option<String>,
-    pub pipeline_run_id: Option<String>,
     pub labels: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -259,8 +291,8 @@ pub struct IssueFull {
     pub issue_type: String,
     pub priority: String,
     pub status: String,
+    pub topic_id: String,
     pub pipeline: Option<String>,
-    pub pipeline_run_id: Option<String>,
     pub labels: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -271,8 +303,8 @@ pub struct IssueFull {
 #[derive(Serialize)]
 pub struct IssueProgress {
     pub issue_key: String,
-    pub pipeline_run_id: Option<String>,
-    pub pipeline_name: Option<String>,
+    pub topic_id: String,
+    pub pipeline_runs: Vec<PipelineRunInfo>,
     pub stages_total: u32,
     pub stages_completed: u32,
     pub docs_total: u32,
@@ -466,6 +498,7 @@ pub struct TopicInfo {
     pub name: String,
     pub slug: String,
     pub description: String,
+    pub project_id: String,
     pub tags: Vec<String>,
     pub created_at: String,
     pub run_count: u32,
@@ -478,10 +511,12 @@ pub struct TopicDetailInfo {
     pub name: String,
     pub slug: String,
     pub description: String,
+    pub project_id: String,
     pub tags: Vec<String>,
     pub created_at: String,
     pub runs: Vec<PipelineRunInfo>,
     pub documents: Vec<DocInfo>,
+    pub issues: Vec<IssueInfo>,
 }
 
 // ── Memory ──

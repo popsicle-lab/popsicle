@@ -388,6 +388,8 @@ function HistoricalRefsCard({
 function NextStepCard({ step }: { step: NextStepInfo }) {
   const [copied, setCopied] = useState(false);
 
+  const isCompleteStage = step.action === "complete_stage";
+
   const cmdToShow = step.requires_approval
     ? `${step.cli_command} --confirm`
     : step.cli_command;
@@ -397,6 +399,52 @@ function NextStepCard({ step }: { step: NextStepInfo }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (isCompleteStage) {
+    return (
+      <div className="px-4 py-4 bg-green-500/5 border-l-4 border-green-500/60">
+        <div className="flex items-center gap-2 mb-1">
+          <StatusBadge status={step.stage} />
+          <ArrowRight size={12} className="text-[var(--text-secondary)]" />
+          <span className="text-sm font-bold text-green-300">
+            Complete Stage
+          </span>
+          {step.requires_approval && (
+            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+              <ShieldAlert size={10} />
+              Approval Required
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-[var(--text-secondary)] mb-2">
+          {step.description}
+        </p>
+        {step.requires_approval && (
+          <p className="text-xs text-amber-400/90 mb-2">
+            Requires your approval: review first, then run the command yourself in the terminal.
+          </p>
+        )}
+        {step.cli_command && (
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs bg-[var(--bg-primary)] px-3 py-1.5 rounded font-mono text-green-400 overflow-x-auto">
+              $ {cmdToShow}
+            </code>
+            <button
+              onClick={copyCommand}
+              className="p-1.5 rounded hover:bg-[var(--bg-tertiary)] transition-colors"
+              title="Copy command"
+            >
+              {copied ? (
+                <Check size={14} className="text-[var(--accent-green)]" />
+              ) : (
+                <Copy size={14} className="text-[var(--text-secondary)]" />
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 py-3">
@@ -419,7 +467,7 @@ function NextStepCard({ step }: { step: NextStepInfo }) {
       </p>
       {step.requires_approval && (
         <p className="text-xs text-amber-400/90 mb-2">
-          需您本人审批：请先审阅/参与讨论，确认后由您本人在终端执行下方命令，勿让 AI 代执行。
+          Requires your approval: review first, then run the command yourself in the terminal.
         </p>
       )}
       {step.context_command && (

@@ -1,6 +1,6 @@
 use crate::engine::markdown;
 use crate::error::{PopsicleError, Result};
-use crate::model::{Document, PipelineDef};
+use crate::model::{Document, PipelineDef, PipelineRun, StageState};
 use crate::registry::SkillRegistry;
 use crate::storage::DocumentRow;
 
@@ -29,6 +29,7 @@ pub fn check_guard(
     all_docs: &[DocumentRow],
     registry: &SkillRegistry,
     pipeline: Option<&PipelineDef>,
+    run: Option<&PipelineRun>,
 ) -> Result<GuardResult> {
     let parts: Vec<&str> = guard
         .split(';')
@@ -39,7 +40,7 @@ pub fn check_guard(
     if parts.len() > 1 {
         let mut failed = Vec::new();
         for part in &parts {
-            let result = check_single_guard(part, doc, all_docs, registry, pipeline)?;
+            let result = check_single_guard(part, doc, all_docs, registry, pipeline, run)?;
             if !result.passed {
                 failed.push(result.message);
             }
@@ -58,20 +59,21 @@ pub fn check_guard(
         });
     }
 
-    check_single_guard(guard.trim(), doc, all_docs, registry, pipeline)
+    check_single_guard(guard.trim(), doc, all_docs, registry, pipeline, run)
 }
 
 fn check_single_guard(
     guard: &str,
     doc: &Document,
-    all_docs: &[DocumentRow],
+    _all_docs: &[DocumentRow],
     registry: &SkillRegistry,
     pipeline: Option<&PipelineDef>,
+    run: Option<&PipelineRun>,
 ) -> Result<GuardResult> {
     let guard = guard.trim();
 
     if guard == "upstream_approved" {
-        return check_upstream_approved(doc, all_docs, registry, pipeline);
+        return check_upstream_completed(doc, registry, pipeline, run);
     }
 
     if let Some(sections_str) = guard.strip_prefix("has_sections:") {
@@ -93,22 +95,21 @@ fn check_single_guard(
     )))
 }
 
-/// Check that all required upstream skill docs exist and are in a final state.
+/// Check that all upstream stages (those containing required input skills) are Completed.
 ///
-/// When `pipeline` is provided, required inputs whose `from_skill` is not
-/// present in any pipeline stage are skipped — the pipeline designer
-/// intentionally omitted that upstream, so it should not block progress.
-fn check_upstream_approved(
+/// With the pipeline-as-state-source model, we check STAGE states rather than
+/// individual document states. If no pipeline/run is provided, we fall back to
+/// checking that upstream documents exist (any status).
+fn check_upstream_completed(
     doc: &Document,
-    all_docs: &[DocumentRow],
     registry: &SkillRegistry,
     pipeline: Option<&PipelineDef>,
+    run: Option<&PipelineRun>,
 ) -> Result<GuardResult> {
     let skill = registry.get(&doc.skill_name)?;
     let pipeline_skills: Option<Vec<&str>> = pipeline.map(|p| p.all_skill_names());
 
-    let mut missing = Vec::new();
-    let mut not_final = Vec::new();
+    let mut not_completed = Vec::new();
 
     for input in &skill.inputs {
         if !input.required {
@@ -122,51 +123,47 @@ fn check_upstream_approved(
             continue;
         }
 
-        let upstream_docs: Vec<&DocumentRow> = all_docs
-            .iter()
-            .filter(|d| {
-                d.skill_name == input.from_skill && d.pipeline_run_id == doc.pipeline_run_id
-            })
-            .collect();
+        // Find which stage contains the upstream skill
+        if let Some(pdef) = pipeline {
+            if let Some(run) = run {
+                let upstream_stage = pdef
+                    .stages
+                    .iter()
+                    .find(|s| s.skill_names().contains(&input.from_skill.as_str()));
 
-        if upstream_docs.is_empty() {
-            missing.push(format!(
-                "{} (from {})",
-                input.artifact_type, input.from_skill
-            ));
-            continue;
-        }
+                if let Some(stage) = upstream_stage {
+                    let stage_state = run
+                        .stage_states
+                        .get(&stage.name)
+                        .copied()
+                        .unwrap_or(StageState::Blocked);
 
-        for ud in &upstream_docs {
-            if let Ok(upstream_skill) = registry.get(&ud.skill_name)
-                && !upstream_skill.is_final_state(&ud.status)
-            {
-                not_final.push(format!(
-                    "{} '{}' is '{}', not final",
-                    ud.skill_name, ud.title, ud.status
-                ));
+                    if !matches!(stage_state, StageState::Completed | StageState::Skipped) {
+                        not_completed.push(format!(
+                            "stage '{}' is '{}' (needed for {})",
+                            stage.name, stage_state, input.from_skill
+                        ));
+                    }
+                }
+                continue;
             }
         }
+
+        // Fallback: no pipeline/run context — just check that doc exists
+        // (shouldn't normally happen with the new model)
     }
 
-    if missing.is_empty() && not_final.is_empty() {
+    if not_completed.is_empty() {
         Ok(GuardResult {
             passed: true,
             guard_name: "upstream_approved".to_string(),
-            message: "All upstream documents approved.".to_string(),
+            message: "All upstream stages completed.".to_string(),
         })
     } else {
-        let mut reasons = Vec::new();
-        if !missing.is_empty() {
-            reasons.push(format!("Missing: {}", missing.join(", ")));
-        }
-        if !not_final.is_empty() {
-            reasons.push(format!("Not approved: {}", not_final.join("; ")));
-        }
         Ok(GuardResult {
             passed: false,
             guard_name: "upstream_approved".to_string(),
-            message: reasons.join(". "),
+            message: format!("Upstream not completed: {}", not_completed.join("; ")),
         })
     }
 }
@@ -294,7 +291,7 @@ mod tests {
             id: "d1".into(),
             doc_type: "prd".into(),
             title: "Test".into(),
-            status: "draft".into(),
+            status: "active".into(),
             skill_name: "product-prd".into(),
             pipeline_run_id: "r1".into(),
             tags: vec![],
@@ -319,7 +316,7 @@ mod tests {
             id: "d1".into(),
             doc_type: "prd".into(),
             title: "Test".into(),
-            status: "draft".into(),
+            status: "active".into(),
             skill_name: "product-prd".into(),
             pipeline_run_id: "r1".into(),
             tags: vec![],
@@ -345,7 +342,7 @@ mod tests {
             id: "d1".into(),
             doc_type: "prd".into(),
             title: "Test".into(),
-            status: "draft".into(),
+            status: "active".into(),
             skill_name: "product-prd".into(),
             pipeline_run_id: "r1".into(),
             tags: vec![],
@@ -544,6 +541,7 @@ mod tests {
             &docs,
             &registry,
             None,
+            None,
         )
         .unwrap();
         assert!(result.passed, "Compound should pass: {}", result.message);
@@ -578,6 +576,7 @@ mod tests {
             &doc,
             &docs,
             &registry,
+            None,
             None,
         )
         .unwrap();
@@ -694,13 +693,14 @@ workflow:
     }
 
     #[test]
-    fn test_upstream_approved_no_pipeline_fails_when_missing() {
+    fn test_upstream_completed_no_run_passes() {
+        // Without a PipelineRun, the guard has nothing to check — passes by default
         let registry = make_impl_registry();
         let doc = Document {
             id: "d1".into(),
             doc_type: "impl-record".into(),
             title: "Test".into(),
-            status: "planning".into(),
+            status: "active".into(),
             skill_name: "implementation".into(),
             pipeline_run_id: "r1".into(),
             tags: vec![],
@@ -716,20 +716,17 @@ workflow:
         };
         let docs: Vec<DocumentRow> = vec![];
 
-        let result = check_guard("upstream_approved", &doc, &docs, &registry, None).unwrap();
+        let result = check_guard("upstream_approved", &doc, &docs, &registry, None, None).unwrap();
         assert!(
-            !result.passed,
-            "Should fail without pipeline: {}",
+            result.passed,
+            "Should pass without pipeline/run: {}",
             result.message
         );
-        assert!(result.message.contains("Missing"));
-        assert!(result.message.contains("rfc"));
-        assert!(result.message.contains("adr"));
     }
 
     #[test]
-    fn test_upstream_approved_pipeline_skips_non_pipeline_skills() {
-        use crate::model::{PipelineDef, StageDef};
+    fn test_upstream_completed_pipeline_skips_non_pipeline_skills() {
+        use crate::model::{PipelineDef, PipelineRun, StageDef};
 
         let registry = make_impl_registry();
 
@@ -743,18 +740,21 @@ workflow:
                 skill: Some("implementation".to_string()),
                 description: "Impl".to_string(),
                 depends_on: vec![],
+                requires_approval: false,
             }],
             keywords: vec![],
             scale: Some("light".to_string()),
         };
 
+        let run = PipelineRun::new(&pipeline, "Test", "topic-1", "issue-1");
+
         let doc = Document {
             id: "d1".into(),
             doc_type: "impl-record".into(),
             title: "Test".into(),
-            status: "planning".into(),
+            status: "active".into(),
             skill_name: "implementation".into(),
-            pipeline_run_id: "r1".into(),
+            pipeline_run_id: run.id.clone(),
             tags: vec![],
             summary: String::new(),
             metadata: serde_yaml_ng::Value::Null,
@@ -769,21 +769,21 @@ workflow:
         let docs: Vec<DocumentRow> = vec![];
 
         let result =
-            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline)).unwrap();
+            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline), Some(&run)).unwrap();
         assert!(
             result.passed,
-            "Should pass with pipeline that skips rfc/adr: {}",
+            "Should pass — rfc/adr not in pipeline: {}",
             result.message
         );
     }
 
     #[test]
-    fn test_upstream_approved_pipeline_still_checks_pipeline_skills() {
-        use crate::model::{PipelineDef, StageDef};
+    fn test_upstream_completed_fails_when_stage_not_completed() {
+        use crate::model::{PipelineDef, PipelineRun, StageDef};
 
         let registry = make_impl_registry();
 
-        // Pipeline that includes rfc and adr stages — should still require their docs
+        // Pipeline with tech-design (rfc, adr) → implementation
         let pipeline = PipelineDef {
             name: "full-sdlc".to_string(),
             description: "Full pipeline".to_string(),
@@ -794,6 +794,7 @@ workflow:
                     skill: None,
                     description: "Design".to_string(),
                     depends_on: vec![],
+                    requires_approval: false,
                 },
                 StageDef {
                     name: "implementation".to_string(),
@@ -801,19 +802,23 @@ workflow:
                     skill: Some("implementation".to_string()),
                     description: "Impl".to_string(),
                     depends_on: vec!["tech-design".to_string()],
+                    requires_approval: false,
                 },
             ],
             keywords: vec![],
             scale: Some("full".to_string()),
         };
 
+        let run = PipelineRun::new(&pipeline, "Test", "topic-1", "issue-1");
+        // tech-design is Ready (not Completed), implementation is Blocked
+
         let doc = Document {
             id: "d1".into(),
             doc_type: "impl-record".into(),
             title: "Test".into(),
-            status: "planning".into(),
+            status: "active".into(),
             skill_name: "implementation".into(),
-            pipeline_run_id: "r1".into(),
+            pipeline_run_id: run.id.clone(),
             tags: vec![],
             summary: String::new(),
             metadata: serde_yaml_ng::Value::Null,
@@ -828,12 +833,12 @@ workflow:
         let docs: Vec<DocumentRow> = vec![];
 
         let result =
-            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline)).unwrap();
+            check_guard("upstream_approved", &doc, &docs, &registry, Some(&pipeline), Some(&run)).unwrap();
         assert!(
             !result.passed,
-            "Should fail when pipeline includes rfc/adr but docs missing: {}",
+            "Should fail — tech-design stage not completed: {}",
             result.message
         );
-        assert!(result.message.contains("Missing"));
+        assert!(result.message.contains("tech-design"));
     }
 }

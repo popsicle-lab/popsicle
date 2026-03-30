@@ -10,9 +10,10 @@ pub struct Issue {
     pub issue_type: IssueType,
     pub priority: Priority,
     pub status: IssueStatus,
+    /// The topic this issue belongs to.
+    pub topic_id: String,
     /// Explicitly chosen pipeline template name (bypasses recommender).
     pub pipeline: Option<String>,
-    pub pipeline_run_id: Option<String>,
     pub labels: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -133,7 +134,7 @@ impl std::str::FromStr for IssueStatus {
 }
 
 impl Issue {
-    pub fn new(key: String, title: &str, issue_type: IssueType) -> Self {
+    pub fn new(key: String, title: &str, issue_type: IssueType, topic_id: impl Into<String>) -> Self {
         let now = Utc::now();
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -143,8 +144,8 @@ impl Issue {
             issue_type,
             priority: Priority::Medium,
             status: IssueStatus::Backlog,
+            topic_id: topic_id.into(),
             pipeline: None,
-            pipeline_run_id: None,
             labels: Vec::new(),
             created_at: now,
             updated_at: now,

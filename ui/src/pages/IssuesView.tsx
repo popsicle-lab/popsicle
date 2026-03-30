@@ -7,7 +7,6 @@ import {
   listUserStories,
   listTestCases,
   listBugs,
-  listDiscussions,
   type IssueInfo,
   type IssueProgress,
   type PipelineInfo,
@@ -69,7 +68,7 @@ export function IssuesView({ setPage }: Props) {
       .then((list) => {
         setIssues(list);
 
-        const active = list.filter((i) => i.pipeline_run_id);
+        const active = list.filter((i) => i.status === "in_progress" || i.status === "ready");
         Promise.all(
           active.map((i) =>
             getIssueProgress(i.key)
@@ -86,14 +85,11 @@ export function IssuesView({ setPage }: Props) {
 
         Promise.all(
           list.map(async (issue) => {
-            const runId = issue.pipeline_run_id ?? undefined;
             const [stories, tests, bugs, discussions] = await Promise.all([
               listUserStories({ issueId: issue.id }).catch(() => []),
-              listTestCases({ runId }).catch(() => []),
+              listTestCases({}).catch(() => []),
               listBugs({ issueId: issue.id }).catch(() => []),
-              runId
-                ? listDiscussions({ runId }).catch(() => [])
-                : Promise.resolve([]),
+              Promise.resolve([]),
             ]);
             return [
               issue.key,
@@ -391,6 +387,7 @@ function CreateIssueForm({
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
+  const [topicName, setTopicName] = useState("");
   const [issueType, setIssueType] = useState("product");
   const [priority, setPriority] = useState("medium");
   const [pipeline, setPipeline] = useState("");
@@ -404,13 +401,14 @@ function CreateIssueForm({
   }, []);
 
   const submit = async () => {
-    if (!title.trim()) return;
+    if (!title.trim() || !topicName.trim()) return;
     setSubmitting(true);
     setFormError(null);
     try {
       await createIssue({
         issueType,
         title: title.trim(),
+        topicName: topicName.trim(),
         description: description.trim() || undefined,
         priority,
         pipeline: pipeline || undefined,
@@ -460,6 +458,20 @@ function CreateIssueForm({
             className="w-full px-3 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--accent)]"
           />
         </div>
+        <div>
+          <label className="block text-xs text-[var(--text-secondary)] mb-1">
+            Topic
+          </label>
+          <input
+            value={topicName}
+            onChange={(e) => setTopicName(e.target.value)}
+            placeholder="Topic name (e.g. jwt-migration)"
+            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--accent)]"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <div className="flex gap-4">
           <div className="flex-1">
             <label className="block text-xs text-[var(--text-secondary)] mb-1">
@@ -533,7 +545,7 @@ function CreateIssueForm({
       <div className="flex justify-end">
         <button
           onClick={submit}
-          disabled={!title.trim() || submitting}
+          disabled={!title.trim() || !topicName.trim() || submitting}
           className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {submitting ? "Creating..." : "Create Issue"}

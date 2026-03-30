@@ -8,16 +8,16 @@ It organizes the full software development lifecycle through composable **Skills
 
 - **Module** — A self-contained distribution unit packaging Skills, Pipelines, and a Bootstrap spec; one active module per project, distributed via a git-based [registry](https://popsicle-lab.com/registry)
 - **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `arch-debate`, `rfc-writer`, `implementation`). Skills declare `doc_lifecycle: singleton | cumulative` (see below).
-- **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Topic for continuity and revision support
+- **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Topic for continuity and revision support. **The pipeline stage is the single source of truth for document state** — documents are created as "active" and become "final" when their stage is completed
 - **Project** — Required top-level container for Topics. Must be created before any Topics or Issues. Organizes work across multiple themes (e.g., "backend-v2", "mobile-app")
-- **Topic** — Document collection with tags, reusable across Issues; belongs to a Project (required). Tags enable automatic Issue→Topic matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration")
-- **Issue** — Requirement entry point — must be created before any work. Auto-matched to a Topic by tags, or explicitly specified with `--topic`. `issue start` is the **only** way to create a PipelineRun
+- **Topic** — Document collection with tags, reusable across Issues; belongs to a Project (required). Tags enable automatic Issue→Topic matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration"). Topics have an **exclusive lock** (`locked_by_run_id`) — only one pipeline run can operate on a Topic at a time
+- **Issue** — Requirement entry point — must be created before any work. Auto-matched to a Topic by tags, or explicitly specified with `--topic`. `issue start` is the **only** way to create a PipelineRun and acquires the Topic lock — rejects if the Topic is already locked by another run
 - **PipelineRun** — State machine on a Topic, triggered exclusively by `issue start`. Cannot be created directly — use `issue start` to begin a run
-- **Document** — Belongs to a PipelineRun and Topic. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness
+- **Document** — Belongs to a PipelineRun and Topic. Created as "active" and becomes "final" when the owning pipeline stage is completed. Documents no longer have their own state machine — the pipeline stage is the source of truth. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness
 - **Bootstrap** — LLM-driven project initialization that reads a module's `bootstrap.md` (natural language spec), scans the project, and generates a structured plan covering architecture, bounded contexts, conventions, and team decisions — all before the first pipeline run
 - **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
-- **Guard** — Conditions on workflow transitions that enforce upstream approval and document completeness
+- **Guard** — Conditions on stage transitions that enforce upstream stage completion and document completeness
 - **Advisor** — Recommends the next step (CLI command + AI prompt) based on current pipeline and document state
 - **Project Context** — Auto-scanned technical profile (tech stack, structure, dev practices, dependencies) injected into all AI prompts as background context
 - **Memory** — Two-layer (short-term / long-term) cross-session memory for bugs, decisions, patterns, and gotchas, stored in a single Markdown file with event-driven staleness
@@ -205,6 +205,9 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle pipeline archive [--run <id>]` | Archive a completed pipeline run |
 | `popsicle pipeline recommend --task <desc>` | Recommend pipeline based on task description |
 | `popsicle pipeline revise <run-id> --stages <list>` | Revise specific stages of a completed pipeline run |
+| `popsicle pipeline stage start <stage> [--run <id>]` | Start a pipeline stage (marks it in-progress) |
+| `popsicle pipeline stage complete <stage> [--run <id>] [--confirm]` | Complete a pipeline stage; `--confirm` required for stages with `requires_approval` |
+| `popsicle pipeline unlock [--run <id>]` | Force-release the Topic lock held by a pipeline run |
 
 ### Topic Management
 
@@ -277,7 +280,6 @@ Skill loading priority (later overrides earlier):
 | `popsicle doc create <skill> --title <t> --run <id>` | Create a document from skill template |
 | `popsicle doc list [--skill/--status/--run]` | Query documents |
 | `popsicle doc show <id>` | View document content and metadata |
-| `popsicle doc transition <id> <action>` | Advance document through workflow (guards enforced) |
 
 ### Issue Tracking
 
@@ -505,7 +507,7 @@ Use `popsicle pipeline recommend --task "<description>"` to get a recommendation
 
 ## Enforced Workflow
 
-Popsicle enforces a strict entity creation order:
+Popsicle enforces a strict entity creation order and an exclusive Topic lock:
 
 ```
 Project → Topic (with tags) → Issue → PipelineRun → Document
@@ -514,33 +516,30 @@ Project → Topic (with tags) → Issue → PipelineRun → Document
 1. **Create a Project** — `popsicle project create "my-project"`
 2. **Create Topics with tags** — `popsicle topic create "auth" -t security,backend --project "my-project"`
 3. **Create an Issue** — `popsicle issue create --type product --title "Add JWT auth"` (auto-matched to topic by tags, or use `--topic`)
-4. **Start the Issue** — `popsicle issue start PROJ-1` — this is the **only** way to create a PipelineRun. Direct `pipeline run` no longer exists.
+4. **Start the Issue** — `popsicle issue start PROJ-1` — this is the **only** way to create a PipelineRun. This also **acquires an exclusive lock** on the Topic — if the Topic is already locked by another run, the command is rejected. Direct `pipeline run` no longer exists.
 5. **Follow the pipeline** — `popsicle pipeline next` shows the next step, including cross-run document reuse (singleton docs: skip/update; cumulative docs: new)
-6. **Create documents** — `popsicle doc create` succeeds only when the stage is unblocked; blocked stages are rejected
+6. **Start stages** — `popsicle pipeline stage start <stage>` begins work on a stage
+7. **Create documents** — `popsicle doc create` succeeds only when the run holds the Topic lock and the stage is unblocked; blocked stages are rejected. Documents are created as "active"
+8. **Complete stages** — `popsicle pipeline stage complete <stage>` marks a stage as done; all documents in the stage become "final". Stages with `requires_approval` need `--confirm`
+9. **Lock auto-releases** when all stages complete. Use `popsicle pipeline unlock` to force-release the lock if needed
 
 ## Guard Conditions
 
-Skills can define guards on workflow transitions to enforce discipline:
+Pipeline stages can define guards that enforce discipline before stage completion:
 
 ```yaml
-# In skill.yaml
-workflow:
-  states:
-    draft:
-      transitions:
-        - to: review
-          action: submit
-          guard: "upstream_approved"        # upstream docs must be in final state
-    review:
-      transitions:
-        - to: approved
-          action: approve
-          guard: "has_sections:Background,Goals"  # document must have real content
+# In pipeline stage definition
+stages:
+  - name: implementation
+    skills: [implementation]
+    depends_on: [design]
+    guard: "upstream_approved"        # upstream stages must be completed
+    requires_approval: true           # stage completion requires --confirm
 ```
 
 | Guard | Description |
 |-------|-------------|
-| `upstream_approved` | All required upstream skill documents must exist and be in a final state |
+| `upstream_approved` | All required upstream pipeline stages must be completed |
 | `has_sections:A,B,C` | Document must contain the specified H2 sections with non-template content |
 
 ## Architecture
@@ -564,14 +563,14 @@ Developer ──→                               ↑
 
 - **CLI executes, UI observes** — AI agents and developers operate through CLI; UI only visualizes and suggests
 - **Skills are first-class** — Each skill carries its own sub-workflow, templates, prompts, and hooks
-- **Pipeline orchestrates** — DAG-based stage dependencies with automatic state propagation
+- **Pipeline orchestrates** — DAG-based stage dependencies with automatic state propagation; pipeline stage is the single source of truth for document state
 - **Bootstrap before build** — LLM-driven project planning from natural language specs before the first pipeline run
-- **Guards enforce discipline** — Upstream approval and content completeness checked before transitions
+- **Guards enforce discipline** — Upstream stage completion and content completeness checked before stage transitions
 - **Git-aware** — Post-commit hooks auto-track commits; link commits to documents, stages, and skills
 - **Multi-agent** — Native support for Claude Code and Cursor with auto-generated skills following the Agent Skills open standard
 - **Hybrid storage** — Documents as Markdown files (Git-friendly), metadata and state indexed in SQLite
 - **Topic-driven** — Pipeline runs and documents grouped by topic for cross-run document sharing, version tracking, and iterative revision
-- **Issue-gated** — `issue start` is the only way to create PipelineRuns; no direct `pipeline run` command
+- **Issue-gated** — `issue start` is the only way to create PipelineRuns; acquires an exclusive Topic lock; no direct `pipeline run` command
 - **Doc lifecycle-aware** — Singleton skills reuse/update docs across runs; cumulative skills create new docs each time
 - **Context-aware** — Project tech profile auto-scanned and injected with attention-optimized ordering (low → medium → high relevance)
 - **Memory-driven** — Cross-session memory with event-driven staleness, two-layer promotion, and 200-line budget

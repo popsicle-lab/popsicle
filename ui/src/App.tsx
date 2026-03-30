@@ -16,6 +16,8 @@ import { MemoriesView } from "./pages/MemoriesView";
 import { SearchView } from "./pages/SearchView";
 import { TopicsView } from "./pages/TopicsView";
 import { TopicDetailView } from "./pages/TopicDetailView";
+import { ProjectsView } from "./pages/ProjectsView";
+import { ProjectDetailView } from "./pages/ProjectDetailView";
 import { ProjectPicker } from "./components/ProjectPicker";
 
 export type Page =
@@ -33,7 +35,9 @@ export type Page =
   | { kind: "memories" }
   | { kind: "search" }
   | { kind: "topics" }
-  | { kind: "topic"; topicName: string };
+  | { kind: "topic"; topicName: string }
+  | { kind: "projects" }
+  | { kind: "project"; projectId: string };
 
 export default function App() {
   const { dir, setProjectDir } = useProjectDir();
@@ -155,6 +159,16 @@ export default function App() {
           <TopicDetailView
             key={`${page.topicName}-${refreshKey}`}
             topicName={page.topicName}
+            setPage={setPage}
+          />
+        )}
+        {page.kind === "projects" && (
+          <ProjectsView key={refreshKey} setPage={setPage} />
+        )}
+        {page.kind === "project" && (
+          <ProjectDetailView
+            key={`${page.projectId}-${refreshKey}`}
+            projectId={page.projectId}
             setPage={setPage}
           />
         )}

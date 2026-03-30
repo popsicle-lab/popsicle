@@ -6,6 +6,7 @@ import {
   Brain,
   Search,
   Tags,
+  FolderOpen,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -21,6 +22,7 @@ const navItems: {
   group?: string;
 }[] = [
   { kind: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { kind: "projects", label: "Projects", icon: FolderOpen },
   { kind: "issues", label: "Issues", icon: ClipboardList },
   { kind: "topics", label: "Topics", icon: Tags },
   { kind: "search", label: "Doc Search", icon: Search },
@@ -44,6 +46,9 @@ export function Sidebar({ page, setPage }: Props) {
     }
     if (kind === "topics") {
       return page.kind === "topics" || page.kind === "topic";
+    }
+    if (kind === "projects") {
+      return page.kind === "projects" || page.kind === "project";
     }
     return page.kind === kind;
   };

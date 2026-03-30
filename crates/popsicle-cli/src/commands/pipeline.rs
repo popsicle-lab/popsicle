@@ -2,7 +2,7 @@ use std::env;
 
 use popsicle_core::engine::{Advisor, PipelineRecommender};
 use popsicle_core::helpers;
-use popsicle_core::model::{PipelineDef, PipelineRun, StageState, Topic};
+use popsicle_core::model::{IssueStatus, PipelineDef, PipelineRun, StageState};
 use popsicle_core::storage::{IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -21,17 +21,6 @@ pub enum PipelineCommand {
         /// Create in project-local .popsicle/pipelines/ instead of workspace pipelines/
         #[arg(long)]
         local: bool,
-    },
-    /// Start a new pipeline run
-    Run {
-        /// Pipeline template name
-        pipeline: String,
-        /// Title for this pipeline run
-        #[arg(short, long)]
-        title: String,
-        /// Topic name (groups related runs; auto-created if not exists)
-        #[arg(long)]
-        topic: Option<String>,
     },
     /// Show status of a pipeline run
     Status {
@@ -57,15 +46,6 @@ pub enum PipelineCommand {
         #[arg(short, long)]
         run: Option<String>,
     },
-    /// Quick path: create a single-stage pipeline for small changes
-    Quick {
-        /// Title for this quick change
-        #[arg(short, long)]
-        title: String,
-        /// Skill to use (defaults to implementation)
-        #[arg(short, long, default_value = "implementation")]
-        skill: String,
-    },
     /// Recommend the best pipeline for a task based on its description
     Recommend {
         /// Task description (e.g. "add user authentication feature")
@@ -80,6 +60,40 @@ pub enum PipelineCommand {
         #[arg(short, long)]
         stages: String,
     },
+    /// Manage pipeline stage state (start, complete)
+    Stage {
+        #[command(subcommand)]
+        action: StageAction,
+    },
+    /// Force-release the topic lock held by a pipeline run
+    Unlock {
+        /// Topic ID to unlock (omit to unlock the topic of the latest run)
+        #[arg(long)]
+        topic: Option<String>,
+    },
+}
+
+#[derive(clap::Subcommand)]
+pub enum StageAction {
+    /// Mark a stage as started (Ready → InProgress)
+    Start {
+        /// Stage name
+        stage: String,
+        /// Pipeline run ID (omit for latest run)
+        #[arg(short, long)]
+        run: Option<String>,
+    },
+    /// Mark a stage as completed (InProgress → Completed)
+    Complete {
+        /// Stage name
+        stage: String,
+        /// Pipeline run ID (omit for latest run)
+        #[arg(short, long)]
+        run: Option<String>,
+        /// Confirm human approval (required for stages with requires_approval)
+        #[arg(long, default_value_t = false)]
+        confirm: bool,
+    },
 }
 
 pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()> {
@@ -90,21 +104,17 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
             description,
             local,
         } => create_pipeline(&name, &description, local, format),
-        PipelineCommand::Run {
-            pipeline,
-            title,
-            topic,
-        } => run_pipeline(&pipeline, &title, topic.as_deref(), format),
         PipelineCommand::Status { run } => show_status(run.as_deref(), format),
         PipelineCommand::Next { run } => show_next(run.as_deref(), format),
         PipelineCommand::Verify { run } => verify_run(run.as_deref(), format),
         PipelineCommand::Archive { run } => archive_run(run.as_deref(), format),
-        PipelineCommand::Quick { title, skill } => quick_run(&title, &skill, format),
         PipelineCommand::Recommend { task } => recommend_pipeline(&task, format),
         PipelineCommand::Revise { run, stages } => {
             let stage_list: Vec<String> = stages.split(',').map(|s| s.trim().to_string()).collect();
             revise_pipeline(&run, &stage_list, format)
         }
+        PipelineCommand::Stage { action } => execute_stage_action(action, format),
+        PipelineCommand::Unlock { topic } => unlock_topic(topic.as_deref(), format),
     }
 }
 
@@ -145,9 +155,7 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
                 issues.push(format!("No documents for skill '{}'", skill_name));
             }
             for d in &skill_docs {
-                if let Ok(skill) = registry.get(&d.skill_name)
-                    && !skill.is_final_state(&d.status)
-                {
+                if d.status != "final" {
                     issues.push(format!(
                         "Document '{}' is '{}', not final",
                         d.title, d.status
@@ -240,63 +248,6 @@ fn archive_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()
                 "run_id": run.id,
                 "title": run.title,
                 "status": "archived",
-            });
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-    }
-
-    Ok(())
-}
-
-fn quick_run(title: &str, skill_name: &str, format: &OutputFormat) -> anyhow::Result<()> {
-    let layout = project_layout()?;
-    let registry = load_registry()?;
-
-    registry
-        .get(skill_name)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    let quick_def = PipelineDef {
-        name: "quick".to_string(),
-        description: "Quick single-stage change".to_string(),
-        stages: vec![popsicle_core::model::StageDef {
-            name: "work".to_string(),
-            skills: vec![],
-            skill: Some(skill_name.to_string()),
-            description: format!("Quick: {}", title),
-            depends_on: vec![],
-        }],
-        keywords: vec![],
-        scale: None,
-    };
-
-    let db = IndexDb::open(&layout.db_path())?;
-    let topic = resolve_or_create_topic(&db, title)?;
-    let run = PipelineRun::new(&quick_def, title, &topic.id);
-    let run_dir = layout.run_dir(&run.id);
-    std::fs::create_dir_all(&run_dir)?;
-
-    db.upsert_pipeline_run(&run)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    match format {
-        OutputFormat::Text => {
-            println!("Quick pipeline run: {}", run.id);
-            println!("  Title: {}", title);
-            println!("  Skill: {}", skill_name);
-            println!("\nCreate a document:");
-            println!(
-                "  $ popsicle doc create {} --title \"{}\" --run {}",
-                skill_name, title, run.id
-            );
-        }
-        OutputFormat::Json => {
-            let result = serde_json::json!({
-                "id": run.id,
-                "title": title,
-                "pipeline": "quick",
-                "skill": skill_name,
-                "cli_command": format!("popsicle doc create {} --title \"{}\" --run {}", skill_name, title, run.id),
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
@@ -445,7 +396,7 @@ fn get_run(db: &IndexDb, run_id: Option<&str>) -> anyhow::Result<PipelineRun> {
             .list_pipeline_runs()
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         let latest = runs.first().ok_or_else(|| {
-            anyhow::anyhow!("No pipeline runs found. Use `popsicle pipeline run` to start one.")
+            anyhow::anyhow!("No pipeline runs found. Use `popsicle issue start <KEY>` to create one.")
         })?;
         db.get_pipeline_run(&latest.id)
             .map_err(|e| anyhow::anyhow!("{}", e))?
@@ -487,61 +438,6 @@ fn list_pipelines(format: &OutputFormat) -> anyhow::Result<()> {
                 })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&items)?);
-        }
-    }
-
-    Ok(())
-}
-
-fn run_pipeline(
-    pipeline_name: &str,
-    title: &str,
-    topic_name: Option<&str>,
-    format: &OutputFormat,
-) -> anyhow::Result<()> {
-    let layout = project_layout()?;
-    let pipeline_def = find_pipeline(pipeline_name)?;
-    pipeline_def
-        .validate()
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    let db = IndexDb::open(&layout.db_path())?;
-    let topic = resolve_or_create_topic(&db, topic_name.unwrap_or(title))?;
-    let run = PipelineRun::new(&pipeline_def, title, &topic.id);
-    let run_dir = layout.run_dir(&run.id);
-    std::fs::create_dir_all(&run_dir)?;
-
-    db.upsert_pipeline_run(&run)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    match format {
-        OutputFormat::Text => {
-            println!("Started pipeline run: {}", run.id);
-            println!("  Pipeline: {}", pipeline_def.name);
-            println!("  Title: {}", title);
-            println!("  Stages:");
-            for stage in &pipeline_def.stages {
-                let state = run
-                    .stage_states
-                    .get(&stage.name)
-                    .ok_or_else(|| anyhow::anyhow!("Missing state for stage '{}'", stage.name))?;
-                println!(
-                    "    {:<20} {:<12} [{}]",
-                    stage.name,
-                    state,
-                    stage.skill_names().join(", ")
-                );
-            }
-            println!("\nUse `popsicle pipeline next` to see what to do first.");
-        }
-        OutputFormat::Json => {
-            let result = serde_json::json!({
-                "id": run.id,
-                "pipeline": pipeline_def.name,
-                "title": title,
-                "stage_states": run.stage_states,
-            });
-            println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
 
@@ -636,7 +532,11 @@ fn show_next(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> 
         .query_documents(None, None, Some(&run.id))
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs);
+    // Load all docs from the same topic for cross-run visibility
+    let topic_docs = db.query_topic_documents(&run.topic_id)
+        .unwrap_or_default();
+
+    let steps = Advisor::next_steps(&pipeline_def, &run, &registry, &docs, &topic_docs);
     let hints = collect_context_hints(&layout);
 
     match format {
@@ -744,20 +644,6 @@ fn collect_context_hints(layout: &ProjectLayout) -> Vec<String> {
     hints
 }
 
-/// Resolve an existing topic by name, or create a new one.
-fn resolve_or_create_topic(db: &IndexDb, name: &str) -> anyhow::Result<Topic> {
-    if let Some(topic) = db
-        .find_topic_by_name(name)
-        .map_err(|e| anyhow::anyhow!("{}", e))?
-    {
-        return Ok(topic);
-    }
-    let topic = Topic::new(name, "");
-    db.create_topic(&topic)
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    Ok(topic)
-}
-
 fn revise_pipeline(
     run_id: &str,
     revised_stages: &[String],
@@ -854,5 +740,274 @@ fn revise_pipeline(
         }
     }
 
+    Ok(())
+}
+
+fn execute_stage_action(action: StageAction, format: &OutputFormat) -> anyhow::Result<()> {
+    match action {
+        StageAction::Start { stage, run } => stage_start(run.as_deref(), &stage, format),
+        StageAction::Complete {
+            stage,
+            run,
+            confirm,
+        } => stage_complete(run.as_deref(), &stage, confirm, format),
+    }
+}
+
+fn stage_start(
+    run_id: Option<&str>,
+    stage_name: &str,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
+    let layout = project_layout()?;
+    let db = IndexDb::open(&layout.db_path())?;
+    let mut run = get_run(&db, run_id)?;
+    let pipeline_def = find_pipeline(&run.pipeline_name)?;
+
+    let _stage = pipeline_def
+        .stages
+        .iter()
+        .find(|s| s.name == stage_name)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Stage '{}' not found in pipeline '{}'",
+                stage_name,
+                pipeline_def.name
+            )
+        })?;
+
+    let current = run
+        .stage_states
+        .get(stage_name)
+        .copied()
+        .unwrap_or(StageState::Blocked);
+
+    if current != StageState::Ready {
+        anyhow::bail!(
+            "Stage '{}' is '{}', can only start from 'ready'",
+            stage_name,
+            current
+        );
+    }
+
+    run.stage_states
+        .insert(stage_name.to_string(), StageState::InProgress);
+    run.updated_at = chrono::Utc::now();
+    db.upsert_pipeline_run(&run)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    match format {
+        OutputFormat::Text => {
+            println!("Stage '{}' → in_progress", stage_name);
+            println!("  Run: {}", run.id);
+        }
+        OutputFormat::Json => {
+            let out = serde_json::json!({
+                "stage": stage_name,
+                "state": "in_progress",
+                "run_id": run.id,
+            });
+            println!("{}", serde_json::to_string_pretty(&out)?);
+        }
+    }
+    Ok(())
+}
+
+fn stage_complete(
+    run_id: Option<&str>,
+    stage_name: &str,
+    confirmed: bool,
+    format: &OutputFormat,
+) -> anyhow::Result<()> {
+    let layout = project_layout()?;
+    let db = IndexDb::open(&layout.db_path())?;
+    let mut run = get_run(&db, run_id)?;
+    let pipeline_def = find_pipeline(&run.pipeline_name)?;
+
+    let stage = pipeline_def
+        .stages
+        .iter()
+        .find(|s| s.name == stage_name)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Stage '{}' not found in pipeline '{}'",
+                stage_name,
+                pipeline_def.name
+            )
+        })?;
+
+    let current = run
+        .stage_states
+        .get(&stage.name)
+        .copied()
+        .unwrap_or(StageState::Blocked);
+
+    if !matches!(current, StageState::Ready | StageState::InProgress) {
+        anyhow::bail!(
+            "Stage '{}' is '{}', can only complete from 'ready' or 'in_progress'",
+            stage_name,
+            current
+        );
+    }
+
+    // Check requires_approval
+    if stage.requires_approval && !confirmed {
+        anyhow::bail!(
+            "Stage '{}' requires human approval. Review all documents and re-run with --confirm:\n  popsicle pipeline stage complete {} --confirm",
+            stage_name,
+            stage_name
+        );
+    }
+
+    // Verify docs exist for all skills in this stage
+    let docs = db
+        .query_documents(None, None, Some(&run.id))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let missing_skills: Vec<&str> = stage
+        .skill_names()
+        .into_iter()
+        .filter(|sn| !docs.iter().any(|d| d.skill_name == *sn))
+        .collect();
+    if !missing_skills.is_empty() {
+        anyhow::bail!(
+            "Stage '{}' cannot be completed — missing documents for skills: {}",
+            stage_name,
+            missing_skills.join(", ")
+        );
+    }
+
+    // Mark all docs in this stage as "final"
+    let stage_skills: Vec<&str> = stage.skill_names();
+    for doc_row in &docs {
+        if stage_skills.contains(&doc_row.skill_name.as_str()) && doc_row.status != "final" {
+            let _ = db.update_document_status(&doc_row.id, "final");
+            // Update file on disk
+            if let Ok(mut doc) =
+                popsicle_core::storage::FileStorage::read_document(std::path::Path::new(
+                    &doc_row.file_path,
+                ))
+            {
+                doc.status = "final".to_string();
+                doc.updated_at = Some(chrono::Utc::now());
+                let _ = popsicle_core::storage::FileStorage::write_document(
+                    &doc,
+                    std::path::Path::new(&doc_row.file_path),
+                );
+            }
+        }
+    }
+
+    // Transition stage to Completed
+    run.stage_states
+        .insert(stage.name.clone(), StageState::Completed);
+    run.refresh_states(&pipeline_def);
+    run.updated_at = chrono::Utc::now();
+    db.upsert_pipeline_run(&run)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Check if all stages are done → auto-release topic lock + mark issue done
+    let all_done = pipeline_def.stages.iter().all(|s| {
+        matches!(
+            run.stage_states.get(&s.name),
+            Some(StageState::Completed | StageState::Skipped)
+        )
+    });
+
+    let mut auto_released = false;
+    if all_done {
+        let _ = db.release_topic_lock(&run.topic_id, Some(&run.id));
+        auto_released = true;
+
+        if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {
+            if issue.status != IssueStatus::Done {
+                issue.status = IssueStatus::Done;
+                let _ = db.update_issue(&issue);
+            }
+        }
+    }
+
+    match format {
+        OutputFormat::Text => {
+            println!("Stage '{}' → completed", stage_name);
+            println!("  Run: {}", run.id);
+            if all_done {
+                println!("  All stages completed!");
+                if auto_released {
+                    println!("  Topic lock released.");
+                }
+            } else {
+                for s in &pipeline_def.stages {
+                    if run.stage_states.get(&s.name) == Some(&StageState::Ready)
+                        && s.depends_on.contains(&stage_name.to_string())
+                    {
+                        println!("  Unblocked: {}", s.name);
+                    }
+                }
+            }
+        }
+        OutputFormat::Json => {
+            let out = serde_json::json!({
+                "stage": stage_name,
+                "state": "completed",
+                "run_id": run.id,
+                "all_done": all_done,
+                "auto_released": auto_released,
+                "stage_states": run.stage_states,
+            });
+            println!("{}", serde_json::to_string_pretty(&out)?);
+        }
+    }
+    Ok(())
+}
+
+fn unlock_topic(topic_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
+    let layout = project_layout()?;
+    let db = IndexDb::open(&layout.db_path())?;
+
+    let tid = match topic_id {
+        Some(t) => t.to_string(),
+        None => {
+            let run = get_run(&db, None)?;
+            run.topic_id.clone()
+        }
+    };
+
+    let topic = db
+        .get_topic(&tid)
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .ok_or_else(|| anyhow::anyhow!("Topic not found: {}", tid))?;
+
+    match &topic.locked_by_run_id {
+        Some(run_id) => {
+            db.release_topic_lock(&tid, None)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            match format {
+                OutputFormat::Text => {
+                    println!(
+                        "Unlocked topic '{}' (was locked by run '{}')",
+                        topic.name, run_id
+                    );
+                }
+                OutputFormat::Json => {
+                    let out = serde_json::json!({
+                        "topic_id": tid,
+                        "topic_name": topic.name,
+                        "released_from": run_id,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&out)?);
+                }
+            }
+        }
+        None => match format {
+            OutputFormat::Text => println!("Topic '{}' is not locked.", topic.name),
+            OutputFormat::Json => {
+                let out = serde_json::json!({
+                    "topic_id": tid,
+                    "locked": false,
+                });
+                println!("{}", serde_json::to_string_pretty(&out)?);
+            }
+        },
+    }
     Ok(())
 }

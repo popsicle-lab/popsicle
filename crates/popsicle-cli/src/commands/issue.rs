@@ -1,7 +1,7 @@
 use std::env;
 
 use popsicle_core::helpers;
-use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority, Topic};
+use popsicle_core::model::{Issue, IssueStatus, IssueType, PipelineRun, Priority};
 use popsicle_core::storage::{IndexDb, ProjectConfig, ProjectLayout};
 
 use crate::OutputFormat;
@@ -16,6 +16,9 @@ pub enum IssueCommand {
         /// Short title
         #[arg(long)]
         title: String,
+        /// Explicitly specify topic by name or ID (if omitted, matches by tags)
+        #[arg(long)]
+        topic: Option<String>,
         /// Detailed description
         #[arg(short, long, default_value = "")]
         description: String,
@@ -40,6 +43,9 @@ pub enum IssueCommand {
         /// Filter by label
         #[arg(short, long)]
         label: Option<String>,
+        /// Filter by topic name
+        #[arg(long)]
+        topic: Option<String>,
     },
     /// Show issue details
     Show {
@@ -75,6 +81,7 @@ pub fn execute(cmd: IssueCommand, format: &OutputFormat) -> anyhow::Result<()> {
         IssueCommand::Create {
             issue_type,
             title,
+            topic,
             description,
             priority,
             pipeline,
@@ -82,6 +89,7 @@ pub fn execute(cmd: IssueCommand, format: &OutputFormat) -> anyhow::Result<()> {
         } => create_issue(
             &issue_type,
             &title,
+            topic.as_deref(),
             &description,
             &priority,
             pipeline.as_deref(),
@@ -92,10 +100,12 @@ pub fn execute(cmd: IssueCommand, format: &OutputFormat) -> anyhow::Result<()> {
             issue_type,
             status,
             label,
+            topic,
         } => list_issues(
             issue_type.as_deref(),
             status.as_deref(),
             label.as_deref(),
+            topic.as_deref(),
             format,
         ),
         IssueCommand::Show { key } => show_issue(&key, format),
@@ -126,9 +136,22 @@ fn load_config(layout: &ProjectLayout) -> anyhow::Result<ProjectConfig> {
     ProjectConfig::load(&layout.config_path()).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
+/// Verify the project is properly initialized before issue operations.
+fn check_project_ready(db: &IndexDb) -> anyhow::Result<()> {
+    let projects = db.list_projects(None)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    if projects.is_empty() {
+        anyhow::bail!(
+            "No project found. Create one first:\n  $ popsicle project create --name \"<name>\" --description \"<desc>\""
+        );
+    }
+    Ok(())
+}
+
 fn create_issue(
     type_str: &str,
     title: &str,
+    topic_name: Option<&str>,
     description: &str,
     priority_str: &str,
     pipeline: Option<&str>,
@@ -145,6 +168,7 @@ fn create_issue(
     let layout = project_layout()?;
     let config = load_config(&layout)?;
     let db = IndexDb::open(&layout.db_path())?;
+    check_project_ready(&db)?;
 
     if let Some(name) = pipeline {
         let cwd = env::current_dir()?;
@@ -152,13 +176,42 @@ fn create_issue(
             .map_err(|_| anyhow::anyhow!("Pipeline template not found: {}", name))?;
     }
 
+    // Resolve topic: explicit name or tag-based matching
+    let topic = if let Some(name) = topic_name {
+        db.find_topic_by_name(name)
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .ok_or_else(|| anyhow::anyhow!("Topic not found: {}. Create it first with 'popsicle topic create'.", name))?
+    } else {
+        let keywords: Vec<String> = title
+            .split_whitespace()
+            .filter(|w| w.len() >= 2)
+            .map(|w| w.to_string())
+            .collect();
+        let matches = db
+            .match_topics_by_tags(&keywords)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        if let Some((matched_topic, score)) = matches.into_iter().next() {
+            eprintln!(
+                "  Matched topic: {} (score: {}, tags: {})",
+                matched_topic.name,
+                score,
+                matched_topic.tags.join(", ")
+            );
+            matched_topic
+        } else {
+            anyhow::bail!(
+                "No matching topic found. Use --topic to specify one, or create a topic first with 'popsicle topic create'."
+            );
+        }
+    };
+
     let prefix = config.project.key_prefix_or_default();
     let seq = db
         .next_issue_seq(prefix)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     let key = format!("{}-{}", prefix, seq);
 
-    let mut issue = Issue::new(key.clone(), title, issue_type);
+    let mut issue = Issue::new(key.clone(), title, issue_type, &topic.id);
     issue.description = description.to_string();
     issue.priority = priority;
     issue.pipeline = pipeline.map(|s| s.to_string());
@@ -175,9 +228,10 @@ fn create_issue(
     match format {
         OutputFormat::Text => {
             println!("Created issue: {}", key);
-            println!("  Title: {}", title);
-            println!("  Type: {}", issue.issue_type);
-            println!("  Priority: {}", issue.priority);
+            println!("  Title:   {}", title);
+            println!("  Type:    {}", issue.issue_type);
+            println!("  Priority:{}", issue.priority);
+            println!("  Topic:   {}", topic.name);
             if let Some(ref p) = issue.pipeline {
                 println!("  Pipeline: {} (explicit)", p);
             } else if let Some(p) = effective_pipeline {
@@ -196,6 +250,8 @@ fn create_issue(
                 "issue_type": issue.issue_type.to_string(),
                 "priority": issue.priority.to_string(),
                 "status": issue.status.to_string(),
+                "topic_id": issue.topic_id,
+                "topic_name": topic.name,
                 "pipeline": issue.pipeline,
                 "effective_pipeline": effective_pipeline,
                 "labels": labels,
@@ -210,13 +266,25 @@ fn list_issues(
     issue_type: Option<&str>,
     status: Option<&str>,
     label: Option<&str>,
+    topic: Option<&str>,
     format: &OutputFormat,
 ) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
+    // Resolve topic name to ID if provided
+    let topic_id = if let Some(name) = topic {
+        let t = db
+            .find_topic_by_name(name)
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .ok_or_else(|| anyhow::anyhow!("Topic not found: {}", name))?;
+        Some(t.id)
+    } else {
+        None
+    };
+
     let issues = db
-        .query_issues(issue_type, status, label)
+        .query_issues(issue_type, status, label, topic_id.as_deref())
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     match format {
@@ -248,8 +316,8 @@ fn list_issues(
                         "issue_type": i.issue_type.to_string(),
                         "priority": i.priority.to_string(),
                         "status": i.status.to_string(),
+                        "topic_id": i.topic_id,
                         "pipeline": i.pipeline,
-                        "pipeline_run_id": i.pipeline_run_id,
                         "labels": i.labels,
                         "created_at": i.created_at.to_rfc3339(),
                         "updated_at": i.updated_at.to_rfc3339(),
@@ -271,12 +339,17 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("{}", e))?
         .ok_or_else(|| anyhow::anyhow!("Issue not found: {}", key))?;
 
-    let run_info = if let Some(ref run_id) = issue.pipeline_run_id {
-        db.get_pipeline_run(run_id)
-            .map_err(|e| anyhow::anyhow!("{}", e))?
-    } else {
-        None
-    };
+    // Fetch all pipeline runs for this issue
+    let runs = db
+        .find_runs_by_issue(&issue.id)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Fetch topic name
+    let topic_name = db
+        .get_topic(&issue.topic_id)
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .map(|t| t.name)
+        .unwrap_or_else(|| issue.topic_id.clone());
 
     match format {
         OutputFormat::Text => {
@@ -284,6 +357,7 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
             println!("  Type:     {}", issue.issue_type);
             println!("  Priority: {}", issue.priority);
             println!("  Status:   {}", issue.status);
+            println!("  Topic:    {}", topic_name);
             if let Some(ref p) = issue.pipeline {
                 println!("  Pipeline: {} (bound)", p);
             }
@@ -293,13 +367,27 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
             if !issue.description.is_empty() {
                 println!("  Description:\n    {}", issue.description);
             }
-            if let Some(run) = &run_info {
-                println!("  Run:      {} ({})", run.pipeline_name, run.id);
+            if !runs.is_empty() {
+                println!("  Runs:");
+                for r in &runs {
+                    println!("    {} — {} ({})", r.id, r.pipeline_name, r.run_type);
+                }
             }
             println!("  Created:  {}", issue.created_at.format("%Y-%m-%d %H:%M"));
             println!("  Updated:  {}", issue.updated_at.format("%Y-%m-%d %H:%M"));
         }
         OutputFormat::Json => {
+            let run_list: Vec<_> = runs
+                .iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "id": r.id,
+                        "pipeline_name": r.pipeline_name,
+                        "title": r.title,
+                        "run_type": r.run_type,
+                    })
+                })
+                .collect();
             let result = serde_json::json!({
                 "id": issue.id,
                 "key": issue.key,
@@ -308,14 +396,11 @@ fn show_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 "issue_type": issue.issue_type.to_string(),
                 "priority": issue.priority.to_string(),
                 "status": issue.status.to_string(),
+                "topic_id": issue.topic_id,
+                "topic_name": topic_name,
                 "pipeline": issue.pipeline,
-                "pipeline_run_id": issue.pipeline_run_id,
+                "pipeline_runs": run_list,
                 "labels": issue.labels,
-                "pipeline_run": run_info.as_ref().map(|r| serde_json::json!({
-                    "id": r.id,
-                    "pipeline_name": r.pipeline_name,
-                    "title": r.title,
-                })),
                 "created_at": issue.created_at.to_rfc3339(),
                 "updated_at": issue.updated_at.to_rfc3339(),
             });
@@ -329,18 +414,12 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
     let cwd = env::current_dir()?;
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
+    check_project_ready(&db)?;
 
     let mut issue = db
         .get_issue(key)
         .map_err(|e| anyhow::anyhow!("{}", e))?
         .ok_or_else(|| anyhow::anyhow!("Issue not found: {}", key))?;
-
-    if issue.pipeline_run_id.is_some() {
-        anyhow::bail!(
-            "Issue {} already has a pipeline run. Use `popsicle pipeline status` to check progress.",
-            key
-        );
-    }
 
     let pipelines = helpers::load_pipelines(&cwd).map_err(|e| anyhow::anyhow!("{}", e))?;
     let resolved = helpers::resolve_pipeline_for_issue(&issue, &pipelines).ok_or_else(|| {
@@ -356,27 +435,37 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
         .validate()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    let topic = {
-        let name = &issue.title;
-        if let Some(t) = db
-            .find_topic_by_name(name)
-            .map_err(|e| anyhow::anyhow!("{}", e))?
-        {
-            t
-        } else {
-            let t = Topic::new(name, "");
-            db.create_topic(&t).map_err(|e| anyhow::anyhow!("{}", e))?;
-            t
-        }
-    };
-    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id);
+    // Issue already has a topic_id; ensure the topic exists
+    let topic = db
+        .get_topic(&issue.topic_id)
+        .map_err(|e| anyhow::anyhow!("{}", e))?
+        .ok_or_else(|| anyhow::anyhow!("Topic not found for issue: {}", issue.topic_id))?;
+
+    // Acquire exclusive lock on the topic
+    if let Some(ref existing_lock) = topic.locked_by_run_id {
+        anyhow::bail!(
+            "Topic '{}' is locked by pipeline run '{}'. Release it first with:\n  popsicle pipeline unlock --topic {}",
+            topic.name,
+            existing_lock,
+            topic.id
+        );
+    }
+
+    let run = PipelineRun::new(&pipeline_def, &issue.title, &topic.id, &issue.id);
+
+    let acquired = db
+        .acquire_topic_lock(&topic.id, &run.id)
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    if !acquired {
+        anyhow::bail!("Failed to acquire lock on topic '{}'. It may have been locked concurrently.", topic.name);
+    }
+
     let run_dir = layout.run_dir(&run.id);
     std::fs::create_dir_all(&run_dir)?;
 
     db.upsert_pipeline_run(&run)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    issue.pipeline_run_id = Some(run.id.clone());
     issue.status = IssueStatus::InProgress;
     db.update_issue(&issue)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -389,6 +478,7 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 resolved.pipeline_name, resolved.reason
             );
             println!("  Run ID:   {}", run.id);
+            println!("  Topic:    {}", topic.name);
             println!("  Status:   {}", issue.status);
             println!("\nNext step:");
             println!("  $ popsicle pipeline next --run {}", run.id);
@@ -399,6 +489,7 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
                 "pipeline": resolved.pipeline_name,
                 "pipeline_reason": resolved.reason,
                 "run_id": run.id,
+                "topic_id": topic.id,
                 "status": issue.status.to_string(),
                 "next_command": format!("popsicle pipeline next --run {}", run.id),
             });

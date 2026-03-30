@@ -7,6 +7,8 @@ const statusColors: Record<string, string> = {
   accepted: "bg-green-500/20 text-green-300",
   completed: "bg-green-500/20 text-green-300",
   done: "bg-green-500/20 text-green-300",
+  active: "bg-blue-500/20 text-blue-300",
+  final: "bg-green-500/20 text-green-300",
   ready: "bg-blue-500/20 text-blue-300",
   in_progress: "bg-purple-500/20 text-purple-300",
   blocked: "bg-red-500/20 text-red-300",

@@ -150,13 +150,13 @@ pub fn execute_bootstrap_plan(
     let db = IndexDb::open(&layout.db_path())?;
 
     // Create topic
-    let topic = Topic::new(&plan.topic_name, &plan.summary);
+    let topic = Topic::new(&plan.topic_name, &plan.summary, "");
     db.create_topic(&topic)?;
 
     // Optionally create pipeline run
     let pipeline_run_id = if start_pipeline {
         let pipeline_def = find_pipeline(project_dir, &plan.pipeline)?;
-        let run = PipelineRun::new(&pipeline_def, &plan.topic_name, &topic.id);
+        let run = PipelineRun::new(&pipeline_def, &plan.topic_name, &topic.id, "");
         db.upsert_pipeline_run(&run)?;
         Some(run.id)
     } else {
@@ -185,7 +185,7 @@ pub fn execute_bootstrap_plan(
             pipeline_run_id.as_deref().unwrap_or(""),
             &topic.id,
         );
-        document.status = "approved".to_string();
+        document.status = "final".to_string();
         document.body = content;
 
         let slug = slugify(&title);
