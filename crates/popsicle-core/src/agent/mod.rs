@@ -731,6 +731,18 @@ Bootstrap does **NOT**:
 - Map documents to skills (that happens at `issue start`)
 - Create pipeline runs
 
+## Module's bootstrap.md
+
+The active module may provide a `bootstrap.md` file at `.popsicle/modules/<module>/bootstrap.md`.
+This file contains **domain-specific instructions** that guide how the LLM organizes namespaces and topics
+(e.g. recommended naming conventions, required topics, tagging strategies).
+
+The bootstrap prompt generator (`--generate-prompt`) automatically loads and injects this file
+into the LLM prompt under the "Module Bootstrap Instructions" section. If the file does not exist,
+the section reads "No specific bootstrap instructions provided."
+
+You do NOT need to load or read `bootstrap.md` yourself — it is handled automatically.
+
 ## 3-Step Bootstrap Flow
 
 ### Step 1: Ensure project context exists
