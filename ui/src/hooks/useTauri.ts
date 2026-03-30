@@ -89,6 +89,7 @@ export interface StageStatusInfo {
   description: string;
   depends_on: string[];
   documents: DocInfo[];
+  requires_approval: boolean;
 }
 
 export interface DocInfo {
@@ -213,6 +214,23 @@ export interface VerifyResult {
 
 export async function verifyPipelineRun(runId: string): Promise<VerifyResult> {
   return invoke("verify_pipeline_run", { runId });
+}
+
+export interface StageCompleteResult {
+  stage: string;
+  state: string;
+  run_id: string;
+  all_done: boolean;
+  auto_released: boolean;
+  unblocked: string[];
+}
+
+export async function completeStage(
+  runId: string,
+  stageName: string,
+  confirm: boolean
+): Promise<StageCompleteResult> {
+  return invoke("complete_stage", { runId, stageName, confirm });
 }
 
 export async function getProjectConfig(): Promise<Record<string, unknown>> {

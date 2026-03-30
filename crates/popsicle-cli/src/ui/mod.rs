@@ -64,6 +64,7 @@ pub fn run() {
             commands::get_topic,
             commands::list_namespace_entities,
             commands::get_namespace_entity,
+            commands::complete_stage,
         ])
         .setup(|app| {
             ProjectWatcher::setup(app.handle().clone());

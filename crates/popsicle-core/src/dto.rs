@@ -162,6 +162,17 @@ pub struct StageStatusInfo {
     pub description: String,
     pub depends_on: Vec<String>,
     pub documents: Vec<DocInfo>,
+    pub requires_approval: bool,
+}
+
+#[derive(Serialize)]
+pub struct StageCompleteResult {
+    pub stage: String,
+    pub state: String,
+    pub run_id: String,
+    pub all_done: bool,
+    pub auto_released: bool,
+    pub unblocked: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]

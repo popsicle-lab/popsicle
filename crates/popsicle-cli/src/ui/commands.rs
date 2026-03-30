@@ -208,6 +208,7 @@ pub fn get_pipeline_status(
                 description: stage.description.clone(),
                 depends_on: stage.depends_on.clone(),
                 documents: stage_docs,
+                requires_approval: stage.requires_approval,
             }
         })
         .collect();
@@ -1673,5 +1674,142 @@ pub fn get_namespace_entity(
             .collect(),
         created_at: namespace.created_at.to_rfc3339(),
         updated_at: namespace.updated_at.to_rfc3339(),
+    })
+}
+
+#[tauri::command]
+pub fn complete_stage(
+    run_id: String,
+    stage_name: String,
+    confirm: bool,
+    state: State<AppState>,
+) -> Result<StageCompleteResult, String> {
+    let dir = get_dir(&state)?;
+    let layout = ProjectLayout::new(&dir);
+    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
+
+    let mut run = db
+        .get_pipeline_run(&run_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Run not found: {}", run_id))?;
+
+    let pipeline_def =
+        helpers::find_pipeline(&dir, &run.pipeline_name).map_err(|e| e.to_string())?;
+
+    let stage = pipeline_def
+        .stages
+        .iter()
+        .find(|s| s.name == stage_name)
+        .ok_or_else(|| {
+            format!(
+                "Stage '{}' not found in pipeline '{}'",
+                stage_name, pipeline_def.name
+            )
+        })?;
+
+    let current = run
+        .stage_states
+        .get(&stage.name)
+        .copied()
+        .unwrap_or(StageState::Blocked);
+
+    if !matches!(current, StageState::Ready | StageState::InProgress) {
+        return Err(format!(
+            "Stage '{}' is '{}', can only complete from 'ready' or 'in_progress'",
+            stage_name, current
+        ));
+    }
+
+    if stage.requires_approval && !confirm {
+        return Err(format!(
+            "Stage '{}' requires human approval. Please confirm.",
+            stage_name
+        ));
+    }
+
+    // Verify docs exist for all skills in this stage
+    let docs = db
+        .query_documents(None, None, Some(&run.id))
+        .map_err(|e| e.to_string())?;
+    let missing_skills: Vec<&str> = stage
+        .skill_names()
+        .into_iter()
+        .filter(|sn| !docs.iter().any(|d| d.skill_name == *sn))
+        .collect();
+    if !missing_skills.is_empty() {
+        return Err(format!(
+            "Stage '{}' cannot be completed — missing documents for skills: {}",
+            stage_name,
+            missing_skills.join(", ")
+        ));
+    }
+
+    // Mark all docs in this stage as "final"
+    let stage_skills: Vec<&str> = stage.skill_names();
+    for doc_row in &docs {
+        if stage_skills.contains(&doc_row.skill_name.as_str()) && doc_row.status != "final" {
+            let _ = db.update_document_status(&doc_row.id, "final");
+            if let Ok(mut doc) =
+                FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+            {
+                doc.status = "final".to_string();
+                doc.updated_at = Some(chrono::Utc::now());
+                let _ = FileStorage::write_document(
+                    &doc,
+                    std::path::Path::new(&doc_row.file_path),
+                );
+            }
+        }
+    }
+
+    // Transition stage to Completed
+    run.stage_states
+        .insert(stage.name.clone(), StageState::Completed);
+    run.refresh_states(&pipeline_def);
+    run.updated_at = chrono::Utc::now();
+    db.upsert_pipeline_run(&run).map_err(|e| e.to_string())?;
+
+    // Check if all stages are done → auto-release topic lock + mark issue done
+    let all_done = pipeline_def.stages.iter().all(|s| {
+        matches!(
+            run.stage_states.get(&s.name),
+            Some(StageState::Completed | StageState::Skipped)
+        )
+    });
+
+    let mut auto_released = false;
+    if all_done {
+        let _ = db.release_topic_lock(&run.topic_id, Some(&run.id));
+        auto_released = true;
+
+        if let Ok(Some(mut issue)) = db.find_issue_by_run_id(&run.id) {
+            if issue.status != IssueStatus::Done {
+                issue.status = IssueStatus::Done;
+                let _ = db.update_issue(&issue);
+            }
+        }
+    }
+
+    let unblocked: Vec<String> = if !all_done {
+        pipeline_def
+            .stages
+            .iter()
+            .filter(|s| {
+                run.stage_states.get(&s.name) == Some(&StageState::Ready)
+                    && s.depends_on.contains(&stage_name)
+            })
+            .map(|s| s.name.clone())
+            .collect()
+    } else {
+        vec![]
+    };
+
+    Ok(StageCompleteResult {
+        stage: stage_name,
+        state: "completed".to_string(),
+        run_id: run.id,
+        all_done,
+        auto_released,
+        unblocked,
     })
 }
