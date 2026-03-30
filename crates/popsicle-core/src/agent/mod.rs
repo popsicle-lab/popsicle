@@ -211,15 +211,21 @@ Then use `$POPSICLE` in place of `popsicle` for all commands.
 You MUST follow this checklist before writing ANY code or making ANY changes.
 No exceptions — not for "small" fixes, not for low-level modules, not for "just one line".
 
-### Step 0: Verify project is bootstrapped
+### Step 0: Verify project exists and is bootstrapped
 
-`issue start` will refuse to run if the project has no topics. A bootstrapped project has at least one topic with imported documents. If `issue start` fails with "not bootstrapped", run:
+Before anything else, ensure the project is set up:
 
-```bash
-popsicle context bootstrap --generate-prompt --format json
-```
+1. **Project must exist** — if not, create one:
+   ```bash
+   popsicle project create --name "<name>" --description "<desc>"
+   ```
+2. **Project must be bootstrapped** (topics exist) — if not, run:
+   ```bash
+   popsicle context bootstrap --generate-prompt --format json
+   ```
+   Then apply the plan.
 
-Then apply the plan. `popsicle init` only creates the directory structure — bootstrap populates the project with topics and documents. Do NOT confuse them.
+`popsicle init` only creates the directory structure. `project create` registers the project. `context bootstrap` populates topics and documents. All three are prerequisites — do NOT skip any.
 
 ### Step 1: Check for an active pipeline run
 

@@ -136,22 +136,25 @@ fn load_config(layout: &ProjectLayout) -> anyhow::Result<ProjectConfig> {
     ProjectConfig::load(&layout.config_path()).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-/// Verify the project is properly bootstrapped before issue operations.
-/// Bootstrap creates topics and imports documents — without it, there's nothing to work on.
+/// Verify the project is properly set up before issue operations.
+/// Checks two gates: (1) project must exist, (2) topics must exist (bootstrapped).
 fn check_project_ready(db: &IndexDb) -> anyhow::Result<()> {
     let projects = db.list_projects(None)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     if projects.is_empty() {
         anyhow::bail!(
-            "No project found. Run bootstrap first:\n  $ popsicle context bootstrap --generate-prompt\n  Then apply the plan to create project, topics, and initial documents."
+            "No project found. Create one first:\n  \
+             $ popsicle project create --name \"<name>\" --description \"<desc>\"\n\n\
+             Then bootstrap the project to create topics and import documents:\n  \
+             $ popsicle context bootstrap --generate-prompt"
         );
     }
     let topics = db.list_topics()
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     if topics.is_empty() {
         anyhow::bail!(
-            "Project exists but no topics found. The project has not been bootstrapped.\n\
-             Run:\n  $ popsicle context bootstrap --generate-prompt\n\
+            "Project exists but has no topics — not yet bootstrapped.\n  \
+             $ popsicle context bootstrap --generate-prompt\n\
              Then apply the plan to create topics and import documents."
         );
     }
