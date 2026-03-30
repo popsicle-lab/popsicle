@@ -1532,7 +1532,7 @@ pub fn list_topics(state: State<AppState>) -> Result<Vec<TopicInfo>, String> {
                 name: t.name.clone(),
                 slug: t.slug.clone(),
                 description: t.description.clone(),
-                project_id: t.project_id.clone(),
+                namespace_id: t.namespace_id.clone(),
                 tags: t.tags.clone(),
                 created_at: t.created_at.to_rfc3339(),
                 run_count,
@@ -1567,7 +1567,7 @@ pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDeta
         name: topic.name.clone(),
         slug: topic.slug.clone(),
         description: topic.description.clone(),
-        project_id: topic.project_id.clone(),
+        namespace_id: topic.namespace_id.clone(),
         tags: topic.tags.clone(),
         created_at: topic.created_at.to_rfc3339(),
         runs: runs
