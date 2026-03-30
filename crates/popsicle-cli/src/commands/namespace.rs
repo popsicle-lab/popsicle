@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Subcommand;
 
-use popsicle_core::model::Project;
+use popsicle_core::model::Namespace;
 use popsicle_core::storage::{IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
@@ -12,10 +12,10 @@ fn project_layout() -> Result<ProjectLayout> {
 }
 
 #[derive(Subcommand)]
-pub enum ProjectCommand {
-    /// Create a new project
+pub enum NamespaceCommand {
+    /// Create a new namespace
     Create {
-        /// Project name (human-readable)
+        /// Namespace name (human-readable)
         name: String,
         /// Short description
         #[arg(short, long, default_value = "")]
@@ -24,20 +24,20 @@ pub enum ProjectCommand {
         #[arg(short, long, default_value = "")]
         tags: String,
     },
-    /// List all projects
+    /// List all namespaces
     List {
         /// Filter by status (active, completed, archived)
         #[arg(long)]
         status: Option<String>,
     },
-    /// Show project details with associated topics
+    /// Show namespace details with associated topics
     Show {
-        /// Project name or ID
+        /// Namespace name or ID
         name: String,
     },
-    /// Update a project
+    /// Update a namespace
     Update {
-        /// Project name or ID
+        /// Namespace name or ID
         name: String,
         /// New description
         #[arg(short, long)]
@@ -49,9 +49,9 @@ pub enum ProjectCommand {
         #[arg(short, long)]
         tags: Option<String>,
     },
-    /// Delete a project
+    /// Delete a namespace
     Delete {
-        /// Project name or ID
+        /// Namespace name or ID
         name: String,
         /// Skip confirmation
         #[arg(short, long)]
@@ -59,34 +59,34 @@ pub enum ProjectCommand {
     },
 }
 
-pub fn execute(cmd: ProjectCommand, format: &OutputFormat) -> Result<()> {
+pub fn execute(cmd: NamespaceCommand, format: &OutputFormat) -> Result<()> {
     match cmd {
-        ProjectCommand::Create {
+        NamespaceCommand::Create {
             name,
             description,
             tags,
-        } => create_project(&name, &description, &tags, format),
-        ProjectCommand::List { status } => list_projects(status.as_deref(), format),
-        ProjectCommand::Show { name } => show_project(&name, format),
-        ProjectCommand::Update {
+        } => create_namespace(&name, &description, &tags, format),
+        NamespaceCommand::List { status } => list_namespaces(status.as_deref(), format),
+        NamespaceCommand::Show { name } => show_namespace(&name, format),
+        NamespaceCommand::Update {
             name,
             description,
             status,
             tags,
-        } => update_project(&name, description, status, tags, format),
-        ProjectCommand::Delete { name, force } => delete_project(&name, force, format),
+        } => update_namespace(&name, description, status, tags, format),
+        NamespaceCommand::Delete { name, force } => delete_namespace(&name, force, format),
     }
 }
 
-fn resolve_project(db: &IndexDb, name_or_id: &str) -> Result<Project> {
-    db.find_project_by_name(name_or_id)
+fn resolve_namespace(db: &IndexDb, name_or_id: &str) -> Result<Namespace> {
+    db.find_namespace_by_name(name_or_id)
         .ok()
         .flatten()
-        .or_else(|| db.get_project(name_or_id).ok().flatten())
-        .ok_or_else(|| anyhow::anyhow!("Project not found: {}", name_or_id))
+        .or_else(|| db.get_namespace(name_or_id).ok().flatten())
+        .ok_or_else(|| anyhow::anyhow!("Namespace not found: {}", name_or_id))
 }
 
-fn create_project(name: &str, description: &str, tags: &str, format: &OutputFormat) -> Result<()> {
+fn create_namespace(name: &str, description: &str, tags: &str, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
     let tag_list: Vec<String> = if tags.is_empty() {
@@ -95,26 +95,26 @@ fn create_project(name: &str, description: &str, tags: &str, format: &OutputForm
         tags.split(',').map(|t| t.trim().to_string()).collect()
     };
 
-    let mut project = Project::new(name.to_string(), description.to_string());
-    project.tags = tag_list;
-    db.create_project(&project)
-        .context("Failed to create project")?;
+    let mut namespace = Namespace::new(name.to_string(), description.to_string());
+    namespace.tags = tag_list;
+    db.create_namespace(&namespace)
+        .context("Failed to create namespace")?;
 
     match format {
         OutputFormat::Text => {
-            println!("✅ Project created: {} ({})", project.name, project.slug);
-            println!("   ID: {}", project.id);
+            println!("✅ Namespace created: {} ({})", namespace.name, namespace.slug);
+            println!("   ID: {}", namespace.id);
         }
         OutputFormat::Json => {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "id": project.id,
-                    "name": project.name,
-                    "slug": project.slug,
-                    "description": project.description,
-                    "status": project.status.to_string(),
-                    "tags": project.tags,
+                    "id": namespace.id,
+                    "name": namespace.name,
+                    "slug": namespace.slug,
+                    "description": namespace.description,
+                    "status": namespace.status.to_string(),
+                    "tags": namespace.tags,
                 }))?,
             );
         }
@@ -122,17 +122,17 @@ fn create_project(name: &str, description: &str, tags: &str, format: &OutputForm
     Ok(())
 }
 
-fn list_projects(status_filter: Option<&str>, format: &OutputFormat) -> Result<()> {
+fn list_namespaces(status_filter: Option<&str>, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
-    let projects = db
-        .list_projects(status_filter)
-        .context("Failed to list projects")?;
+    let namespaces = db
+        .list_namespaces(status_filter)
+        .context("Failed to list namespaces")?;
 
     match format {
         OutputFormat::Text => {
-            if projects.is_empty() {
-                println!("No projects found.");
+            if namespaces.is_empty() {
+                println!("No namespaces found.");
                 return Ok(());
             }
             println!(
@@ -140,7 +140,7 @@ fn list_projects(status_filter: Option<&str>, format: &OutputFormat) -> Result<(
                 "ID", "NAME", "STATUS"
             );
             println!("{}", "-".repeat(100));
-            for p in &projects {
+            for p in &namespaces {
                 let desc = if p.description.len() > 40 {
                     format!("{}...", &p.description[..37])
                 } else {
@@ -151,10 +151,10 @@ fn list_projects(status_filter: Option<&str>, format: &OutputFormat) -> Result<(
                     p.id, p.name, p.status, desc
                 );
             }
-            println!("\n{} project(s)", projects.len());
+            println!("\n{} namespace(s)", namespaces.len());
         }
         OutputFormat::Json => {
-            let items: Vec<_> = projects
+            let items: Vec<_> = namespaces
                 .iter()
                 .map(|p| {
                     serde_json::json!({
@@ -174,32 +174,32 @@ fn list_projects(status_filter: Option<&str>, format: &OutputFormat) -> Result<(
     Ok(())
 }
 
-fn show_project(name: &str, format: &OutputFormat) -> Result<()> {
+fn show_namespace(name: &str, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
-    let project = resolve_project(&db, name)?;
+    let namespace = resolve_namespace(&db, name)?;
 
     let topics = db
-        .list_topics_by_project(Some(&project.id))
+        .list_topics_by_namespace(Some(&namespace.id))
         .or_else(|_| db.list_topics())
         .unwrap_or_default()
         .into_iter()
-        .filter(|t| t.project_id == project.id)
+        .filter(|t| t.namespace_id == namespace.id)
         .collect::<Vec<_>>();
 
     match format {
         OutputFormat::Text => {
-            println!("Project: {}", project.name);
-            println!("  ID:          {}", project.id);
-            println!("  Slug:        {}", project.slug);
-            println!("  Status:      {}", project.status);
-            println!("  Description: {}", project.description);
-            if !project.tags.is_empty() {
-                println!("  Tags:        {}", project.tags.join(", "));
+            println!("Namespace: {}", namespace.name);
+            println!("  ID:          {}", namespace.id);
+            println!("  Slug:        {}", namespace.slug);
+            println!("  Status:      {}", namespace.status);
+            println!("  Description: {}", namespace.description);
+            if !namespace.tags.is_empty() {
+                println!("  Tags:        {}", namespace.tags.join(", "));
             }
             println!(
                 "  Created:     {}",
-                project.created_at.format("%Y-%m-%d %H:%M")
+                namespace.created_at.format("%Y-%m-%d %H:%M")
             );
             println!();
 
@@ -221,13 +221,13 @@ fn show_project(name: &str, format: &OutputFormat) -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "id": project.id,
-                    "name": project.name,
-                    "slug": project.slug,
-                    "description": project.description,
-                    "status": project.status.to_string(),
-                    "tags": project.tags,
-                    "created_at": project.created_at.to_rfc3339(),
+                    "id": namespace.id,
+                    "name": namespace.name,
+                    "slug": namespace.slug,
+                    "description": namespace.description,
+                    "status": namespace.status.to_string(),
+                    "tags": namespace.tags,
+                    "created_at": namespace.created_at.to_rfc3339(),
                     "topics": topics.iter().map(|t| serde_json::json!({
                         "id": t.id,
                         "name": t.name,
@@ -241,7 +241,7 @@ fn show_project(name: &str, format: &OutputFormat) -> Result<()> {
     Ok(())
 }
 
-fn update_project(
+fn update_namespace(
     name: &str,
     description: Option<String>,
     status: Option<String>,
@@ -250,37 +250,37 @@ fn update_project(
 ) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
-    let mut project = resolve_project(&db, name)?;
+    let mut namespace = resolve_namespace(&db, name)?;
 
     if let Some(desc) = description {
-        project.description = desc;
+        namespace.description = desc;
     }
     if let Some(s) = status {
-        project.status = s
+        namespace.status = s
             .parse()
             .map_err(|_| anyhow::anyhow!("Invalid status: {}. Use active/completed/archived", s))?;
     }
     if let Some(t) = tags {
-        project.tags = if t.is_empty() {
+        namespace.tags = if t.is_empty() {
             vec![]
         } else {
             t.split(',').map(|s| s.trim().to_string()).collect()
         };
     }
-    project.updated_at = chrono::Utc::now();
+    namespace.updated_at = chrono::Utc::now();
 
-    db.update_project(&project)
-        .context("Failed to update project")?;
+    db.update_namespace(&namespace)
+        .context("Failed to update namespace")?;
 
     match format {
-        OutputFormat::Text => println!("✅ Project updated: {}", project.name),
+        OutputFormat::Text => println!("✅ Namespace updated: {}", namespace.name),
         OutputFormat::Json => {
             println!(
                 "{}",
                 serde_json::json!({
-                    "updated": project.id,
-                    "name": project.name,
-                    "status": project.status.to_string(),
+                    "updated": namespace.id,
+                    "name": namespace.name,
+                    "status": namespace.status.to_string(),
                 })
             );
         }
@@ -288,33 +288,33 @@ fn update_project(
     Ok(())
 }
 
-fn delete_project(name: &str, force: bool, format: &OutputFormat) -> Result<()> {
+fn delete_namespace(name: &str, force: bool, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
-    let project = resolve_project(&db, name)?;
+    let namespace = resolve_namespace(&db, name)?;
 
     if !force {
         let topics = db
-            .list_topics_by_project(Some(&project.id))
+            .list_topics_by_namespace(Some(&namespace.id))
             .unwrap_or_default();
         if !topics.is_empty() {
             anyhow::bail!(
-                "Project '{}' has {} topic(s). Use --force to delete anyway.",
-                project.name,
+                "Namespace '{}' has {} topic(s). Use --force to delete anyway.",
+                namespace.name,
                 topics.len()
             );
         }
     }
 
-    db.delete_project(&project.id)
-        .context("Failed to delete project")?;
+    db.delete_namespace(&namespace.id)
+        .context("Failed to delete namespace")?;
 
     match format {
-        OutputFormat::Text => println!("🗑  Project deleted: {}", project.name),
+        OutputFormat::Text => println!("🗑  Namespace deleted: {}", namespace.name),
         OutputFormat::Json => {
             println!(
                 "{}",
-                serde_json::json!({"deleted": project.id, "name": project.name})
+                serde_json::json!({"deleted": namespace.id, "name": namespace.name})
             );
         }
     }

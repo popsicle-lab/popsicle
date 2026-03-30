@@ -62,8 +62,8 @@ pub fn run() {
             commands::get_memory,
             commands::list_topics,
             commands::get_topic,
-            commands::list_project_entities,
-            commands::get_project_entity,
+            commands::list_namespace_entities,
+            commands::get_namespace_entity,
         ])
         .setup(|app| {
             ProjectWatcher::setup(app.handle().clone());

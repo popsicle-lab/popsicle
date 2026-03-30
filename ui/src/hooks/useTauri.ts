@@ -654,9 +654,9 @@ export async function getMemory(id: number): Promise<MemoryInfo> {
   return invoke("get_memory", { id });
 }
 
-// ── Project entity types ──
+// ── Namespace entity types ──
 
-export interface ProjectEntityInfo {
+export interface NamespaceEntityInfo {
   id: string;
   name: string;
   slug: string;
@@ -668,16 +668,16 @@ export interface ProjectEntityInfo {
   updated_at: string;
 }
 
-export interface ProjectEntityDetail extends ProjectEntityInfo {
+export interface NamespaceEntityDetail extends NamespaceEntityInfo {
   topics: TopicInfo[];
 }
 
-export async function listProjectEntities(): Promise<ProjectEntityInfo[]> {
-  return invoke("list_project_entities");
+export async function listNamespaceEntities(): Promise<NamespaceEntityInfo[]> {
+  return invoke("list_namespace_entities");
 }
 
-export async function getProjectEntity(
-  projectId: string
-): Promise<ProjectEntityDetail> {
-  return invoke("get_project_entity", { projectId });
+export async function getNamespaceEntity(
+  namespaceId: string
+): Promise<NamespaceEntityDetail> {
+  return invoke("get_namespace_entity", { namespaceId });
 }

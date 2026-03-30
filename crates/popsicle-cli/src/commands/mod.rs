@@ -10,7 +10,7 @@ mod memory;
 mod migrate;
 mod module;
 mod pipeline;
-mod project;
+mod namespace;
 mod prompt;
 pub(crate) mod registry;
 mod skill;
@@ -84,9 +84,9 @@ pub enum Command {
     #[command(subcommand)]
     Topic(topic::TopicCommand),
 
-    /// Manage projects (group related topics)
+    /// Manage namespaces (group related topics)
     #[command(subcommand)]
-    Project(project::ProjectCommand),
+    Namespace(namespace::NamespaceCommand),
 
     /// Package registry: search, publish, and discover modules & tools
     #[command(subcommand)]
@@ -132,7 +132,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Module(sub) => module::execute(sub, format),
         Command::Tool(sub) => tool::execute(sub, format),
         Command::Topic(sub) => topic::execute(sub, format),
-        Command::Project(sub) => project::execute(sub, format),
+        Command::Namespace(sub) => namespace::execute(sub, format),
         Command::Registry(sub) => registry::execute(sub, format),
         Command::Context(sub) => context::execute(sub, format),
         Command::Memory(sub) => memory::execute(sub, format),

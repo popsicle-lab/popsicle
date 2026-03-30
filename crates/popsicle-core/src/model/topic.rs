@@ -12,9 +12,9 @@ pub struct Topic {
     pub slug: String,
     #[serde(default)]
     pub description: String,
-    /// Parent project this topic belongs to (required).
+    /// Parent namespace this topic belongs to (required).
     #[serde(default)]
-    pub project_id: String,
+    pub namespace_id: String,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Exclusive lock: the pipeline run currently operating on this topic.
@@ -29,7 +29,7 @@ pub struct Topic {
 impl Topic {
     /// Create a new topic. The slug is auto-generated from `name` if not
     /// supplied (lowercased, spaces/underscores → hyphens, non-alphanumeric stripped).
-    pub fn new(name: impl Into<String>, description: impl Into<String>, project_id: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, description: impl Into<String>, namespace_id: impl Into<String>) -> Self {
         let name = name.into();
         let slug = slugify(&name);
         let now = Utc::now();
@@ -38,7 +38,7 @@ impl Topic {
             name,
             slug,
             description: description.into(),
-            project_id: project_id.into(),
+            namespace_id: namespace_id.into(),
             tags: Vec::new(),
             locked_by_run_id: None,
             locked_at: None,

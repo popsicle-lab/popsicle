@@ -23,15 +23,15 @@ pub enum TopicCommand {
         /// Comma-separated tags
         #[arg(short, long, default_value = "")]
         tags: String,
-        /// Project this topic belongs to (name or ID) — required
+        /// Namespace this topic belongs to (name or ID) — required
         #[arg(long)]
-        project: String,
+        namespace: String,
     },
     /// List all topics
     List {
-        /// Filter by project (name or ID)
+        /// Filter by namespace (name or ID)
         #[arg(long)]
-        project: Option<String>,
+        namespace: Option<String>,
     },
     /// Show details of a topic
     Show {
@@ -54,29 +54,29 @@ pub fn execute(cmd: TopicCommand, format: &OutputFormat) -> Result<()> {
             name,
             description,
             tags,
-            project,
-        } => create_topic(&name, &description, &tags, &project, format),
-        TopicCommand::List { project } => list_topics(project.as_deref(), format),
+            namespace,
+        } => create_topic(&name, &description, &tags, &namespace, format),
+        TopicCommand::List { namespace } => list_topics(namespace.as_deref(), format),
         TopicCommand::Show { name } => show_topic(&name, format),
         TopicCommand::Delete { name, force } => delete_topic(&name, force, format),
     }
 }
 
-fn resolve_project_id(db: &IndexDb, name_or_id: &str) -> Result<String> {
-    if let Some(p) = db.find_project_by_name(name_or_id).ok().flatten() {
+fn resolve_namespace_id(db: &IndexDb, name_or_id: &str) -> Result<String> {
+    if let Some(p) = db.find_namespace_by_name(name_or_id).ok().flatten() {
         return Ok(p.id);
     }
-    if let Some(p) = db.get_project(name_or_id).ok().flatten() {
+    if let Some(p) = db.get_namespace(name_or_id).ok().flatten() {
         return Ok(p.id);
     }
-    anyhow::bail!("Project not found: {}", name_or_id)
+    anyhow::bail!("Namespace not found: {}", name_or_id)
 }
 
 fn create_topic(
     name: &str,
     description: &str,
     tags: &str,
-    project: &str,
+    namespace: &str,
     format: &OutputFormat,
 ) -> Result<()> {
     let layout = project_layout()?;
@@ -87,9 +87,9 @@ fn create_topic(
         tags.split(',').map(|t| t.trim().to_string()).collect()
     };
 
-    let project_id = resolve_project_id(&db, project)?;
+    let namespace_id = resolve_namespace_id(&db, namespace)?;
 
-    let mut topic = Topic::new(name.to_string(), description.to_string(), project_id.clone());
+    let mut topic = Topic::new(name.to_string(), description.to_string(), namespace_id.clone());
     topic.tags = tag_list;
     db.create_topic(&topic).context("Failed to create topic")?;
 
@@ -97,7 +97,7 @@ fn create_topic(
         OutputFormat::Text => {
             println!("✅ Topic created: {} ({})", topic.name, topic.slug);
             println!("   ID: {}", topic.id);
-            println!("   Project: {}", project_id);
+            println!("   Namespace: {}", namespace_id);
         }
         OutputFormat::Json => {
             println!(
@@ -108,7 +108,7 @@ fn create_topic(
                     "slug": topic.slug,
                     "description": topic.description,
                     "tags": topic.tags,
-                    "project_id": topic.project_id,
+                    "namespace_id": topic.namespace_id,
                 }))?,
             );
         }
@@ -116,17 +116,17 @@ fn create_topic(
     Ok(())
 }
 
-fn list_topics(project: Option<&str>, format: &OutputFormat) -> Result<()> {
+fn list_topics(namespace: Option<&str>, format: &OutputFormat) -> Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
 
-    let project_id = match project {
-        Some(p) => Some(resolve_project_id(&db, p)?),
+    let namespace_id = match namespace {
+        Some(p) => Some(resolve_namespace_id(&db, p)?),
         None => None,
     };
 
     let topics = db
-        .list_topics_by_project(project_id.as_deref())
+        .list_topics_by_namespace(namespace_id.as_deref())
         .or_else(|_| db.list_topics())
         .context("Failed to list topics")?;
 
@@ -182,11 +182,11 @@ fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
     let docs = db.query_topic_documents(&topic.id).unwrap_or_default();
     let issues = db.query_issues(None, None, None, Some(&topic.id)).unwrap_or_default();
 
-    // Resolve project name if present
-    let project_name = if topic.project_id.is_empty() {
+    // Resolve namespace name if present
+    let namespace_name = if topic.namespace_id.is_empty() {
         None
     } else {
-        db.get_project(&topic.project_id).ok().flatten().map(|p| p.name)
+        db.get_namespace(&topic.namespace_id).ok().flatten().map(|p| p.name)
     };
 
     match format {
@@ -195,8 +195,8 @@ fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
             println!("  ID:          {}", topic.id);
             println!("  Slug:        {}", topic.slug);
             println!("  Description: {}", topic.description);
-            if let Some(ref pname) = project_name {
-                println!("  Project:     {}", pname);
+            if let Some(ref pname) = namespace_name {
+                println!("  Namespace:     {}", pname);
             }
             if !topic.tags.is_empty() {
                 println!("  Tags:        {}", topic.tags.join(", "));
@@ -256,8 +256,8 @@ fn show_topic(name: &str, format: &OutputFormat) -> Result<()> {
                     "name": topic.name,
                     "slug": topic.slug,
                     "description": topic.description,
-                    "project_id": topic.project_id,
-                    "project_name": project_name,
+                    "namespace_id": topic.namespace_id,
+                    "namespace_name": namespace_name,
                     "tags": topic.tags,
                     "created_at": topic.created_at.to_rfc3339(),
                     "issues": issues.iter().map(|i| serde_json::json!({

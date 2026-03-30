@@ -6,7 +6,7 @@ use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
 use popsicle_core::model::{
-    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, Project, StageState,
+    Bug, BugSeverity, Issue, IssueStatus, IssueType, Namespace, PipelineRun, Priority, StageState,
     Topic,
 };
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
@@ -1588,24 +1588,24 @@ pub fn get_topic(topic_name: String, state: State<AppState>) -> Result<TopicDeta
     })
 }
 
-// ── Project entity commands ──
+// ── Namespace entity commands ──
 
 #[tauri::command]
-pub fn list_project_entities(
+pub fn list_namespace_entities(
     state: State<AppState>,
-) -> Result<Vec<ProjectEntityInfo>, String> {
+) -> Result<Vec<NamespaceEntityInfo>, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-    let projects = db.list_projects(None).map_err(|e| e.to_string())?;
-    Ok(projects
+    let namespaces = db.list_namespaces(None).map_err(|e| e.to_string())?;
+    Ok(namespaces
         .iter()
         .map(|p| {
             let topic_count = db
-                .list_topics_by_project(Some(&p.id))
+                .list_topics_by_namespace(Some(&p.id))
                 .map(|t| t.len() as u32)
                 .unwrap_or(0);
-            ProjectEntityInfo {
+            NamespaceEntityInfo {
                 id: p.id.clone(),
                 name: p.name.clone(),
                 slug: p.slug.clone(),
@@ -1621,32 +1621,32 @@ pub fn list_project_entities(
 }
 
 #[tauri::command]
-pub fn get_project_entity(
-    project_id: String,
+pub fn get_namespace_entity(
+    namespace_id: String,
     state: State<AppState>,
-) -> Result<ProjectEntityDetail, String> {
+) -> Result<NamespaceEntityDetail, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
 
-    let project = db
-        .find_project_by_name(&project_id)
+    let namespace = db
+        .find_namespace_by_name(&namespace_id)
         .ok()
         .flatten()
-        .or_else(|| db.get_project(&project_id).ok().flatten())
-        .ok_or_else(|| format!("Project not found: {}", project_id))?;
+        .or_else(|| db.get_namespace(&namespace_id).ok().flatten())
+        .ok_or_else(|| format!("Namespace not found: {}", namespace_id))?;
 
     let topics = db
-        .list_topics_by_project(Some(&project.id))
+        .list_topics_by_namespace(Some(&namespace.id))
         .map_err(|e| e.to_string())?;
 
-    Ok(ProjectEntityDetail {
-        id: project.id.clone(),
-        name: project.name.clone(),
-        slug: project.slug.clone(),
-        description: project.description.clone(),
-        status: project.status.to_string(),
-        tags: project.tags.clone(),
+    Ok(NamespaceEntityDetail {
+        id: namespace.id.clone(),
+        name: namespace.name.clone(),
+        slug: namespace.slug.clone(),
+        description: namespace.description.clone(),
+        status: namespace.status.to_string(),
+        tags: namespace.tags.clone(),
         topics: topics
             .iter()
             .map(|t| {
@@ -1663,7 +1663,7 @@ pub fn get_project_entity(
                     name: t.name.clone(),
                     slug: t.slug.clone(),
                     description: t.description.clone(),
-                    project_id: t.project_id.clone(),
+                    namespace_id: t.namespace_id.clone(),
                     tags: t.tags.clone(),
                     created_at: t.created_at.to_rfc3339(),
                     run_count,
@@ -1671,7 +1671,7 @@ pub fn get_project_entity(
                 }
             })
             .collect(),
-        created_at: project.created_at.to_rfc3339(),
-        updated_at: project.updated_at.to_rfc3339(),
+        created_at: namespace.created_at.to_rfc3339(),
+        updated_at: namespace.updated_at.to_rfc3339(),
     })
 }

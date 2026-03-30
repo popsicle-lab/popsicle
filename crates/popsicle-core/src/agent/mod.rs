@@ -211,21 +211,19 @@ Then use `$POPSICLE` in place of `popsicle` for all commands.
 You MUST follow this checklist before writing ANY code or making ANY changes.
 No exceptions — not for "small" fixes, not for low-level modules, not for "just one line".
 
-### Step 0: Verify project exists and is bootstrapped
+### Step 0: Verify namespace and topics exist
 
-Before anything else, ensure the project is set up:
+`issue start` requires at least one namespace and one topic. These are created during bootstrap.
 
-1. **Project must exist** — if not, create one:
-   ```bash
-   popsicle project create --name "<name>" --description "<desc>"
-   ```
-2. **Project must be bootstrapped** (topics exist) — if not, run:
-   ```bash
-   popsicle context bootstrap --generate-prompt --format json
-   ```
-   Then apply the plan.
+If `issue start` fails with "No namespace found", the project needs bootstrapping:
 
-`popsicle init` only creates the directory structure. `project create` registers the project. `context bootstrap` populates topics and documents. All three are prerequisites — do NOT skip any.
+```bash
+popsicle context bootstrap --generate-prompt --format json
+```
+
+Bootstrap analyzes the codebase, proposes namespaces (product domains) and topics (document collections), then asks the user to confirm before creating them. Do NOT skip this step.
+
+Note: `popsicle init` is a manual step that creates the directory structure — it is NOT your concern. Bootstrap is the automated entry point.
 
 ### Step 1: Check for an active pipeline run
 
@@ -339,7 +337,7 @@ Do NOT skip this step. Documents without LLM-generated summaries will not appear
 ## Workflow Rules
 
 1. **NEVER write code without an active pipeline run** — no exceptions
-2. **Issue → Pipeline → Skill** — always follow this order; `issue start` is the ONLY way to create pipeline runs and acquires an exclusive Topic lock
+2. **Namespace → Topic → Issue → Pipeline → Skill** — always follow this hierarchy; `issue start` is the ONLY way to create pipeline runs and acquires an exclusive Topic lock
 3. Always check `popsicle pipeline next` before starting work on a step
 4. Guards enforce upstream **stage completion** before downstream work proceeds
 5. Fill document sections with real content — template placeholders are rejected

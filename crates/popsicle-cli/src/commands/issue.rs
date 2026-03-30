@@ -137,14 +137,14 @@ fn load_config(layout: &ProjectLayout) -> anyhow::Result<ProjectConfig> {
 }
 
 /// Verify the project is properly set up before issue operations.
-/// Checks two gates: (1) project must exist, (2) topics must exist (bootstrapped).
-fn check_project_ready(db: &IndexDb) -> anyhow::Result<()> {
-    let projects = db.list_projects(None)
+/// Checks two gates: (1) namespace must exist, (2) topics must exist (bootstrapped).
+fn check_namespace_ready(db: &IndexDb) -> anyhow::Result<()> {
+    let namespaces = db.list_namespaces(None)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    if projects.is_empty() {
+    if namespaces.is_empty() {
         anyhow::bail!(
-            "No project found. Create one first:\n  \
-             $ popsicle project create --name \"<name>\" --description \"<desc>\"\n\n\
+            "No namespace found. Create one first:\n  \
+             $ popsicle namespace create --name \"<name>\" --description \"<desc>\"\n\n\
              Then bootstrap the project to create topics and import documents:\n  \
              $ popsicle context bootstrap --generate-prompt"
         );
@@ -153,7 +153,7 @@ fn check_project_ready(db: &IndexDb) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     if topics.is_empty() {
         anyhow::bail!(
-            "Project exists but has no topics — not yet bootstrapped.\n  \
+            "Namespace exists but has no topics — not yet bootstrapped.\n  \
              $ popsicle context bootstrap --generate-prompt\n\
              Then apply the plan to create topics and import documents."
         );
@@ -181,7 +181,7 @@ fn create_issue(
     let layout = project_layout()?;
     let config = load_config(&layout)?;
     let db = IndexDb::open(&layout.db_path())?;
-    check_project_ready(&db)?;
+    check_namespace_ready(&db)?;
 
     if let Some(name) = pipeline {
         let cwd = env::current_dir()?;
@@ -427,7 +427,7 @@ fn start_issue(key: &str, format: &OutputFormat) -> anyhow::Result<()> {
     let cwd = env::current_dir()?;
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
-    check_project_ready(&db)?;
+    check_namespace_ready(&db)?;
 
     let mut issue = db
         .get_issue(key)

@@ -22,7 +22,7 @@ const navItems: {
   group?: string;
 }[] = [
   { kind: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { kind: "projects", label: "Projects", icon: FolderOpen },
+  { kind: "namespaces", label: "Namespaces", icon: FolderOpen },
   { kind: "issues", label: "Issues", icon: ClipboardList },
   { kind: "topics", label: "Topics", icon: Tags },
   { kind: "search", label: "Doc Search", icon: Search },
@@ -47,8 +47,8 @@ export function Sidebar({ page, setPage }: Props) {
     if (kind === "topics") {
       return page.kind === "topics" || page.kind === "topic";
     }
-    if (kind === "projects") {
-      return page.kind === "projects" || page.kind === "project";
+    if (kind === "namespaces") {
+      return page.kind === "namespaces" || page.kind === "namespace";
     }
     return page.kind === kind;
   };

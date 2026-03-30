@@ -1,37 +1,37 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// A project groups related topics under a single initiative or epic.
-/// Projects are optional — topics can exist without a project.
+/// A namespace groups related topics under a single initiative or epic.
+/// Namespaces are optional — topics can exist without a namespace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Project {
+pub struct Namespace {
     pub id: String,
     pub name: String,
     /// URL-safe slug (auto-generated from name).
     pub slug: String,
     #[serde(default)]
     pub description: String,
-    #[serde(default = "default_project_status")]
-    pub status: ProjectStatus,
+    #[serde(default = "default_namespace_status")]
+    pub status: NamespaceStatus,
     #[serde(default)]
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-fn default_project_status() -> ProjectStatus {
-    ProjectStatus::Active
+fn default_namespace_status() -> NamespaceStatus {
+    NamespaceStatus::Active
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ProjectStatus {
+pub enum NamespaceStatus {
     Active,
     Completed,
     Archived,
 }
 
-impl std::fmt::Display for ProjectStatus {
+impl std::fmt::Display for NamespaceStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Active => write!(f, "active"),
@@ -41,19 +41,19 @@ impl std::fmt::Display for ProjectStatus {
     }
 }
 
-impl std::str::FromStr for ProjectStatus {
+impl std::str::FromStr for NamespaceStatus {
     type Err = String;
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "active" => Ok(Self::Active),
             "completed" => Ok(Self::Completed),
             "archived" => Ok(Self::Archived),
-            _ => Err(format!("Unknown project status: {s}")),
+            _ => Err(format!("Unknown namespace status: {s}")),
         }
     }
 }
 
-impl Project {
+impl Namespace {
     pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         let name = name.into();
         let slug = super::topic::slugify(&name);
@@ -63,7 +63,7 @@ impl Project {
             name,
             slug,
             description: description.into(),
-            status: ProjectStatus::Active,
+            status: NamespaceStatus::Active,
             tags: Vec::new(),
             created_at: now,
             updated_at: now,
@@ -76,17 +76,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new_project() {
-        let proj = Project::new("User System", "Auth and authorization");
-        assert_eq!(proj.slug, "user-system");
-        assert_eq!(proj.status, ProjectStatus::Active);
-        assert!(!proj.id.is_empty());
+    fn test_new_namespace() {
+        let ns = Namespace::new("User System", "Auth and authorization");
+        assert_eq!(ns.slug, "user-system");
+        assert_eq!(ns.status, NamespaceStatus::Active);
+        assert!(!ns.id.is_empty());
     }
 
     #[test]
-    fn test_project_status_roundtrip() {
+    fn test_namespace_status_roundtrip() {
         for status in &["active", "completed", "archived"] {
-            let parsed: ProjectStatus = status.parse().unwrap();
+            let parsed: NamespaceStatus = status.parse().unwrap();
             assert_eq!(&parsed.to_string(), status);
         }
     }

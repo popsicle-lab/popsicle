@@ -55,10 +55,10 @@ pub struct ProjectInfo {
     pub initialized: bool,
 }
 
-// ── Project entity ──
+// ── Namespace entity ──
 
 #[derive(Serialize)]
-pub struct ProjectEntityInfo {
+pub struct NamespaceEntityInfo {
     pub id: String,
     pub name: String,
     pub slug: String,
@@ -71,7 +71,7 @@ pub struct ProjectEntityInfo {
 }
 
 #[derive(Serialize)]
-pub struct ProjectEntityDetail {
+pub struct NamespaceEntityDetail {
     pub id: String,
     pub name: String,
     pub slug: String,
@@ -498,7 +498,7 @@ pub struct TopicInfo {
     pub name: String,
     pub slug: String,
     pub description: String,
-    pub project_id: String,
+    pub namespace_id: String,
     pub tags: Vec<String>,
     pub created_at: String,
     pub run_count: u32,
@@ -511,7 +511,7 @@ pub struct TopicDetailInfo {
     pub name: String,
     pub slug: String,
     pub description: String,
-    pub project_id: String,
+    pub namespace_id: String,
     pub tags: Vec<String>,
     pub created_at: String,
     pub runs: Vec<PipelineRunInfo>,

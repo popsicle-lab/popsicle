@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  getProjectEntity,
-  type ProjectEntityDetail,
+  getNamespaceEntity,
+  type NamespaceEntityDetail,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -16,19 +16,19 @@ import {
 import type { Page } from "../App";
 
 interface Props {
-  projectId: string;
+  namespaceId: string;
   setPage: (p: Page) => void;
 }
 
-export function ProjectDetailView({ projectId, setPage }: Props) {
-  const [project, setProject] = useState<ProjectEntityDetail | null>(null);
+export function NamespaceDetailView({ namespaceId, setPage }: Props) {
+  const [namespace, setNamespace] = useState<NamespaceEntityDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getProjectEntity(projectId)
-      .then(setProject)
+    getNamespaceEntity(namespaceId)
+      .then(setNamespace)
       .catch((e) => setError(e?.toString()));
-  }, [projectId]);
+  }, [namespaceId]);
 
   if (error)
     return (
@@ -36,7 +36,7 @@ export function ProjectDetailView({ projectId, setPage }: Props) {
         {error}
       </div>
     );
-  if (!project)
+  if (!namespace)
     return (
       <div className="text-[var(--text-secondary)]">Loading…</div>
     );
@@ -46,34 +46,34 @@ export function ProjectDetailView({ projectId, setPage }: Props) {
       {/* Header */}
       <div>
         <button
-          onClick={() => setPage({ kind: "projects" })}
+          onClick={() => setPage({ kind: "namespaces" })}
           className="flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-3"
         >
-          <ArrowLeft size={14} /> Back to Projects
+          <ArrowLeft size={14} /> Back to Namespaces
         </button>
         <div className="flex items-center gap-3">
           <FolderOpen size={24} className="text-[var(--accent)]" />
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold">{project.name}</h2>
-              <StatusBadge status={project.status} />
+              <h2 className="text-2xl font-bold">{namespace.name}</h2>
+              <StatusBadge status={namespace.status} />
             </div>
-            {project.description && (
+            {namespace.description && (
               <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-                {project.description}
+                {namespace.description}
               </p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-4 mt-2 text-xs text-[var(--text-secondary)]">
-          <span className="font-mono">{project.slug}</span>
+          <span className="font-mono">{namespace.slug}</span>
           <span>
-            {new Date(project.created_at).toLocaleDateString()}
+            {new Date(namespace.created_at).toLocaleDateString()}
           </span>
-          {project.tags.length > 0 && (
+          {namespace.tags.length > 0 && (
             <span className="flex items-center gap-1">
               <Tag size={11} />
-              {project.tags.map((tag) => (
+              {namespace.tags.map((tag) => (
                 <span
                   key={tag}
                   className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 text-[10px] font-medium"
@@ -93,7 +93,7 @@ export function ProjectDetailView({ projectId, setPage }: Props) {
             <Tags size={20} className="text-[var(--accent)]" />
           </div>
           <div>
-            <div className="text-2xl font-bold">{project.topics.length}</div>
+            <div className="text-2xl font-bold">{namespace.topics.length}</div>
             <div className="text-xs text-[var(--text-secondary)]">Topics</div>
           </div>
         </div>
@@ -103,7 +103,7 @@ export function ProjectDetailView({ projectId, setPage }: Props) {
           </div>
           <div>
             <div className="text-2xl font-bold">
-              {project.topics.reduce((acc, t) => acc + t.run_count, 0)}
+              {namespace.topics.reduce((acc, t) => acc + t.run_count, 0)}
             </div>
             <div className="text-xs text-[var(--text-secondary)]">
               Total Runs
@@ -116,7 +116,7 @@ export function ProjectDetailView({ projectId, setPage }: Props) {
           </div>
           <div>
             <div className="text-2xl font-bold">
-              {project.topics.reduce((acc, t) => acc + t.doc_count, 0)}
+              {namespace.topics.reduce((acc, t) => acc + t.doc_count, 0)}
             </div>
             <div className="text-xs text-[var(--text-secondary)]">
               Total Documents
@@ -131,13 +131,13 @@ export function ProjectDetailView({ projectId, setPage }: Props) {
           <Tags size={16} className="text-[var(--accent)]" />
           <h3 className="font-medium text-sm">Topics</h3>
         </div>
-        {project.topics.length === 0 ? (
+        {namespace.topics.length === 0 ? (
           <div className="p-6 text-center text-[var(--text-secondary)]">
-            No topics in this project yet.
+            No topics in this namespace yet.
           </div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {project.topics.map((topic) => (
+            {namespace.topics.map((topic) => (
               <button
                 key={topic.id}
                 onClick={() =>

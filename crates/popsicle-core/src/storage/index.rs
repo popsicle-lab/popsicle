@@ -7,7 +7,7 @@ use crate::git::{CommitLink, ReviewStatus};
 use crate::model::{
     AcceptanceCriterion, Bug, BugSeverity, BugSource, BugStatus, Discussion, DiscussionMessage,
     DiscussionRole, DiscussionStatus, Document, Issue, IssueStatus, IssueType, MessageType,
-    PipelineRun, Priority, Project, ProjectStatus, RoleSource, RunType, StageState, TestCase,
+    PipelineRun, Priority, Namespace, NamespaceStatus, RoleSource, RunType, StageState, TestCase,
     TestCaseStatus, TestPriority, TestRunResult, TestType, UserStory, UserStoryStatus,
 };
 
@@ -35,7 +35,7 @@ impl IndexDb {
     fn migrate(&self) -> Result<()> {
         self.conn.execute_batch(
             "
-            CREATE TABLE IF NOT EXISTS projects (
+            CREATE TABLE IF NOT EXISTS namespaces (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
                 slug TEXT NOT NULL UNIQUE,
@@ -289,14 +289,34 @@ impl IndexDb {
             )?;
         }
 
-        // Migration: add project_id column to topics
-        let has_project_id: bool = self
+        // Migration: rename projects table to namespaces
+        let has_projects_table: bool = self
             .conn
-            .prepare("SELECT project_id FROM topics LIMIT 0")
+            .prepare("SELECT id FROM projects LIMIT 0")
             .is_ok();
-        if !has_project_id {
+        if has_projects_table {
             self.conn
-                .execute_batch("ALTER TABLE topics ADD COLUMN project_id TEXT REFERENCES projects(id);")?;
+                .execute_batch("ALTER TABLE projects RENAME TO namespaces;")?;
+        }
+
+        // Migration: add namespace_id column to topics
+        let has_namespace_id: bool = self
+            .conn
+            .prepare("SELECT namespace_id FROM topics LIMIT 0")
+            .is_ok();
+        if !has_namespace_id {
+            // Check if old project_id column exists (pre-rename databases)
+            let has_project_id: bool = self
+                .conn
+                .prepare("SELECT project_id FROM topics LIMIT 0")
+                .is_ok();
+            if has_project_id {
+                self.conn
+                    .execute_batch("ALTER TABLE topics RENAME COLUMN project_id TO namespace_id;")?;
+            } else {
+                self.conn
+                    .execute_batch("ALTER TABLE topics ADD COLUMN namespace_id TEXT REFERENCES namespaces(id);")?;
+            }
         }
 
         // Migration: add topic lock columns
@@ -702,13 +722,13 @@ impl IndexDb {
     /// Create a new topic.
     pub fn create_topic(&self, topic: &crate::model::Topic) -> Result<()> {
         let tags_json = serde_json::to_string(&topic.tags).unwrap_or_else(|_| "[]".to_string());
-        let project_id_param: Option<&str> = if topic.project_id.is_empty() {
+        let namespace_id_param: Option<&str> = if topic.namespace_id.is_empty() {
             None
         } else {
-            Some(&topic.project_id)
+            Some(&topic.namespace_id)
         };
         self.conn.execute(
-            "INSERT INTO topics (id, name, slug, description, tags, created_at, updated_at, project_id, locked_by_run_id, locked_at)
+            "INSERT INTO topics (id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 topic.id,
@@ -718,7 +738,7 @@ impl IndexDb {
                 tags_json,
                 topic.created_at.to_rfc3339(),
                 topic.updated_at.to_rfc3339(),
-                project_id_param,
+                namespace_id_param,
                 topic.locked_by_run_id.as_deref(),
                 topic.locked_at.map(|t| t.to_rfc3339()),
             ],
@@ -729,7 +749,7 @@ impl IndexDb {
     /// Get a topic by ID.
     pub fn get_topic(&self, id: &str) -> Result<Option<crate::model::Topic>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, project_id, locked_by_run_id, locked_at FROM topics WHERE id = ?1",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], |row| {
             Ok((
@@ -751,7 +771,7 @@ impl IndexDb {
     /// Find a topic by name.
     pub fn find_topic_by_name(&self, name: &str) -> Result<Option<crate::model::Topic>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, project_id, locked_by_run_id, locked_at FROM topics WHERE name = ?1",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics WHERE name = ?1",
         )?;
         let mut rows = stmt.query_map(params![name], |row| {
             Ok((
@@ -780,7 +800,7 @@ impl IndexDb {
         >,
     ) -> Result<Option<crate::model::Topic>> {
         match row {
-            Some(Ok((id, name, slug, description, tags_json, created_str, updated_str, project_id, locked_by_run_id, locked_at_str))) => {
+            Some(Ok((id, name, slug, description, tags_json, created_str, updated_str, namespace_id, locked_by_run_id, locked_at_str))) => {
                 let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
                 let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
                     .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
@@ -797,7 +817,7 @@ impl IndexDb {
                     name,
                     slug,
                     description,
-                    project_id: project_id.unwrap_or_default(),
+                    namespace_id: namespace_id.unwrap_or_default(),
                     tags,
                     locked_by_run_id,
                     locked_at,
@@ -813,7 +833,7 @@ impl IndexDb {
     /// List all topics.
     pub fn list_topics(&self) -> Result<Vec<crate::model::Topic>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, project_id, locked_by_run_id, locked_at FROM topics ORDER BY created_at DESC",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -831,7 +851,7 @@ impl IndexDb {
         })?;
         let mut results = Vec::new();
         for row in rows {
-            let (id, name, slug, description, tags_json, created_str, updated_str, project_id, locked_by_run_id, locked_at_str) = row?;
+            let (id, name, slug, description, tags_json, created_str, updated_str, namespace_id, locked_by_run_id, locked_at_str) = row?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
             let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
                 .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
@@ -848,7 +868,7 @@ impl IndexDb {
                 name,
                 slug,
                 description,
-                project_id: project_id.unwrap_or_default(),
+                namespace_id: namespace_id.unwrap_or_default(),
                 tags,
                 locked_by_run_id,
                 locked_at,
@@ -934,30 +954,30 @@ impl IndexDb {
         Ok(result.flatten())
     }
 
-    // ── Project CRUD ─────────────────────────────────────────────────
+    // ── Namespace CRUD ─────────────────────────────────────────────────
 
-    pub fn create_project(&self, project: &Project) -> Result<()> {
-        let tags_json = serde_json::to_string(&project.tags).unwrap_or_else(|_| "[]".to_string());
+    pub fn create_namespace(&self, namespace: &Namespace) -> Result<()> {
+        let tags_json = serde_json::to_string(&namespace.tags).unwrap_or_else(|_| "[]".to_string());
         self.conn.execute(
-            "INSERT INTO projects (id, name, slug, description, status, tags, created_at, updated_at)
+            "INSERT INTO namespaces (id, name, slug, description, status, tags, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
-                project.id,
-                project.name,
-                project.slug,
-                project.description,
-                project.status.to_string(),
+                namespace.id,
+                namespace.name,
+                namespace.slug,
+                namespace.description,
+                namespace.status.to_string(),
                 tags_json,
-                project.created_at.to_rfc3339(),
-                project.updated_at.to_rfc3339(),
+                namespace.created_at.to_rfc3339(),
+                namespace.updated_at.to_rfc3339(),
             ],
         )?;
         Ok(())
     }
 
-    pub fn get_project(&self, id_or_name: &str) -> Result<Option<Project>> {
+    pub fn get_namespace(&self, id_or_name: &str) -> Result<Option<Namespace>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, status, tags, created_at, updated_at FROM projects WHERE id = ?1 OR name = ?1",
+            "SELECT id, name, slug, description, status, tags, created_at, updated_at FROM namespaces WHERE id = ?1 OR name = ?1",
         )?;
         let mut rows = stmt.query_map(params![id_or_name], |row| {
             Ok((
@@ -973,7 +993,7 @@ impl IndexDb {
         })?;
         match rows.next() {
             Some(Ok((id, name, slug, description, status_str, tags_json, created_str, updated_str))) => {
-                let status: ProjectStatus = status_str
+                let status: NamespaceStatus = status_str
                     .parse()
                     .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
                 let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -983,7 +1003,7 @@ impl IndexDb {
                 let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_str)
                     .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
                     .with_timezone(&chrono::Utc);
-                Ok(Some(Project {
+                Ok(Some(Namespace {
                     id,
                     name,
                     slug,
@@ -999,8 +1019,8 @@ impl IndexDb {
         }
     }
 
-    pub fn list_projects(&self, status: Option<&str>) -> Result<Vec<Project>> {
-        let mut sql = "SELECT id, name, slug, description, status, tags, created_at, updated_at FROM projects".to_string();
+    pub fn list_namespaces(&self, status: Option<&str>) -> Result<Vec<Namespace>> {
+        let mut sql = "SELECT id, name, slug, description, status, tags, created_at, updated_at FROM namespaces".to_string();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         if let Some(s) = status {
             sql.push_str(&format!(" WHERE status = ?{}", param_values.len() + 1));
@@ -1026,7 +1046,7 @@ impl IndexDb {
         let mut results = Vec::new();
         for row in rows {
             let (id, name, slug, description, status_str, tags_json, created_str, updated_str) = row?;
-            let status: ProjectStatus = status_str
+            let status: NamespaceStatus = status_str
                 .parse()
                 .map_err(|e: String| crate::error::PopsicleError::Storage(e))?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -1036,7 +1056,7 @@ impl IndexDb {
             let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_str)
                 .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
                 .with_timezone(&chrono::Utc);
-            results.push(Project {
+            results.push(Namespace {
                 id,
                 name,
                 slug,
@@ -1050,46 +1070,46 @@ impl IndexDb {
         Ok(results)
     }
 
-    pub fn update_project(&self, project: &Project) -> Result<()> {
-        let tags_json = serde_json::to_string(&project.tags).unwrap_or_else(|_| "[]".to_string());
+    pub fn update_namespace(&self, namespace: &Namespace) -> Result<()> {
+        let tags_json = serde_json::to_string(&namespace.tags).unwrap_or_else(|_| "[]".to_string());
         self.conn.execute(
-            "UPDATE projects SET name=?1, slug=?2, description=?3, status=?4, tags=?5, updated_at=?6 WHERE id=?7",
+            "UPDATE namespaces SET name=?1, slug=?2, description=?3, status=?4, tags=?5, updated_at=?6 WHERE id=?7",
             params![
-                project.name,
-                project.slug,
-                project.description,
-                project.status.to_string(),
+                namespace.name,
+                namespace.slug,
+                namespace.description,
+                namespace.status.to_string(),
                 tags_json,
                 chrono::Utc::now().to_rfc3339(),
-                project.id,
+                namespace.id,
             ],
         )?;
         Ok(())
     }
 
-    pub fn delete_project(&self, id: &str) -> Result<()> {
+    pub fn delete_namespace(&self, id: &str) -> Result<()> {
         self.conn
-            .execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+            .execute("DELETE FROM namespaces WHERE id = ?1", params![id])?;
         Ok(())
     }
 
-    pub fn find_project_by_name(&self, name: &str) -> Result<Option<Project>> {
-        self.get_project(name)
+    pub fn find_namespace_by_name(&self, name: &str) -> Result<Option<Namespace>> {
+        self.get_namespace(name)
     }
 
-    /// List topics optionally filtered by project.
-    pub fn list_topics_by_project(&self, project_id: Option<&str>) -> Result<Vec<crate::model::Topic>> {
-        match project_id {
-            Some(pid) => self.list_project_topics(pid),
+    /// List topics optionally filtered by namespace.
+    pub fn list_topics_by_namespace(&self, namespace_id: Option<&str>) -> Result<Vec<crate::model::Topic>> {
+        match namespace_id {
+            Some(nid) => self.list_namespace_topics(nid),
             None => self.list_topics(),
         }
     }
 
-    pub fn list_project_topics(&self, project_id: &str) -> Result<Vec<crate::model::Topic>> {
+    pub fn list_namespace_topics(&self, namespace_id: &str) -> Result<Vec<crate::model::Topic>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, slug, description, tags, created_at, updated_at, project_id, locked_by_run_id, locked_at FROM topics WHERE project_id = ?1 ORDER BY created_at DESC",
+            "SELECT id, name, slug, description, tags, created_at, updated_at, namespace_id, locked_by_run_id, locked_at FROM topics WHERE namespace_id = ?1 ORDER BY created_at DESC",
         )?;
-        let rows = stmt.query_map(params![project_id], |row| {
+        let rows = stmt.query_map(params![namespace_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -1105,7 +1125,7 @@ impl IndexDb {
         })?;
         let mut results = Vec::new();
         for row in rows {
-            let (id, name, slug, description, tags_json, created_str, updated_str, project_id, locked_by_run_id, locked_at_str) = row?;
+            let (id, name, slug, description, tags_json, created_str, updated_str, namespace_id, locked_by_run_id, locked_at_str) = row?;
             let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
             let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
                 .map_err(|e| crate::error::PopsicleError::Storage(e.to_string()))?
@@ -1122,7 +1142,7 @@ impl IndexDb {
                 name,
                 slug,
                 description,
-                project_id: project_id.unwrap_or_default(),
+                namespace_id: namespace_id.unwrap_or_default(),
                 tags,
                 locked_by_run_id,
                 locked_at,
@@ -3072,20 +3092,20 @@ mod tests {
     fn test_match_topics_by_tags() {
         let db = IndexDb::open_in_memory().unwrap();
 
-        // Create a project first
-        let project = crate::model::Project::new("test-project", "Test");
-        db.create_project(&project).unwrap();
+        // Create a namespace first
+        let namespace = crate::model::Namespace::new("test-namespace", "Test");
+        db.create_namespace(&namespace).unwrap();
 
         // Create topics with tags
-        let mut t1 = Topic::new("Auth Module", "Authentication", &project.id);
+        let mut t1 = Topic::new("Auth Module", "Authentication", &namespace.id);
         t1.tags = vec!["auth".to_string(), "login".to_string(), "security".to_string()];
         db.create_topic(&t1).unwrap();
 
-        let mut t2 = Topic::new("Payment System", "Payments", &project.id);
+        let mut t2 = Topic::new("Payment System", "Payments", &namespace.id);
         t2.tags = vec!["payment".to_string(), "billing".to_string()];
         db.create_topic(&t2).unwrap();
 
-        let mut t3 = Topic::new("User Management", "Users", &project.id);
+        let mut t3 = Topic::new("User Management", "Users", &namespace.id);
         t3.tags = vec!["user".to_string(), "auth".to_string()];
         db.create_topic(&t3).unwrap();
 

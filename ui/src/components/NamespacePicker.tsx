@@ -6,7 +6,7 @@ interface Props {
   initialPath?: string;
 }
 
-export function ProjectPicker({ onSelect, initialPath }: Props) {
+export function NamespacePicker({ onSelect, initialPath }: Props) {
   const [path, setPath] = useState(initialPath ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
