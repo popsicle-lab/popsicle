@@ -95,8 +95,8 @@ export function NamespacesView({ setPage }: Props) {
                   <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-secondary)]">
                     <span className="flex items-center gap-1">
                       <Tags size={11} />
-                      {ns.topic_count} topic
-                      {ns.topic_count !== 1 ? "s" : ""}
+                      {ns.spec_count} spec
+                      {ns.spec_count !== 1 ? "s" : ""}
                     </span>
                     {ns.tags.length > 0 && (
                       <span className="flex items-center gap-1">

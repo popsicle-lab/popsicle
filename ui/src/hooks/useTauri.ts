@@ -41,12 +41,12 @@ export interface PipelineRunInfo {
   title: string;
   created_at: string;
   updated_at: string;
-  topic_id: string;
+  spec_id: string;
   issue_id: string | null;
   run_type: string;
 }
 
-export interface TopicInfo {
+export interface SpecInfo {
   id: string;
   name: string;
   slug: string;
@@ -60,7 +60,7 @@ export interface TopicInfo {
   locked_at: string | null;
 }
 
-export interface TopicDetailInfo {
+export interface SpecDetailInfo {
   id: string;
   name: string;
   slug: string;
@@ -328,7 +328,7 @@ export interface IssueInfo {
   issue_type: string;
   priority: string;
   status: string;
-  topic_id: string;
+  spec_id: string;
   pipeline: string | null;
   labels: string[];
   created_at: string;
@@ -354,7 +354,7 @@ export async function getIssue(key: string): Promise<IssueFull> {
 export async function createIssue(params: {
   issueType: string;
   title: string;
-  topicName: string;
+  specName: string;
   description?: string;
   priority?: string;
   pipeline?: string;
@@ -381,7 +381,7 @@ export async function updateIssue(params: {
 
 export interface IssueProgress {
   issue_key: string;
-  topic_id: string;
+  spec_id: string;
   pipeline_runs: PipelineRunInfo[];
   stages_total: number;
   stages_completed: number;
@@ -618,14 +618,14 @@ export async function getDiscussion(
   return invoke("get_discussion", { discussionId });
 }
 
-// ── Topic types ──
+// ── Spec types ──
 
-export async function listTopics(): Promise<TopicInfo[]> {
-  return invoke("list_topics");
+export async function listSpecs(): Promise<SpecInfo[]> {
+  return invoke("list_specs");
 }
 
-export async function getTopic(topicName: string): Promise<TopicDetailInfo> {
-  return invoke("get_topic", { topicName });
+export async function getSpec(specName: string): Promise<SpecDetailInfo> {
+  return invoke("get_spec", { specName });
 }
 
 // ── Memory types ──
@@ -681,13 +681,13 @@ export interface NamespaceEntityInfo {
   description: string;
   status: string;
   tags: string[];
-  topic_count: number;
+  spec_count: number;
   created_at: string;
   updated_at: string;
 }
 
 export interface NamespaceEntityDetail extends NamespaceEntityInfo {
-  topics: TopicInfo[];
+  specs: SpecInfo[];
 }
 
 export async function listNamespaceEntities(): Promise<NamespaceEntityInfo[]> {

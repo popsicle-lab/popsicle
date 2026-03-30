@@ -313,7 +313,7 @@ function StageActions({
       );
       setResult(
         res.all_done
-          ? "All stages completed! Topic lock released."
+          ? "All stages completed! Spec lock released."
           : res.unblocked.length > 0
             ? `Stage completed. Unblocked: ${res.unblocked.join(", ")}`
             : "Stage completed."

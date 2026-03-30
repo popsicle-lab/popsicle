@@ -387,7 +387,7 @@ function CreateIssueForm({
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const [topicName, setTopicName] = useState("");
+  const [specName, setSpecName] = useState("");
   const [issueType, setIssueType] = useState("product");
   const [priority, setPriority] = useState("medium");
   const [pipeline, setPipeline] = useState("");
@@ -401,14 +401,14 @@ function CreateIssueForm({
   }, []);
 
   const submit = async () => {
-    if (!title.trim() || !topicName.trim()) return;
+    if (!title.trim() || !specName.trim()) return;
     setSubmitting(true);
     setFormError(null);
     try {
       await createIssue({
         issueType,
         title: title.trim(),
-        topicName: topicName.trim(),
+        specName: specName.trim(),
         description: description.trim() || undefined,
         priority,
         pipeline: pipeline || undefined,
@@ -460,12 +460,12 @@ function CreateIssueForm({
         </div>
         <div>
           <label className="block text-xs text-[var(--text-secondary)] mb-1">
-            Topic
+            Spec
           </label>
           <input
-            value={topicName}
-            onChange={(e) => setTopicName(e.target.value)}
-            placeholder="Topic name (e.g. jwt-migration)"
+            value={specName}
+            onChange={(e) => setSpecName(e.target.value)}
+            placeholder="Spec name (e.g. jwt-migration)"
             className="w-full px-3 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] text-sm focus:outline-none focus:border-[var(--accent)]"
           />
         </div>
@@ -545,7 +545,7 @@ function CreateIssueForm({
       <div className="flex justify-end">
         <button
           onClick={submit}
-          disabled={!title.trim() || !topicName.trim() || submitting}
+          disabled={!title.trim() || !specName.trim() || submitting}
           className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {submitting ? "Creating..." : "Create Issue"}

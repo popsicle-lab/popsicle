@@ -24,7 +24,7 @@ const navItems: {
   { kind: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { kind: "namespaces", label: "Namespaces", icon: FolderOpen },
   { kind: "issues", label: "Issues", icon: ClipboardList },
-  { kind: "topics", label: "Topics", icon: Tags },
+  { kind: "specs", label: "Specs", icon: Tags },
   { kind: "search", label: "Doc Search", icon: Search },
   { kind: "git", label: "Git Tracking", icon: GitBranch },
   { kind: "memories", label: "Memories", icon: Brain },
@@ -44,8 +44,8 @@ export function Sidebar({ page, setPage }: Props) {
     if (kind === "issues") {
       return page.kind === "issues" || issueChildKinds.has(page.kind);
     }
-    if (kind === "topics") {
-      return page.kind === "topics" || page.kind === "topic";
+    if (kind === "specs") {
+      return page.kind === "specs" || page.kind === "spec";
     }
     if (kind === "namespaces") {
       return page.kind === "namespaces" || page.kind === "namespace";

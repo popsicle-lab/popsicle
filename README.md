@@ -8,12 +8,12 @@ It organizes the full software development lifecycle through composable **Skills
 
 - **Module** — A self-contained distribution unit packaging Skills, Pipelines, and a Bootstrap spec; one active module per project, distributed via a git-based [registry](https://popsicle-lab.com/registry)
 - **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `arch-debate`, `rfc-writer`, `implementation`). Skills declare `doc_lifecycle: singleton | cumulative` (see below).
-- **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Topic for continuity and revision support. **The pipeline stage is the single source of truth for document state** — documents are created as "active" and become "final" when their stage is completed
-- **Namespace** — Named scope for organizing Topics. A codebase can have multiple namespaces for different product domains (e.g., "backend-v2", "mobile-app"). Must be created before any Topics or Issues
-- **Topic** — Document collection with tags, reusable across Issues; belongs to a Namespace (required). Tags enable automatic Issue→Topic matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration"). Topics have an **exclusive lock** (`locked_by_run_id`) — only one pipeline run can operate on a Topic at a time
-- **Issue** — Requirement entry point — must be created before any work. Auto-matched to a Topic by tags, or explicitly specified with `--topic`. `issue start` is the **only** way to create a PipelineRun and acquires the Topic lock — rejects if the Topic is already locked by another run
-- **PipelineRun** — State machine on a Topic, triggered exclusively by `issue start`. Cannot be created directly — use `issue start` to begin a run
-- **Document** — Belongs to a PipelineRun and Topic. Created as "active" and becomes "final" when the owning pipeline stage is completed. Documents no longer have their own state machine — the pipeline stage is the source of truth. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness
+- **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Spec for continuity and revision support. **The pipeline stage is the single source of truth for document state** — documents are created as "active" and become "final" when their stage is completed
+- **Namespace** — Named scope for organizing Specs. A codebase can have multiple namespaces for different product domains (e.g., "backend-v2", "mobile-app"). Must be created before any Specs or Issues
+- **Spec** — Document collection with tags, reusable across Issues; belongs to a Namespace (required). Tags enable automatic Issue→Spec matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration"). Specs have an **exclusive lock** (`locked_by_run_id`) — only one pipeline run can operate on a Spec at a time
+- **Issue** — Requirement entry point — must be created before any work. Auto-matched to a Spec by tags, or explicitly specified with `--spec`. `issue start` is the **only** way to create a PipelineRun and acquires the Spec lock — rejects if the Spec is already locked by another run
+- **PipelineRun** — State machine on a Spec, triggered exclusively by `issue start`. Cannot be created directly — use `issue start` to begin a run
+- **Document** — Belongs to a PipelineRun and Spec. Created as "active" and becomes "final" when the owning pipeline stage is completed. Documents no longer have their own state machine — the pipeline stage is the source of truth. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness
 - **Bootstrap** — LLM-driven project initialization that reads a module's `bootstrap.md` (natural language spec), scans the project, and generates a structured plan covering architecture, bounded contexts, conventions, and team decisions — all before the first pipeline run
 - **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
@@ -30,7 +30,7 @@ It organizes the full software development lifecycle through composable **Skills
 
 Skills declare how documents behave across pipeline runs:
 
-- **`singleton`** (default) — One document per topic per skill. Reused and updated across runs (e.g., PRD, RFC)
+- **`singleton`** (default) — One document per spec per skill. Reused and updated across runs (e.g., PRD, RFC)
 - **`cumulative`** — New document created each run. Each run produces a separate artifact (e.g., ADRs, test reports)
 
 When `pipeline next` runs, it shows cross-run document reuse: singleton docs are flagged for skip/update, cumulative docs always create new.
@@ -123,12 +123,12 @@ popsicle context bootstrap --apply @bootstrap-plan.json
 # 1. Create a namespace (or let bootstrap do it)
 popsicle namespace create "backend-v2" -d "Backend rewrite"
 
-# 2. Create a topic with tags (required before issues)
-popsicle topic create "jwt-migration" -t auth,security --namespace "backend-v2"
+# 2. Create a spec with tags (required before issues)
+popsicle spec create "jwt-migration" -t auth,security --namespace "backend-v2"
 
-# 3. Create an issue — auto-matched to topic by tags, or use --topic
+# 3. Create an issue — auto-matched to spec by tags, or use --spec
 popsicle issue create --type product --title "Add user authentication" --pipeline full-sdlc
-# Or explicitly: --topic "jwt-migration"
+# Or explicitly: --spec "jwt-migration"
 
 # 4. Start the issue — the ONLY way to create a PipelineRun
 popsicle issue start PROJ-1
@@ -139,8 +139,8 @@ popsicle pipeline next
 # Revise specific stages of a completed run
 popsicle pipeline revise <run-id> --stages design,implementation
 
-# View topic details with all runs and documents
-popsicle topic show "jwt-migration"
+# View spec details with all runs and documents
+popsicle spec show "jwt-migration"
 
 # Extract structured entities from documents
 popsicle extract user-stories --from-doc <doc-id>
@@ -205,16 +205,16 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle pipeline revise <run-id> --stages <list>` | Revise specific stages of a completed pipeline run |
 | `popsicle pipeline stage start <stage> [--run <id>]` | Start a pipeline stage (marks it in-progress) |
 | `popsicle pipeline stage complete <stage> [--run <id>] [--confirm]` | Complete a pipeline stage; `--confirm` required for stages with `requires_approval` |
-| `popsicle pipeline unlock [--run <id>]` | Force-release the Topic lock held by a pipeline run |
+| `popsicle pipeline unlock [--run <id>]` | Force-release the Spec lock held by a pipeline run |
 
-### Topic Management
+### Spec Management
 
 | Command | Description |
 |---------|-------------|
-| `popsicle topic create <name> [-d <desc>] [-t <tags>] --namespace <name>` | Create a new topic under a namespace (required); tags enable Issue auto-matching |
-| `popsicle topic list [--namespace <name>]` | List all topics; filter by namespace |
-| `popsicle topic show <name>` | Show topic details with issues, runs, and documents |
-| `popsicle topic delete <name> [--force]` | Delete a topic (--force to delete with existing runs) |
+| `popsicle spec create <name> [-d <desc>] [-t <tags>] --namespace <name>` | Create a new spec under a namespace (required); tags enable Issue auto-matching |
+| `popsicle spec list [--namespace <name>]` | List all specs; filter by namespace |
+| `popsicle spec show <name>` | Show spec details with issues, runs, and documents |
+| `popsicle spec delete <name> [--force]` | Delete a spec (--force to delete with existing runs) |
 
 ### Namespace Management
 
@@ -222,9 +222,9 @@ Generated files include the complete skill registry — agent names, artifact ty
 |---------|-------------|
 | `popsicle namespace create <name> [-d <desc>] [-t <tags>]` | Create a new namespace |
 | `popsicle namespace list [--status <s>]` | List namespaces; filter by status (active/completed/archived) |
-| `popsicle namespace show <name>` | Show namespace details with associated topics |
+| `popsicle namespace show <name>` | Show namespace details with associated specs |
 | `popsicle namespace update <name> [--status/--description/--tags]` | Update namespace fields |
-| `popsicle namespace delete <name> [--force]` | Delete a namespace (--force to delete with existing topics) |
+| `popsicle namespace delete <name> [--force]` | Delete a namespace (--force to delete with existing specs) |
 
 ### Module Management
 
@@ -283,13 +283,13 @@ Skill loading priority (later overrides earlier):
 
 | Command | Description |
 |---------|-------------|
-| `popsicle issue create --type <t> --title "<title>" [--topic <name>] [--pipeline <name>]` | Create an issue; auto-matched to a Topic by tags, or use `--topic` to specify explicitly |
-| `popsicle issue list [--type/--status/--label/--topic]` | List issues with filters |
-| `popsicle issue show <key>` | Show issue details with topic and pipeline runs |
+| `popsicle issue create --type <t> --title "<title>" [--spec <name>] [--pipeline <name>]` | Create an issue; auto-matched to a Spec by tags, or use `--spec` to specify explicitly |
+| `popsicle issue list [--type/--status/--label/--spec]` | List issues with filters |
+| `popsicle issue show <key>` | Show issue details with spec and pipeline runs |
 | `popsicle issue start <key>` | Start workflow — the **only** way to create a PipelineRun (supports multiple runs per issue) |
 | `popsicle issue update <key> [--status/--priority/--title]` | Update issue fields |
 
-When `--topic` is not specified, `issue create` auto-matches the issue to a Topic by comparing tags. When `--pipeline` is specified at creation, `issue start` uses that pipeline directly. Otherwise, the pipeline is chosen by the recommender (keyword match on title/description) or falls back to the issue type default:
+When `--spec` is not specified, `issue create` auto-matches the issue to a Spec by comparing tags. When `--pipeline` is specified at creation, `issue start` uses that pipeline directly. Otherwise, the pipeline is chosen by the recommender (keyword match on title/description) or falls back to the issue type default:
 
 | Issue Type | Default Pipeline |
 |------------|-----------------|
@@ -382,7 +382,7 @@ When `--topic` is not specified, `issue create` auto-matches the issue to a Topi
 | `popsicle context show [--run <id>] [--stage <s>]` | Full pipeline context with document bodies (JSON) |
 | `popsicle context update --section <name>` | Update a section in project-context.md |
 | `popsicle context bootstrap --generate-prompt` | Generate a bootstrap LLM prompt from the module's `bootstrap.md` |
-| `popsicle context bootstrap --apply <file>` | Apply a bootstrap plan (LLM output) to create namespaces and topics |
+| `popsicle context bootstrap --apply <file>` | Apply a bootstrap plan (LLM output) to create namespaces and specs |
 | `popsicle prompt <skill> [--state <s>] [--run <id>]` | AI prompt with upstream context + memory injected |
 | `popsicle migrate --skill <s> <paths...>` | Import existing Markdown docs into a pipeline run |
 | `popsicle completions <zsh/bash/fish>` | Generate shell completions |
@@ -411,7 +411,7 @@ popsicle context bootstrap --generate-prompt
 popsicle context bootstrap --apply @bootstrap-plan.json
 ```
 
-The bootstrap process analyzes the project, proposes namespaces (product domains) and topics (document collections with tags), and imports existing documentation as references. It does NOT create pipelines — those are created when you start an issue.
+The bootstrap process analyzes the project, proposes namespaces (product domains) and specs (document collections with tags), and imports existing documentation as references. It does NOT create pipelines — those are created when you start an issue.
 
 ### Skills (16)
 
@@ -501,19 +501,19 @@ Use `popsicle pipeline recommend --task "<description>"` to get a recommendation
 
 ## Enforced Workflow
 
-Popsicle enforces a strict entity creation order and an exclusive Topic lock:
+Popsicle enforces a strict entity creation order and an exclusive Spec lock:
 
 ```
-Namespace → Topic (with tags) → Issue → PipelineRun → Document
+Namespace → Spec (with tags) → Issue → PipelineRun → Document
 ```
 
 1. **Create a Namespace** — `popsicle namespace create "my-project"`
-2. **Create Topics with tags** — `popsicle topic create "auth" -t security,backend --namespace "my-project"`
-3. **Create an Issue** — `popsicle issue create --type product --title "Add JWT auth"` (auto-matched to topic by tags, or use `--topic`)
-4. **Start the Issue** — `popsicle issue start PROJ-1` — this is the **only** way to create a PipelineRun. This also **acquires an exclusive lock** on the Topic — if the Topic is already locked by another run, the command is rejected. Direct `pipeline run` no longer exists.
+2. **Create Specs with tags** — `popsicle spec create "auth" -t security,backend --namespace "my-project"`
+3. **Create an Issue** — `popsicle issue create --type product --title "Add JWT auth"` (auto-matched to spec by tags, or use `--spec`)
+4. **Start the Issue** — `popsicle issue start PROJ-1` — this is the **only** way to create a PipelineRun. This also **acquires an exclusive lock** on the Spec — if the Spec is already locked by another run, the command is rejected. Direct `pipeline run` no longer exists.
 5. **Follow the pipeline** — `popsicle pipeline next` shows the next step, including cross-run document reuse (singleton docs: skip/update; cumulative docs: new)
 6. **Start stages** — `popsicle pipeline stage start <stage>` begins work on a stage
-7. **Create documents** — `popsicle doc create` succeeds only when the run holds the Topic lock and the stage is unblocked; blocked stages are rejected. Documents are created as "active"
+7. **Create documents** — `popsicle doc create` succeeds only when the run holds the Spec lock and the stage is unblocked; blocked stages are rejected. Documents are created as "active"
 8. **Complete stages** — `popsicle pipeline stage complete <stage>` marks a stage as done; all documents in the stage become "final". Stages with `requires_approval` need `--confirm`
 9. **Lock auto-releases** when all stages complete. Use `popsicle pipeline unlock` to force-release the lock if needed
 
@@ -542,8 +542,8 @@ stages:
 AI Agents ──→ CLI (only write path) ──→ Core Engine ──→ Files + SQLite
 Developer ──→                               ↑
                                   Desktop UI (read-only)
-                                    ├── Dashboard with topic overview
-                                    ├── Topic browser & detail view
+                                    ├── Dashboard with spec overview
+                                    ├── Spec browser & detail view
                                     ├── Pipeline DAG visualization
                                     ├── Document viewer + metadata panel
                                     ├── Discussion viewer (conversational UI)
@@ -563,8 +563,8 @@ Developer ──→                               ↑
 - **Git-aware** — Post-commit hooks auto-track commits; link commits to documents, stages, and skills
 - **Multi-agent** — Native support for Claude Code and Cursor with auto-generated skills following the Agent Skills open standard
 - **Hybrid storage** — Documents as Markdown files (Git-friendly), metadata and state indexed in SQLite
-- **Topic-driven** — Pipeline runs and documents grouped by topic for cross-run document sharing, version tracking, and iterative revision
-- **Issue-gated** — `issue start` is the only way to create PipelineRuns; acquires an exclusive Topic lock; no direct `pipeline run` command
+- **Spec-driven** — Pipeline runs and documents grouped by spec for cross-run document sharing, version tracking, and iterative revision
+- **Issue-gated** — `issue start` is the only way to create PipelineRuns; acquires an exclusive Spec lock; no direct `pipeline run` command
 - **Doc lifecycle-aware** — Singleton skills reuse/update docs across runs; cumulative skills create new docs each time
 - **Context-aware** — Project tech profile auto-scanned and injected with attention-optimized ordering (low → medium → high relevance)
 - **Memory-driven** — Cross-session memory with event-driven staleness, two-layer promotion, and 200-line budget
@@ -588,7 +588,7 @@ your-project/
 │   ├── artifacts/                # Documents organized by pipeline run
 │   ├── project-context.md        # Auto-scanned technical profile
 │   ├── memories.md               # Cross-session memory store (≤200 lines)
-│   ├── popsicle.db               # SQLite index (topics, docs, pipeline runs, bugs, stories, test cases, memories)
+│   ├── popsicle.db               # SQLite index (specs, docs, pipeline runs, bugs, stories, test cases, memories)
 │   └── config.toml               # Project config (includes [module] section)
 ├── .claude/                      # Claude Code (--agent claude)
 │   ├── CLAUDE.md                 # Instructions + skill catalog
@@ -608,8 +608,8 @@ popsicle ui
 
 The Tauri desktop app provides read-only visualization:
 
-- **Dashboard** — Topic overview, pipeline run summary, Git status bar, document statistics, quick actions with copyable commands
-- **Topics** — Topic list with run/document counts, detail view with related pipeline runs, documents (latest versions), and revision history
+- **Dashboard** — Spec overview, pipeline run summary, Git status bar, document statistics, quick actions with copyable commands
+- **Specs** — Spec list with run/document counts, detail view with related pipeline runs, documents (latest versions), and revision history
 - **Issues** — Issue list with type/status filters, pipeline binding indicator, create form with pipeline selector, detail view with progress tracking
 - **Pipeline View** — Stage DAG with status highlighting, documents and commits per stage, verification status, archive hint, Next Step Advisor
 - **Document Viewer** — Markdown rendering + metadata panel (type, status, skill, tags, timeline, linked commits)

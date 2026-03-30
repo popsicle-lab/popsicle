@@ -3,7 +3,7 @@ import {
   listPipelineRuns,
   listDocuments,
   listIssues,
-  listTopics,
+  listSpecs,
   getIssueProgress,
   getGitStatus,
   getProjectContext,
@@ -13,7 +13,7 @@ import {
   type IssueInfo,
   type IssueProgress,
   type ProjectContextInfo,
-  type TopicInfo,
+  type SpecInfo,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -47,7 +47,7 @@ export function Dashboard({ setPage }: Props) {
   const [runs, setRuns] = useState<PipelineRunInfo[]>([]);
   const [docs, setDocs] = useState<DocInfo[]>([]);
   const [issues, setIssues] = useState<IssueInfo[]>([]);
-  const [topics, setTopics] = useState<TopicInfo[]>([]);
+  const [specs, setSpecs] = useState<SpecInfo[]>([]);
   const [activeProgress, setActiveProgress] = useState<
     { issue: IssueInfo; progress: IssueProgress }[]
   >([]);
@@ -60,7 +60,7 @@ export function Dashboard({ setPage }: Props) {
       listPipelineRuns(),
       listDocuments(),
       listIssues(),
-      listTopics().catch(() => []),
+      listSpecs().catch(() => []),
       getGitStatus().catch(() => null),
       getProjectContext().catch(() => null),
     ])
@@ -68,7 +68,7 @@ export function Dashboard({ setPage }: Props) {
         setRuns(r);
         setDocs(d);
         setIssues(iss);
-        setTopics(t);
+        setSpecs(t);
         setGitStatus(g);
         setProjectCtx(pc);
 
@@ -125,8 +125,8 @@ export function Dashboard({ setPage }: Props) {
         />
         <StatCard
           icon={<Tags size={20} />}
-          label="Topics"
-          value={topics.length}
+          label="Specs"
+          value={specs.length}
           color="var(--accent-cyan, #06b6d4)"
         />
         <StatCard
@@ -234,32 +234,32 @@ export function Dashboard({ setPage }: Props) {
         </div>
       )}
 
-      {/* Recent Topics */}
-      {topics.length > 0 && (
+      {/* Recent Specs */}
+      {specs.length > 0 && (
         <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
           <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Tags size={16} className="text-cyan-400" />
-              <h3 className="font-medium text-sm">Recent Topics</h3>
+              <h3 className="font-medium text-sm">Recent Specs</h3>
             </div>
             <button
-              onClick={() => setPage({ kind: "topics" })}
+              onClick={() => setPage({ kind: "specs" })}
               className="text-xs text-[var(--accent)] hover:underline"
             >
               View all →
             </button>
           </div>
           <div className="divide-y divide-[var(--border)]">
-            {topics.slice(0, 5).map((topic) => (
+            {specs.slice(0, 5).map((spec) => (
               <button
-                key={topic.id}
-                onClick={() => setPage({ kind: "topic", topicName: topic.name })}
+                key={spec.id}
+                onClick={() => setPage({ kind: "spec", specName: spec.name })}
                 className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{topic.name}</span>
-                    {topic.tags.length > 0 && topic.tags.slice(0, 3).map((tag) => (
+                    <span className="font-medium text-sm">{spec.name}</span>
+                    {spec.tags.length > 0 && spec.tags.slice(0, 3).map((tag) => (
                       <span
                         key={tag}
                         className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 text-[10px] font-medium"
@@ -269,9 +269,9 @@ export function Dashboard({ setPage }: Props) {
                     ))}
                   </div>
                   <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
-                    <span>{topic.run_count} run{topic.run_count !== 1 ? "s" : ""}</span>
-                    <span>{topic.doc_count} doc{topic.doc_count !== 1 ? "s" : ""}</span>
-                    <span>{new Date(topic.created_at).toLocaleDateString()}</span>
+                    <span>{spec.run_count} run{spec.run_count !== 1 ? "s" : ""}</span>
+                    <span>{spec.doc_count} doc{spec.doc_count !== 1 ? "s" : ""}</span>
+                    <span>{new Date(spec.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
                 <ArrowRight

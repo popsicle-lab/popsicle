@@ -93,8 +93,8 @@ export function NamespaceDetailView({ namespaceId, setPage }: Props) {
             <Tags size={20} className="text-[var(--accent)]" />
           </div>
           <div>
-            <div className="text-2xl font-bold">{namespace.topics.length}</div>
-            <div className="text-xs text-[var(--text-secondary)]">Topics</div>
+            <div className="text-2xl font-bold">{namespace.specs.length}</div>
+            <div className="text-xs text-[var(--text-secondary)]">Specs</div>
           </div>
         </div>
         <div className="bg-[var(--bg-secondary)] rounded-xl p-4 border border-[var(--border)] flex items-center gap-3">
@@ -103,7 +103,7 @@ export function NamespaceDetailView({ namespaceId, setPage }: Props) {
           </div>
           <div>
             <div className="text-2xl font-bold">
-              {namespace.topics.reduce((acc, t) => acc + t.run_count, 0)}
+              {namespace.specs.reduce((acc, t) => acc + t.run_count, 0)}
             </div>
             <div className="text-xs text-[var(--text-secondary)]">
               Total Runs
@@ -116,7 +116,7 @@ export function NamespaceDetailView({ namespaceId, setPage }: Props) {
           </div>
           <div>
             <div className="text-2xl font-bold">
-              {namespace.topics.reduce((acc, t) => acc + t.doc_count, 0)}
+              {namespace.specs.reduce((acc, t) => acc + t.doc_count, 0)}
             </div>
             <div className="text-xs text-[var(--text-secondary)]">
               Total Documents
@@ -125,53 +125,53 @@ export function NamespaceDetailView({ namespaceId, setPage }: Props) {
         </div>
       </div>
 
-      {/* Topics */}
+      {/* Specs */}
       <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
         <div className="px-4 py-3 border-b border-[var(--border)] flex items-center gap-2">
           <Tags size={16} className="text-[var(--accent)]" />
-          <h3 className="font-medium text-sm">Topics</h3>
+          <h3 className="font-medium text-sm">Specs</h3>
         </div>
-        {namespace.topics.length === 0 ? (
+        {namespace.specs.length === 0 ? (
           <div className="p-6 text-center text-[var(--text-secondary)]">
-            No topics in this namespace yet.
+            No specs in this namespace yet.
           </div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {namespace.topics.map((topic) => (
+            {namespace.specs.map((spec) => (
               <button
-                key={topic.id}
+                key={spec.id}
                 onClick={() =>
-                  setPage({ kind: "topic", topicName: topic.name })
+                  setPage({ kind: "spec", specName: spec.name })
                 }
                 className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{topic.name}</span>
+                    <span className="font-medium">{spec.name}</span>
                     <span className="text-xs font-mono text-[var(--text-secondary)]">
-                      {topic.slug}
+                      {spec.slug}
                     </span>
                   </div>
-                  {topic.description && (
+                  {spec.description && (
                     <div className="text-xs text-[var(--text-secondary)] mt-0.5 truncate">
-                      {topic.description}
+                      {spec.description}
                     </div>
                   )}
                   <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-secondary)]">
                     <span className="flex items-center gap-1">
                       <GitBranch size={11} />
-                      {topic.run_count} run
-                      {topic.run_count !== 1 ? "s" : ""}
+                      {spec.run_count} run
+                      {spec.run_count !== 1 ? "s" : ""}
                     </span>
                     <span className="flex items-center gap-1">
                       <FileText size={11} />
-                      {topic.doc_count} doc
-                      {topic.doc_count !== 1 ? "s" : ""}
+                      {spec.doc_count} doc
+                      {spec.doc_count !== 1 ? "s" : ""}
                     </span>
-                    {topic.tags.length > 0 && (
+                    {spec.tags.length > 0 && (
                       <span className="flex items-center gap-1">
                         <Tag size={11} />
-                        {topic.tags.join(", ")}
+                        {spec.tags.join(", ")}
                       </span>
                     )}
                   </div>

@@ -14,8 +14,8 @@ import { TestCaseDetailView } from "./pages/TestCaseDetailView";
 import { StoryDetailView } from "./pages/StoryDetailView";
 import { MemoriesView } from "./pages/MemoriesView";
 import { SearchView } from "./pages/SearchView";
-import { TopicsView } from "./pages/TopicsView";
-import { TopicDetailView } from "./pages/TopicDetailView";
+import { SpecsView } from "./pages/SpecsView";
+import { SpecDetailView } from "./pages/SpecDetailView";
 import { NamespacesView } from "./pages/NamespacesView";
 import { NamespaceDetailView } from "./pages/NamespaceDetailView";
 import { NamespacePicker } from "./components/NamespacePicker";
@@ -34,8 +34,8 @@ export type Page =
   | { kind: "story"; storyKey: string; fromIssue?: string }
   | { kind: "memories" }
   | { kind: "search" }
-  | { kind: "topics" }
-  | { kind: "topic"; topicName: string }
+  | { kind: "specs" }
+  | { kind: "spec"; specName: string }
   | { kind: "namespaces" }
   | { kind: "namespace"; namespaceId: string };
 
@@ -152,13 +152,13 @@ export default function App() {
         {page.kind === "search" && (
           <SearchView key={refreshKey} setPage={setPage} />
         )}
-        {page.kind === "topics" && (
-          <TopicsView key={refreshKey} setPage={setPage} />
+        {page.kind === "specs" && (
+          <SpecsView key={refreshKey} setPage={setPage} />
         )}
-        {page.kind === "topic" && (
-          <TopicDetailView
-            key={`${page.topicName}-${refreshKey}`}
-            topicName={page.topicName}
+        {page.kind === "spec" && (
+          <SpecDetailView
+            key={`${page.specName}-${refreshKey}`}
+            specName={page.specName}
             setPage={setPage}
           />
         )}
