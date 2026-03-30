@@ -7,11 +7,14 @@ It organizes the full software development lifecycle through composable **Skills
 ## Core Concepts
 
 - **Module** — A self-contained distribution unit packaging Skills, Pipelines, and a Bootstrap spec; one active module per project, distributed via a git-based [registry](https://popsicle-lab.com/registry)
-- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `arch-debate`, `rfc-writer`, `implementation`)
+- **Skill** — A reusable development capability unit with its own sub-workflow, document templates, AI prompts, and lifecycle hooks (e.g., `arch-debate`, `rfc-writer`, `implementation`). Skills declare `doc_lifecycle: singleton | cumulative` (see below).
 - **Pipeline** — Orchestrates Skills into a full development lifecycle as a DAG with dependency management between stages; runs are scoped to a Topic for continuity and revision support
-- **Topic** — Groups related pipeline runs and documents under a single development theme (e.g., "jwt-migration"); enables cross-pipeline document sharing, version tracking, and pipeline revision
+- **Project** — Required top-level container for Topics. Must be created before any Topics or Issues. Organizes work across multiple themes (e.g., "backend-v2", "mobile-app")
+- **Topic** — Document collection with tags, reusable across Issues; belongs to a Project (required). Tags enable automatic Issue→Topic matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration")
+- **Issue** — Requirement entry point — must be created before any work. Auto-matched to a Topic by tags, or explicitly specified with `--topic`. `issue start` is the **only** way to create a PipelineRun
+- **PipelineRun** — State machine on a Topic, triggered exclusively by `issue start`. Cannot be created directly — use `issue start` to begin a run
+- **Document** — Belongs to a PipelineRun and Topic. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness
 - **Bootstrap** — LLM-driven project initialization that reads a module's `bootstrap.md` (natural language spec), scans the project, and generates a structured plan covering architecture, bounded contexts, conventions, and team decisions — all before the first pipeline run
-- **Document** — Artifacts produced by Skills, stored as YAML frontmatter + Markdown files for Git-friendliness; linked to a Topic for cross-run visibility with automatic version tracking
 - **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
 - **Guard** — Conditions on workflow transitions that enforce upstream approval and document completeness
@@ -22,6 +25,15 @@ It organizes the full software development lifecycle through composable **Skills
 - **Pipeline Recommender** — Suggests the best pipeline based on task description keywords and project scale
 - **Extractor** — Parses structured entities (stories, test cases, bugs) from Markdown documents
 - **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, discussions, git status, work items, memories, and commit-document associations
+
+### Document Lifecycle (`doc_lifecycle`)
+
+Skills declare how documents behave across pipeline runs:
+
+- **`singleton`** (default) — One document per topic per skill. Reused and updated across runs (e.g., PRD, RFC)
+- **`cumulative`** — New document created each run. Each run produces a separate artifact (e.g., ADRs, test reports)
+
+When `pipeline next` runs, it shows cross-run document reuse: singleton docs are flagged for skip/update, cumulative docs always create new.
 
 ## Installation
 
@@ -110,29 +122,27 @@ popsicle context bootstrap --apply bootstrap-plan.md
 # Or combine generate + apply in one step (requires ANTHROPIC_API_KEY):
 popsicle context bootstrap --start
 
-# Create an issue and bind a specific pipeline
-popsicle issue create --type product --title "Add user authentication" --pipeline full-sdlc
+# 1. Create a project (required)
+popsicle project create "backend-v2" -d "Backend rewrite"
 
-# Start the issue (uses the bound pipeline, skips recommender)
+# 2. Create a topic with tags (required before issues)
+popsicle topic create "jwt-migration" -t auth,security --project "backend-v2"
+
+# 3. Create an issue — auto-matched to topic by tags, or use --topic
+popsicle issue create --type product --title "Add user authentication" --pipeline full-sdlc
+# Or explicitly: --topic "jwt-migration"
+
+# 4. Start the issue — the ONLY way to create a PipelineRun
 popsicle issue start PROJ-1
 
-# See what to do next
+# 5. See what to do next (shows cross-run doc reuse: skip/update/create)
 popsicle pipeline next
-
-# Create a topic for related work
-popsicle topic create "Add user authentication"
-
-# Start a pipeline run linked to a topic
-popsicle pipeline run full-sdlc --title "Auth implementation" --topic "Add user authentication"
 
 # Revise specific stages of a completed run
 popsicle pipeline revise <run-id> --stages design,implementation
 
 # View topic details with all runs and documents
-popsicle topic show "Add user authentication"
-
-# Quick change (skip full pipeline ceremony)
-popsicle pipeline quick --title "Fix login button"
+popsicle topic show "jwt-migration"
 
 # Extract structured entities from documents
 popsicle extract user-stories --from-doc <doc-id>
@@ -189,10 +199,8 @@ Generated files include the complete skill registry — agent names, artifact ty
 | `popsicle init [--agent <targets>] [--module <source>]` | Initialize project (idempotent); optionally install a module in the same step |
 | `popsicle pipeline list` | List available pipeline templates |
 | `popsicle pipeline create <name>` | Create a custom pipeline template |
-| `popsicle pipeline run <pipeline> --title <t> [--topic <name>]` | Start a pipeline run |
-| `popsicle pipeline quick --title <t> [--skill <s>]` | Quick single-stage run (skip full pipeline) |
 | `popsicle pipeline status [--run <id>]` | Show pipeline run status with documents |
-| `popsicle pipeline next [--run <id>]` | Advisor: recommended next steps |
+| `popsicle pipeline next [--run <id>]` | Advisor: recommended next steps (shows cross-run doc reuse) |
 | `popsicle pipeline verify [--run <id>]` | Verify all stages complete and documents approved |
 | `popsicle pipeline archive [--run <id>]` | Archive a completed pipeline run |
 | `popsicle pipeline recommend --task <desc>` | Recommend pipeline based on task description |
@@ -202,10 +210,20 @@ Generated files include the complete skill registry — agent names, artifact ty
 
 | Command | Description |
 |---------|-------------|
-| `popsicle topic create <name> [-d <desc>] [-t <tags>]` | Create a new topic |
-| `popsicle topic list` | List all topics |
-| `popsicle topic show <name>` | Show topic details with runs and documents |
+| `popsicle topic create <name> [-d <desc>] [-t <tags>] --project <name>` | Create a new topic under a project (required); tags enable Issue auto-matching |
+| `popsicle topic list [--project <name>]` | List all topics; filter by project |
+| `popsicle topic show <name>` | Show topic details with issues, runs, and documents |
 | `popsicle topic delete <name> [--force]` | Delete a topic (--force to delete with existing runs) |
+
+### Project Management
+
+| Command | Description |
+|---------|-------------|
+| `popsicle project create <name> [-d <desc>] [-t <tags>]` | Create a new project |
+| `popsicle project list [--status <s>]` | List projects; filter by status (active/completed/archived) |
+| `popsicle project show <name>` | Show project details with associated topics |
+| `popsicle project update <name> [--status/--description/--tags]` | Update project fields |
+| `popsicle project delete <name> [--force]` | Delete a project (--force to delete with existing topics) |
 
 ### Module Management
 
@@ -265,13 +283,13 @@ Skill loading priority (later overrides earlier):
 
 | Command | Description |
 |---------|-------------|
-| `popsicle issue create --type <t> --title "<title>" [--pipeline <name>]` | Create an issue; use `--pipeline` to bind a specific pipeline (bypasses recommender) |
-| `popsicle issue list [--type/--status/--label]` | List issues with filters |
-| `popsicle issue show <key>` | Show issue details (pipeline binding, run info) |
-| `popsicle issue start <key>` | Start workflow — creates a pipeline run linked to the issue |
+| `popsicle issue create --type <t> --title "<title>" [--topic <name>] [--pipeline <name>]` | Create an issue; auto-matched to a Topic by tags, or use `--topic` to specify explicitly |
+| `popsicle issue list [--type/--status/--label/--topic]` | List issues with filters |
+| `popsicle issue show <key>` | Show issue details with topic and pipeline runs |
+| `popsicle issue start <key>` | Start workflow — the **only** way to create a PipelineRun (supports multiple runs per issue) |
 | `popsicle issue update <key> [--status/--priority/--title]` | Update issue fields |
 
-When `--pipeline` is specified at creation, `issue start` uses that pipeline directly. Otherwise, the pipeline is chosen by the recommender (keyword match on title/description) or falls back to the issue type default:
+When `--topic` is not specified, `issue create` auto-matches the issue to a Topic by comparing tags. When `--pipeline` is specified at creation, `issue start` uses that pipeline directly. Otherwise, the pipeline is chosen by the recommender (keyword match on title/description) or falls back to the issue type default:
 
 | Issue Type | Default Pipeline |
 |------------|-----------------|
@@ -485,6 +503,21 @@ Keywords: `hotfix`, `bug`, `fix`, `urgent`, `emergency`
 
 Use `popsicle pipeline recommend --task "<description>"` to get a recommendation based on your task.
 
+## Enforced Workflow
+
+Popsicle enforces a strict entity creation order:
+
+```
+Project → Topic (with tags) → Issue → PipelineRun → Document
+```
+
+1. **Create a Project** — `popsicle project create "my-project"`
+2. **Create Topics with tags** — `popsicle topic create "auth" -t security,backend --project "my-project"`
+3. **Create an Issue** — `popsicle issue create --type product --title "Add JWT auth"` (auto-matched to topic by tags, or use `--topic`)
+4. **Start the Issue** — `popsicle issue start PROJ-1` — this is the **only** way to create a PipelineRun. Direct `pipeline run` no longer exists.
+5. **Follow the pipeline** — `popsicle pipeline next` shows the next step, including cross-run document reuse (singleton docs: skip/update; cumulative docs: new)
+6. **Create documents** — `popsicle doc create` succeeds only when the stage is unblocked; blocked stages are rejected
+
 ## Guard Conditions
 
 Skills can define guards on workflow transitions to enforce discipline:
@@ -538,6 +571,8 @@ Developer ──→                               ↑
 - **Multi-agent** — Native support for Claude Code and Cursor with auto-generated skills following the Agent Skills open standard
 - **Hybrid storage** — Documents as Markdown files (Git-friendly), metadata and state indexed in SQLite
 - **Topic-driven** — Pipeline runs and documents grouped by topic for cross-run document sharing, version tracking, and iterative revision
+- **Issue-gated** — `issue start` is the only way to create PipelineRuns; no direct `pipeline run` command
+- **Doc lifecycle-aware** — Singleton skills reuse/update docs across runs; cumulative skills create new docs each time
 - **Context-aware** — Project tech profile auto-scanned and injected with attention-optimized ordering (low → medium → high relevance)
 - **Memory-driven** — Cross-session memory with event-driven staleness, two-layer promotion, and 200-line budget
 - **Work item traceability** — Bugs, stories, and test cases linked across documents, pipeline runs, issues, and commits
