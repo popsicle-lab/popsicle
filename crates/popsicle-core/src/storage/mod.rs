@@ -4,7 +4,10 @@ mod index;
 
 pub use config::{ModuleSection, ProjectConfig};
 pub use file::FileStorage;
-pub use index::{DocumentRow, IndexDb, PipelineRunRow};
+pub use index::{
+    DocumentRow, ImportResult, IndexDb, MigrationMapping, PipelineRunRow, SchemaMismatch,
+    UnmappedColumn, apply_mapping,
+};
 
 use std::path::{Path, PathBuf};
 

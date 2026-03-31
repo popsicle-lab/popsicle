@@ -32,7 +32,29 @@ impl IndexDb {
         Ok(db)
     }
 
+    /// Open database without running migrations (for export/reinit).
+    pub fn open_readonly(db_path: &Path) -> Result<Self> {
+        let conn = Connection::open(db_path)?;
+        Ok(Self { conn })
+    }
+
     fn migrate(&self) -> Result<()> {
+        // Detect old schema that requires reinit
+        let needs_reinit = self.conn.prepare("SELECT id FROM topics LIMIT 0").is_ok()
+            || self
+                .conn
+                .prepare("SELECT project_id FROM specs LIMIT 0")
+                .is_ok()
+            || self
+                .conn
+                .prepare("SELECT topic_id FROM documents LIMIT 0")
+                .is_ok();
+        if needs_reinit {
+            return Err(crate::error::PopsicleError::Storage(
+                "Database schema is outdated. Run `popsicle reinit` to upgrade.".to_string(),
+            ));
+        }
+
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS namespaces (
@@ -52,6 +74,9 @@ impl IndexDb {
                 slug TEXT NOT NULL UNIQUE,
                 description TEXT NOT NULL DEFAULT '',
                 tags TEXT NOT NULL DEFAULT '[]',
+                namespace_id TEXT REFERENCES namespaces(id),
+                locked_by_run_id TEXT REFERENCES pipeline_runs(id),
+                locked_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -67,6 +92,8 @@ impl IndexDb {
                 version INTEGER NOT NULL DEFAULT 1,
                 parent_doc_id TEXT,
                 file_path TEXT NOT NULL,
+                summary TEXT DEFAULT '',
+                doc_tags TEXT DEFAULT '[]',
                 created_at TEXT,
                 updated_at TEXT
             );
@@ -79,6 +106,7 @@ impl IndexDb {
                 spec_id TEXT NOT NULL REFERENCES specs(id),
                 parent_run_id TEXT,
                 run_type TEXT NOT NULL DEFAULT 'new',
+                issue_id TEXT REFERENCES issues(id),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -88,6 +116,7 @@ impl IndexDb {
             CREATE INDEX IF NOT EXISTS idx_doc_status ON documents(status);
             CREATE INDEX IF NOT EXISTS idx_doc_spec ON documents(spec_id);
             CREATE INDEX IF NOT EXISTS idx_run_spec ON pipeline_runs(spec_id);
+            CREATE INDEX IF NOT EXISTS idx_run_issue ON pipeline_runs(issue_id);
 
             CREATE TABLE IF NOT EXISTS commit_links (
                 sha TEXT NOT NULL,
@@ -266,114 +295,6 @@ impl IndexDb {
             CREATE INDEX IF NOT EXISTS idx_ac_story ON acceptance_criteria(user_story_id);
             ",
         )?;
-
-        // Migration: add `pipeline` column to existing issues tables
-        let has_pipeline_col: bool = self
-            .conn
-            .prepare("SELECT pipeline FROM issues LIMIT 0")
-            .is_ok();
-        if !has_pipeline_col {
-            self.conn
-                .execute_batch("ALTER TABLE issues ADD COLUMN pipeline TEXT;")?;
-        }
-
-        // Migration: add `summary` and `doc_tags` columns to documents table
-        let has_summary_col: bool = self
-            .conn
-            .prepare("SELECT summary FROM documents LIMIT 0")
-            .is_ok();
-        if !has_summary_col {
-            self.conn.execute_batch(
-                "ALTER TABLE documents ADD COLUMN summary TEXT DEFAULT '';
-                 ALTER TABLE documents ADD COLUMN doc_tags TEXT DEFAULT '[]';",
-            )?;
-        }
-
-        // Migration: rename projects table to namespaces
-        let has_projects_table: bool = self.conn.prepare("SELECT id FROM projects LIMIT 0").is_ok();
-        if has_projects_table {
-            self.conn
-                .execute_batch("ALTER TABLE projects RENAME TO namespaces;")?;
-        }
-
-        // Migration: add namespace_id column to specs
-        let has_namespace_id: bool = self
-            .conn
-            .prepare("SELECT namespace_id FROM specs LIMIT 0")
-            .is_ok();
-        if !has_namespace_id {
-            // Check if old project_id column exists (pre-rename databases)
-            let has_project_id: bool = self
-                .conn
-                .prepare("SELECT project_id FROM specs LIMIT 0")
-                .is_ok();
-            if has_project_id {
-                self.conn
-                    .execute_batch("ALTER TABLE specs RENAME COLUMN project_id TO namespace_id;")?;
-            } else {
-                self.conn.execute_batch(
-                    "ALTER TABLE specs ADD COLUMN namespace_id TEXT REFERENCES namespaces(id);",
-                )?;
-            }
-        }
-
-        // Migration: add spec lock columns
-        let has_spec_lock: bool = self
-            .conn
-            .prepare("SELECT locked_by_run_id FROM specs LIMIT 0")
-            .is_ok();
-        if !has_spec_lock {
-            self.conn.execute_batch(
-                "ALTER TABLE specs ADD COLUMN locked_by_run_id TEXT REFERENCES pipeline_runs(id);
-                 ALTER TABLE specs ADD COLUMN locked_at TEXT;",
-            )?;
-        }
-
-        // Migration: add issue_id column to pipeline_runs
-        let has_run_issue_id: bool = self
-            .conn
-            .prepare("SELECT issue_id FROM pipeline_runs LIMIT 0")
-            .is_ok();
-        if !has_run_issue_id {
-            self.conn
-                .execute_batch("ALTER TABLE pipeline_runs ADD COLUMN issue_id TEXT REFERENCES issues(id);
-                                CREATE INDEX IF NOT EXISTS idx_run_issue ON pipeline_runs(issue_id);")?;
-        }
-
-        // Migration: add spec_id column to issues (for existing DBs)
-        let has_issue_spec_id: bool = self
-            .conn
-            .prepare("SELECT spec_id FROM issues LIMIT 0")
-            .is_ok();
-        if !has_issue_spec_id {
-            self.conn
-                .execute_batch("ALTER TABLE issues ADD COLUMN spec_id TEXT NOT NULL DEFAULT '' REFERENCES specs(id);
-                                CREATE INDEX IF NOT EXISTS idx_issue_spec ON issues(spec_id);")?;
-        }
-
-        // Migration: backfill issue.spec_id from pipeline_runs and move pipeline_run_id to pipeline_runs.issue_id
-        let _ = self.conn.execute_batch(
-            "UPDATE pipeline_runs SET issue_id = (
-                SELECT id FROM issues WHERE issues.pipeline_run_id = pipeline_runs.id
-             ) WHERE issue_id IS NULL AND EXISTS (
-                SELECT 1 FROM issues WHERE issues.pipeline_run_id = pipeline_runs.id
-             );
-
-             UPDATE issues SET spec_id = (
-                SELECT spec_id FROM pipeline_runs WHERE pipeline_runs.id = issues.pipeline_run_id
-             ) WHERE spec_id = '' AND pipeline_run_id IS NOT NULL AND pipeline_run_id != '';",
-        );
-
-        // Migration: rename topics table to specs and topic_id columns to spec_id
-        let has_topics_table: bool = self.conn.prepare("SELECT id FROM topics LIMIT 0").is_ok();
-        if has_topics_table {
-            self.conn.execute_batch(
-                "ALTER TABLE topics RENAME TO specs;
-                 ALTER TABLE documents RENAME COLUMN topic_id TO spec_id;
-                 ALTER TABLE pipeline_runs RENAME COLUMN topic_id TO spec_id;
-                 ALTER TABLE issues RENAME COLUMN topic_id TO spec_id;",
-            )?;
-        }
 
         // FTS5 virtual table for full-text search on documents
         self.conn.execute_batch(
@@ -2419,6 +2340,635 @@ impl IndexDb {
             params![tc_ids_json, ac_id],
         )?;
         Ok(())
+    }
+
+    /// Export all table data as a JSON object with schema metadata.
+    ///
+    /// Output: `{ "_schema": { table: [{name, type, pk, nullable}] }, "table_name": [...], ... }`
+    pub fn export_all_json(&self) -> Result<serde_json::Value> {
+        use serde_json::{Map, Value};
+
+        let table_names = vec![
+            "namespaces",
+            "specs",
+            "documents",
+            "pipeline_runs",
+            "commit_links",
+            "discussions",
+            "discussion_messages",
+            "discussion_roles",
+            "issues",
+            "bugs",
+            "test_cases",
+            "test_runs",
+            "user_stories",
+            "acceptance_criteria",
+        ];
+
+        let mut result = Map::new();
+
+        // Include schema metadata for migration assistance
+        let mut schema = Map::new();
+        for table in &table_names {
+            let cols = self.export_table_schema(table)?;
+            schema.insert(
+                table.to_string(),
+                Value::Array(cols.into_iter().map(|c| c.to_json()).collect()),
+            );
+        }
+        result.insert("_schema".to_string(), Value::Object(schema));
+
+        for table in &table_names {
+            let rows = self.export_table(table)?;
+            result.insert(table.to_string(), Value::Array(rows));
+        }
+
+        Ok(Value::Object(result))
+    }
+
+    /// Read the schema of a single table via PRAGMA table_info.
+    fn export_table_schema(&self, table: &str) -> Result<Vec<SchemaColumn>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
+        let cols: Vec<SchemaColumn> = stmt
+            .query_map([], |row| {
+                Ok(SchemaColumn {
+                    name: row.get(1)?,
+                    col_type: row.get(2)?,
+                    nullable: row.get::<_, i32>(3)? == 0, // notnull=0 means nullable
+                    pk: row.get::<_, i32>(5)? > 0,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(cols)
+    }
+
+    /// Detect mismatches between an export's `_schema` and the current DB schema.
+    pub fn detect_schema_mismatches(
+        &self,
+        export: &serde_json::Value,
+    ) -> Result<Vec<SchemaMismatch>> {
+        let source_schema = match export.get("_schema").and_then(|s| s.as_object()) {
+            Some(s) => s,
+            None => return Ok(vec![]), // no schema metadata — can't detect mismatches
+        };
+
+        let mut mismatches = Vec::new();
+
+        for (table, cols_val) in source_schema {
+            let source_cols: Vec<String> = cols_val
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let target_cols = self.export_table_schema(table)?;
+            if target_cols.is_empty() {
+                // Table doesn't exist in new schema
+                mismatches.push(SchemaMismatch {
+                    table: table.clone(),
+                    kind: MismatchKind::SourceOnlyTable,
+                });
+                continue;
+            }
+
+            let target_names: Vec<String> =
+                target_cols.iter().map(|c| c.name.clone()).collect();
+
+            for col in &source_cols {
+                if !target_names.contains(col) {
+                    mismatches.push(SchemaMismatch {
+                        table: table.clone(),
+                        kind: MismatchKind::SourceOnlyColumn {
+                            column: col.clone(),
+                        },
+                    });
+                }
+            }
+
+            for col in &target_names {
+                if !source_cols.contains(col) {
+                    mismatches.push(SchemaMismatch {
+                        table: table.clone(),
+                        kind: MismatchKind::TargetOnlyColumn {
+                            column: col.clone(),
+                        },
+                    });
+                }
+            }
+        }
+
+        Ok(mismatches)
+    }
+
+    /// Generate a structured LLM prompt for resolving schema mismatches.
+    pub fn generate_migration_prompt(
+        &self,
+        export: &serde_json::Value,
+    ) -> Result<String> {
+        let mismatches = self.detect_schema_mismatches(export)?;
+        if mismatches.is_empty() {
+            return Ok("No schema mismatches detected.".to_string());
+        }
+
+        let source_schema = export.get("_schema").and_then(|s| s.as_object());
+        let mut prompt = String::from(
+            "You are a database migration assistant for a popsicle project.\n\
+             The database was exported from an older schema and needs to be imported \
+             into a newer schema. Analyze the mismatches and generate a column mapping.\n\n",
+        );
+
+        // Source schema
+        prompt.push_str("## Source Schema (from export)\n\n");
+        if let Some(schema) = source_schema {
+            for (table, cols) in schema {
+                prompt.push_str(&format!("Table: {}\n", table));
+                if let Some(arr) = cols.as_array() {
+                    for col in arr {
+                        let name = col.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                        let ctype = col.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                        let pk = col.get("pk").and_then(|p| p.as_bool()).unwrap_or(false);
+                        prompt.push_str(&format!(
+                            "  - {} {} {}\n",
+                            name,
+                            ctype,
+                            if pk { "(PK)" } else { "" }
+                        ));
+                    }
+                }
+                prompt.push('\n');
+            }
+        }
+
+        // Target schema
+        prompt.push_str("## Target Schema (current database)\n\n");
+        let table_names = [
+            "namespaces", "specs", "documents", "pipeline_runs", "commit_links",
+            "discussions", "discussion_messages", "discussion_roles",
+            "issues", "bugs", "test_cases", "test_runs", "user_stories", "acceptance_criteria",
+        ];
+        for table in &table_names {
+            let cols = self.export_table_schema(table)?;
+            if cols.is_empty() {
+                continue;
+            }
+            prompt.push_str(&format!("Table: {}\n", table));
+            for col in &cols {
+                prompt.push_str(&format!(
+                    "  - {} {} {}\n",
+                    col.name,
+                    col.col_type,
+                    if col.pk { "(PK)" } else { "" }
+                ));
+            }
+            prompt.push('\n');
+        }
+
+        // Mismatches
+        prompt.push_str("## Detected Mismatches\n\n");
+        for (i, m) in mismatches.iter().enumerate() {
+            prompt.push_str(&format!("{}. {}\n", i + 1, m.describe()));
+        }
+
+        // Sample data from mismatched tables
+        let mismatched_tables: Vec<&str> = mismatches
+            .iter()
+            .map(|m| m.table.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        if !mismatched_tables.is_empty() {
+            prompt.push_str("\n## Sample Data (first 3 rows from mismatched tables)\n\n");
+            for table in mismatched_tables {
+                if let Some(rows) = export.get(table).and_then(|v| v.as_array()) {
+                    prompt.push_str(&format!("Table: {}\n", table));
+                    for row in rows.iter().take(3) {
+                        prompt.push_str(&format!("  {}\n", row));
+                    }
+                    prompt.push('\n');
+                }
+            }
+        }
+
+        prompt.push_str(
+            "\n## Instructions\n\n\
+             Generate a JSON migration mapping. Respond with ONLY the JSON, no explanation.\n\n\
+             Format:\n\
+             ```json\n\
+             {\n\
+             \x20 \"table_renames\": {\"old_table\": \"new_table\"},\n\
+             \x20 \"column_renames\": {\"table_name\": {\"old_col\": \"new_col\"}},\n\
+             \x20 \"default_values\": {\"table_name\": {\"new_required_col\": \"default_value\"}}\n\
+             }\n\
+             ```\n\n\
+             Rules:\n\
+             - Only include entries that need mapping (don't list unchanged items)\n\
+             - `table_renames`: map old table names to new table names\n\
+             - `column_renames`: map old column names to new column names within a table\n\
+             - `default_values`: provide defaults for new required columns with no source equivalent\n\
+             - If a column was removed and has no equivalent, omit it (data will be dropped)\n",
+        );
+
+        Ok(prompt)
+    }
+
+    fn export_table(&self, table: &str) -> Result<Vec<serde_json::Value>> {
+        use serde_json::{Map, Value};
+
+        // Get column info
+        let mut col_stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
+        let columns: Vec<String> = col_stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if columns.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Handle old schema: map topic_id → spec_id, etc.
+        let select_cols: Vec<String> = columns
+            .iter()
+            .map(|c| match c.as_str() {
+                "topic_id" => "topic_id AS spec_id".to_string(),
+                "project_id" => "project_id AS namespace_id".to_string(),
+                _ => c.clone(),
+            })
+            .collect();
+
+        let output_cols: Vec<String> = columns
+            .iter()
+            .map(|c| match c.as_str() {
+                "topic_id" => "spec_id".to_string(),
+                "project_id" => "namespace_id".to_string(),
+                _ => c.clone(),
+            })
+            .collect();
+
+        let query = format!("SELECT {} FROM {}", select_cols.join(", "), table);
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let rows: Vec<Value> = stmt
+            .query_map([], |row| {
+                let mut map = Map::new();
+                for (i, col_name) in output_cols.iter().enumerate() {
+                    let val: rusqlite::types::Value = row.get_unwrap(i);
+                    let json_val = match val {
+                        rusqlite::types::Value::Null => Value::Null,
+                        rusqlite::types::Value::Integer(n) => Value::Number(n.into()),
+                        rusqlite::types::Value::Real(f) => Value::Number(
+                            serde_json::Number::from_f64(f).unwrap_or_else(|| 0.into()),
+                        ),
+                        rusqlite::types::Value::Text(s) => Value::String(s),
+                        rusqlite::types::Value::Blob(b) => {
+                            Value::String(String::from_utf8_lossy(&b).to_string())
+                        }
+                    };
+                    map.insert(col_name.clone(), json_val);
+                }
+                Ok(Value::Object(map))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(rows)
+    }
+
+    /// Import data from a JSON export into the (already migrated) database.
+    /// Skips rows that conflict with existing data. Tracks unmapped columns.
+    pub fn import_all_json(&self, data: &serde_json::Value) -> Result<ImportResult> {
+        let obj = data.as_object().ok_or_else(|| {
+            crate::error::PopsicleError::Storage("Expected JSON object for import".to_string())
+        })?;
+
+        // Import order matters for foreign key constraints
+        let import_order = vec![
+            "namespaces",
+            "specs",
+            "pipeline_runs",
+            "documents",
+            "issues",
+            "bugs",
+            "test_cases",
+            "test_runs",
+            "user_stories",
+            "acceptance_criteria",
+            "commit_links",
+            "discussions",
+            "discussion_messages",
+            "discussion_roles",
+        ];
+
+        let mut total_imported = 0u64;
+        let mut total_skipped = 0u64;
+        let mut all_unmapped: Vec<UnmappedColumn> = Vec::new();
+
+        // Handle old schema: topics → specs
+        let tables_to_process: Vec<(&str, &str)> = import_order
+            .iter()
+            .map(|&name| {
+                let source_key = if name == "specs"
+                    && !obj.contains_key("specs")
+                    && obj.contains_key("topics")
+                {
+                    "topics"
+                } else {
+                    name
+                };
+                (name, source_key)
+            })
+            .collect();
+
+        for (target_table, source_key) in &tables_to_process {
+            if let Some(serde_json::Value::Array(rows)) = obj.get(*source_key) {
+                let table_result = self.import_table(target_table, rows)?;
+                total_imported += table_result.imported;
+                total_skipped += table_result.skipped;
+                all_unmapped.extend(table_result.unmapped_columns);
+            }
+        }
+
+        Ok(ImportResult {
+            imported: total_imported,
+            skipped: total_skipped,
+            unmapped_columns: all_unmapped,
+        })
+    }
+
+    /// Import with a mapping applied: renames tables/columns, fills defaults.
+    pub fn import_with_mapping(
+        &self,
+        data: &serde_json::Value,
+        mapping: &MigrationMapping,
+    ) -> Result<ImportResult> {
+        let mut transformed = data.clone();
+        apply_mapping(&mut transformed, mapping);
+        self.import_all_json(&transformed)
+    }
+
+    fn import_table(&self, table: &str, rows: &[serde_json::Value]) -> Result<ImportResult> {
+        if rows.is_empty() {
+            return Ok(ImportResult::default());
+        }
+
+        // Get target table columns
+        let mut col_stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({})", table))?;
+        let target_columns: Vec<String> = col_stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut imported = 0u64;
+        let mut skipped = 0u64;
+        let mut seen_unmapped: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for row in rows {
+            if let Some(obj) = row.as_object() {
+                // Track source columns not in target
+                for key in obj.keys() {
+                    if !target_columns.contains(key) && !seen_unmapped.contains(key) {
+                        seen_unmapped.insert(key.clone());
+                    }
+                }
+
+                // Only insert columns that exist in both source and target
+                let mut cols = Vec::new();
+                let mut vals = Vec::new();
+                let mut placeholders = Vec::new();
+
+                for (i, col) in target_columns.iter().enumerate() {
+                    if let Some(val) = obj.get(col) {
+                        cols.push(col.as_str());
+                        placeholders.push(format!("?{}", i + 1));
+                        vals.push(json_to_sql(val));
+                    }
+                }
+
+                if cols.is_empty() {
+                    skipped += 1;
+                    continue;
+                }
+
+                let sql = format!(
+                    "INSERT OR IGNORE INTO {} ({}) VALUES ({})",
+                    table,
+                    cols.join(", "),
+                    placeholders.join(", ")
+                );
+
+                let params: Vec<&dyn rusqlite::types::ToSql> = vals
+                    .iter()
+                    .map(|v| v.as_ref() as &dyn rusqlite::types::ToSql)
+                    .collect();
+
+                match self.conn.execute(&sql, params.as_slice()) {
+                    Ok(1) => imported += 1,
+                    Ok(_) => skipped += 1, // 0 = conflict, ignored
+                    Err(_) => skipped += 1,
+                }
+            }
+        }
+
+        // Collect sample values for unmapped columns
+        let unmapped_columns: Vec<UnmappedColumn> = seen_unmapped
+            .into_iter()
+            .map(|col| {
+                let samples: Vec<String> = rows
+                    .iter()
+                    .take(3)
+                    .filter_map(|r| {
+                        r.get(&col)
+                            .filter(|v| !v.is_null())
+                            .map(|v| v.to_string())
+                    })
+                    .collect();
+                UnmappedColumn {
+                    table: table.to_string(),
+                    column: col,
+                    sample_values: samples,
+                }
+            })
+            .collect();
+
+        Ok(ImportResult {
+            imported,
+            skipped,
+            unmapped_columns,
+        })
+    }
+}
+
+/// Result of an import operation.
+#[derive(Debug, Default)]
+pub struct ImportResult {
+    pub imported: u64,
+    pub skipped: u64,
+    pub unmapped_columns: Vec<UnmappedColumn>,
+}
+
+/// A source column that had no matching target column during import.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UnmappedColumn {
+    pub table: String,
+    pub column: String,
+    pub sample_values: Vec<String>,
+}
+
+/// Column metadata from PRAGMA table_info.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SchemaColumn {
+    pub name: String,
+    pub col_type: String,
+    pub nullable: bool,
+    pub pk: bool,
+}
+
+impl SchemaColumn {
+    fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "name": self.name,
+            "type": self.col_type,
+            "nullable": self.nullable,
+            "pk": self.pk,
+        })
+    }
+}
+
+/// A detected mismatch between source and target schemas.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SchemaMismatch {
+    pub table: String,
+    pub kind: MismatchKind,
+}
+
+impl SchemaMismatch {
+    pub fn describe(&self) -> String {
+        match &self.kind {
+            MismatchKind::SourceOnlyTable => {
+                format!("Table \"{}\" exists in source but not in target", self.table)
+            }
+            MismatchKind::TargetOnlyTable => {
+                format!("Table \"{}\" exists in target but not in source", self.table)
+            }
+            MismatchKind::SourceOnlyColumn { column } => {
+                format!(
+                    "Table \"{}\": column \"{}\" exists in source but not in target",
+                    self.table, column
+                )
+            }
+            MismatchKind::TargetOnlyColumn { column } => {
+                format!(
+                    "Table \"{}\": column \"{}\" exists in target but not in source",
+                    self.table, column
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum MismatchKind {
+    SourceOnlyTable,
+    TargetOnlyTable,
+    SourceOnlyColumn { column: String },
+    TargetOnlyColumn { column: String },
+}
+
+/// LLM-generated migration mapping for resolving schema mismatches.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct MigrationMapping {
+    /// Map old table names to new table names.
+    #[serde(default)]
+    pub table_renames: std::collections::HashMap<String, String>,
+    /// Map old column names to new column names, per table.
+    #[serde(default)]
+    pub column_renames: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    /// Default values for new columns with no source equivalent.
+    #[serde(default)]
+    pub default_values:
+        std::collections::HashMap<String, std::collections::HashMap<String, serde_json::Value>>,
+}
+
+/// Apply a migration mapping to an export JSON, mutating it in place.
+///
+/// Transforms table names, column names, and adds default values so the
+/// modified JSON can be imported into the new schema.
+pub fn apply_mapping(export: &mut serde_json::Value, mapping: &MigrationMapping) {
+    let obj = match export.as_object_mut() {
+        Some(o) => o,
+        None => return,
+    };
+
+    // Step 1: Rename tables
+    for (old_name, new_name) in &mapping.table_renames {
+        if let Some(val) = obj.remove(old_name) {
+            obj.insert(new_name.clone(), val);
+        }
+    }
+
+    // Step 2: Rename columns and add defaults per table
+    let table_keys: Vec<String> = obj.keys().cloned().collect();
+    for table_key in &table_keys {
+        if table_key.starts_with('_') {
+            continue; // skip _schema
+        }
+        let col_renames = mapping.column_renames.get(table_key);
+        let defaults = mapping.default_values.get(table_key);
+
+        if col_renames.is_none() && defaults.is_none() {
+            continue;
+        }
+
+        if let Some(serde_json::Value::Array(rows)) = obj.get_mut(table_key) {
+            for row in rows.iter_mut() {
+                if let Some(row_obj) = row.as_object_mut() {
+                    // Rename columns
+                    if let Some(renames) = col_renames {
+                        for (old_col, new_col) in renames {
+                            if let Some(val) = row_obj.remove(old_col) {
+                                row_obj.insert(new_col.clone(), val);
+                            }
+                        }
+                    }
+                    // Add default values for missing columns
+                    if let Some(defs) = defaults {
+                        for (col, default_val) in defs {
+                            row_obj
+                                .entry(col.clone())
+                                .or_insert_with(|| default_val.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Convert a serde_json::Value to a rusqlite-compatible value.
+fn json_to_sql(val: &serde_json::Value) -> Box<dyn rusqlite::types::ToSql> {
+    match val {
+        serde_json::Value::Null => Box::new(Option::<String>::None),
+        serde_json::Value::Bool(b) => Box::new(*b as i64),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Box::new(i)
+            } else if let Some(f) = n.as_f64() {
+                Box::new(f)
+            } else {
+                Box::new(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Box::new(s.clone()),
+        _ => Box::new(val.to_string()),
     }
 }
 

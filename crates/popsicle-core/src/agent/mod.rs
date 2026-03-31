@@ -361,6 +361,21 @@ Do NOT skip this step. Documents without LLM-generated summaries will not appear
 10. **Documents are "active" when created** and become "final" when their stage is completed via `pipeline stage complete`. There is no `doc transition` command.
 11. **NEVER report a task as "complete" unless `popsicle pipeline verify` passes.** If stages remain incomplete, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
 
+## Review Checklist Protocol
+
+When a pipeline run is complete or when running `popsicle pipeline review --checklist`:
+
+1. Run `popsicle pipeline review --checklist` to get all unchecked items as structured JSON
+2. For **each unchecked item** (`- [ ]`), scan the codebase to determine if the work was actually done
+3. If the item IS implemented in code → update the document: change `- [ ]` to `- [x]` in the file
+4. If the item is NOT implemented → keep it unchecked and add to the remaining-work summary
+5. After updating documents, report:
+   - How many items were auto-checked (with brief evidence for each)
+   - How many items remain unchecked (with next-step suggestions)
+6. Run `popsicle pipeline verify` to confirm final status
+
+**IMPORTANT**: Acceptance criteria in PRD documents represent features that should be checked off as they are implemented throughout the pipeline. Before completing the final stage, review the PRD and update all checkboxes that correspond to implemented functionality.
+
 ## Memory Management
 
 Project memories persist bugs, decisions, patterns, and gotchas across sessions.

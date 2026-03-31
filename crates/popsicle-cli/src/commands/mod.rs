@@ -13,6 +13,7 @@ mod namespace;
 mod pipeline;
 mod prompt;
 pub(crate) mod registry;
+mod reinit;
 mod skill;
 mod spec;
 mod story;
@@ -72,6 +73,9 @@ pub enum Command {
     /// Import existing Markdown documents into a pipeline run
     Migrate(migrate::MigrateArgs),
 
+    /// Re-initialize database: export data, recreate with latest schema, re-import
+    Reinit(reinit::ReinitArgs),
+
     /// Manage modules (self-contained skill & pipeline distributions)
     #[command(subcommand)]
     Module(module::ModuleCommand),
@@ -129,6 +133,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Test(sub) => test::execute(sub, format),
         Command::Extract(sub) => extract::execute(sub, format),
         Command::Migrate(args) => migrate::execute(args, format),
+        Command::Reinit(args) => reinit::execute(args, format),
         Command::Module(sub) => module::execute(sub, format),
         Command::Tool(sub) => tool::execute(sub, format),
         Command::Spec(sub) => spec::execute(sub, format),

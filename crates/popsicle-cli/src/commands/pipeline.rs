@@ -1,7 +1,7 @@
 use std::env;
 
 use popsicle_core::engine::extractor;
-use popsicle_core::engine::guard::check_guard;
+use popsicle_core::engine::guard::{check_guard, count_checkboxes};
 use popsicle_core::engine::hooks::{self, HookContext, HookEvent};
 use popsicle_core::engine::{Advisor, PipelineRecommender};
 use popsicle_core::helpers;
@@ -45,12 +45,18 @@ pub enum PipelineCommand {
         /// Pipeline run ID (omit for latest run)
         #[arg(short, long)]
         run: Option<String>,
+        /// Strict mode: treat unchecked checkboxes as verification failures
+        #[arg(long, default_value_t = false)]
+        strict: bool,
     },
     /// Review a pipeline run: evaluate all guard conditions across completed stages
     Review {
         /// Pipeline run ID (omit for latest run)
         #[arg(short, long)]
         run: Option<String>,
+        /// Show all unchecked checkboxes across all documents for agent-assisted review
+        #[arg(long, default_value_t = false)]
+        checklist: bool,
     },
     /// Archive a completed pipeline run
     Archive {
@@ -118,8 +124,10 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
         } => create_pipeline(&name, &description, local, format),
         PipelineCommand::Status { run } => show_status(run.as_deref(), format),
         PipelineCommand::Next { run } => show_next(run.as_deref(), format),
-        PipelineCommand::Verify { run } => verify_run(run.as_deref(), format),
-        PipelineCommand::Review { run } => review_run(run.as_deref(), format),
+        PipelineCommand::Verify { run, strict } => verify_run(run.as_deref(), strict, format),
+        PipelineCommand::Review { run, checklist } => {
+            review_run(run.as_deref(), checklist, format)
+        }
         PipelineCommand::Archive { run } => archive_run(run.as_deref(), format),
         PipelineCommand::Recommend { task } => recommend_pipeline(&task, format),
         PipelineCommand::Revise { run, stages } => {
@@ -136,7 +144,7 @@ fn load_pipelines() -> anyhow::Result<Vec<PipelineDef>> {
     helpers::load_pipelines(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
+fn verify_run(run_id: Option<&str>, strict: bool, format: &OutputFormat) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
     let run = get_run(&db, run_id)?;
@@ -187,9 +195,14 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
         .map(|r| r.guards.iter().filter(|g| !g.passed).count())
         .sum();
 
+    // Checklist audit: scan ALL documents for unchecked checkboxes
+    let checklist_audit = audit_all_checklists(&docs);
+    let total_unchecked: usize = checklist_audit.iter().map(|a| a.unchecked).sum();
+    let checklist_failed = strict && total_unchecked > 0;
+
     match format {
         OutputFormat::Text => {
-            if state_passed && failed_guards == 0 {
+            if state_passed && failed_guards == 0 && !checklist_failed {
                 println!(
                     "Pipeline run '{}' VERIFIED — all stages complete, all documents approved, all guards passed.",
                     run.title
@@ -211,22 +224,99 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
                         run.title, failed_guards
                     );
                 }
+                if checklist_failed {
+                    println!(
+                        "Pipeline run '{}' has {} unchecked checklist item(s) (--strict mode).",
+                        run.title, total_unchecked
+                    );
+                }
+            }
+            // Always show checklist audit if there are unchecked items
+            if total_unchecked > 0 {
+                println!();
+                println!("Checklist audit:");
+                for audit in &checklist_audit {
+                    if audit.unchecked > 0 {
+                        println!(
+                            "  ⚠ {} — {}/{} checked ({} unchecked)",
+                            audit.title,
+                            audit.checked,
+                            audit.checked + audit.unchecked,
+                            audit.unchecked
+                        );
+                    }
+                }
+                println!();
+                println!(
+                    "  Run `popsicle pipeline review --checklist` to see all unchecked items."
+                );
             }
         }
         OutputFormat::Json => {
+            let audit_json: Vec<_> = checklist_audit
+                .iter()
+                .filter(|a| a.checked + a.unchecked > 0)
+                .map(|a| {
+                    serde_json::json!({
+                        "doc_id": a.doc_id,
+                        "title": a.title,
+                        "skill": a.skill,
+                        "checked": a.checked,
+                        "unchecked": a.unchecked,
+                    })
+                })
+                .collect();
             let result = serde_json::json!({
                 "run_id": run.id,
                 "title": run.title,
-                "verified": state_passed && failed_guards == 0,
+                "verified": state_passed && failed_guards == 0 && !checklist_failed,
                 "state_passed": state_passed,
                 "issues": issues,
                 "failed_guards": failed_guards,
+                "checklist_audit": {
+                    "total_checked": checklist_audit.iter().map(|a| a.checked).sum::<usize>(),
+                    "total_unchecked": total_unchecked,
+                    "strict": strict,
+                    "documents": audit_json,
+                },
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
 
     Ok(())
+}
+
+/// Audit all documents for checkbox completion status.
+fn audit_all_checklists(
+    docs: &[popsicle_core::storage::DocumentRow],
+) -> Vec<ChecklistAudit> {
+    let mut audits = Vec::new();
+    for doc_row in docs {
+        let doc = match FileStorage::read_document(std::path::Path::new(&doc_row.file_path)) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let (checked, unchecked) = count_checkboxes(&doc.body);
+        if checked + unchecked > 0 {
+            audits.push(ChecklistAudit {
+                doc_id: doc_row.id.clone(),
+                title: doc_row.title.clone(),
+                skill: doc_row.skill_name.clone(),
+                checked,
+                unchecked,
+            });
+        }
+    }
+    audits
+}
+
+struct ChecklistAudit {
+    doc_id: String,
+    title: String,
+    skill: String,
+    checked: usize,
+    unchecked: usize,
 }
 
 /// Shared guard evaluation logic used by `review` and `verify`.
@@ -318,12 +408,17 @@ struct StageGuardReport {
     guards: Vec<popsicle_core::engine::GuardResult>,
 }
 
-fn review_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
+fn review_run(run_id: Option<&str>, checklist: bool, format: &OutputFormat) -> anyhow::Result<()> {
     let layout = project_layout()?;
     let db = IndexDb::open(&layout.db_path())?;
     let run = get_run(&db, run_id)?;
     let pipeline_def = find_pipeline(&run.pipeline_name)?;
     let registry = load_registry()?;
+
+    // --checklist mode: output all unchecked checkboxes for agent review
+    if checklist {
+        return review_checklist(&run, &db);
+    }
 
     let reports = evaluate_all_guards(&run, &pipeline_def, &db, &registry)?;
 
@@ -398,6 +493,69 @@ fn review_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
+    Ok(())
+}
+
+/// `pipeline review --checklist` — output all unchecked checkboxes for agent-assisted review.
+fn review_checklist(
+    run: &PipelineRun,
+    db: &IndexDb,
+) -> anyhow::Result<()> {
+    let docs = db
+        .query_documents(None, None, Some(&run.id))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    let mut doc_checklists: Vec<serde_json::Value> = Vec::new();
+    let mut total_checked = 0usize;
+    let mut total_unchecked = 0usize;
+
+    for doc_row in &docs {
+        let doc = match FileStorage::read_document(std::path::Path::new(&doc_row.file_path)) {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let mut unchecked_items = Vec::new();
+        let mut checked_count = 0usize;
+        for (line_no, line) in doc.body.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("- [ ] ") {
+                unchecked_items.push(serde_json::json!({
+                    "line": line_no + 1,
+                    "text": trimmed.trim_start_matches("- [ ] ").to_string(),
+                }));
+            } else if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ") {
+                checked_count += 1;
+            }
+        }
+
+        if unchecked_items.is_empty() && checked_count == 0 {
+            continue;
+        }
+
+        total_checked += checked_count;
+        total_unchecked += unchecked_items.len();
+
+        doc_checklists.push(serde_json::json!({
+            "doc_id": doc_row.id,
+            "title": doc_row.title,
+            "skill": doc_row.skill_name,
+            "file_path": doc_row.file_path,
+            "checked": checked_count,
+            "unchecked": unchecked_items.len(),
+            "unchecked_items": unchecked_items,
+        }));
+    }
+
+    let result = serde_json::json!({
+        "run_id": run.id,
+        "title": run.title,
+        "total_checked": total_checked,
+        "total_unchecked": total_unchecked,
+        "documents": doc_checklists,
+    });
+    println!("{}", serde_json::to_string_pretty(&result)?);
+
     Ok(())
 }
 
@@ -1082,8 +1240,26 @@ fn stage_complete(
         );
     }
 
-    // Mark all docs in this stage as "final"
+    // Warn about unchecked checkboxes before finalizing
     let stage_skills: Vec<&str> = stage.skill_names();
+    for doc_row in &docs {
+        if stage_skills.contains(&doc_row.skill_name.as_str())
+            && let Ok(doc) =
+                FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+        {
+            let (checked, unchecked) = count_checkboxes(&doc.body);
+            if unchecked > 0 {
+                eprintln!(
+                    "  ⚠ '{}' has {}/{} checklist items unchecked",
+                    doc_row.title,
+                    unchecked,
+                    checked + unchecked
+                );
+            }
+        }
+    }
+
+    // Mark all docs in this stage as "final"
     for doc_row in &docs {
         if stage_skills.contains(&doc_row.skill_name.as_str()) && doc_row.status != "final" {
             let _ = db.update_document_status(&doc_row.id, "final");
