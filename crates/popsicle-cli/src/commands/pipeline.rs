@@ -1,9 +1,15 @@
 use std::env;
 
+use popsicle_core::engine::extractor;
+use popsicle_core::engine::guard::check_guard;
+use popsicle_core::engine::hooks::{self, HookContext, HookEvent};
 use popsicle_core::engine::{Advisor, PipelineRecommender};
 use popsicle_core::helpers;
+use popsicle_core::model::bug::BugSource;
+use popsicle_core::model::skill::ExtractionSpec;
+use popsicle_core::model::testcase::TestType;
 use popsicle_core::model::{IssueStatus, PipelineDef, PipelineRun, StageState};
-use popsicle_core::storage::{IndexDb, ProjectLayout};
+use popsicle_core::storage::{FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 
 use crate::OutputFormat;
 
@@ -36,6 +42,12 @@ pub enum PipelineCommand {
     },
     /// Verify a pipeline run: check all stages completed and reviews passed
     Verify {
+        /// Pipeline run ID (omit for latest run)
+        #[arg(short, long)]
+        run: Option<String>,
+    },
+    /// Review a pipeline run: evaluate all guard conditions across completed stages
+    Review {
         /// Pipeline run ID (omit for latest run)
         #[arg(short, long)]
         run: Option<String>,
@@ -107,6 +119,7 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
         PipelineCommand::Status { run } => show_status(run.as_deref(), format),
         PipelineCommand::Next { run } => show_next(run.as_deref(), format),
         PipelineCommand::Verify { run } => verify_run(run.as_deref(), format),
+        PipelineCommand::Review { run } => review_run(run.as_deref(), format),
         PipelineCommand::Archive { run } => archive_run(run.as_deref(), format),
         PipelineCommand::Recommend { task } => recommend_pipeline(&task, format),
         PipelineCommand::Revise { run, stages } => {
@@ -128,7 +141,7 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
     let db = IndexDb::open(&layout.db_path())?;
     let run = get_run(&db, run_id)?;
     let pipeline_def = find_pipeline(&run.pipeline_name)?;
-    let _registry = load_registry()?;
+    let registry = load_registry()?;
 
     let docs = db
         .query_documents(None, None, Some(&run.id))
@@ -165,23 +178,38 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
         }
     }
 
-    let passed = issues.is_empty();
+    let state_passed = issues.is_empty();
+
+    // Guard evaluation (post-pipeline review)
+    let guard_reports = evaluate_all_guards(&run, &pipeline_def, &db, &registry)?;
+    let failed_guards: usize = guard_reports
+        .iter()
+        .map(|r| r.guards.iter().filter(|g| !g.passed).count())
+        .sum();
 
     match format {
         OutputFormat::Text => {
-            if passed {
+            if state_passed && failed_guards == 0 {
                 println!(
-                    "Pipeline run '{}' VERIFIED — all stages complete, all documents approved.",
+                    "Pipeline run '{}' VERIFIED — all stages complete, all documents approved, all guards passed.",
                     run.title
                 );
             } else {
-                println!(
-                    "Pipeline run '{}' has {} issue(s):",
-                    run.title,
-                    issues.len()
-                );
-                for issue in &issues {
-                    println!("  - {}", issue);
+                if !state_passed {
+                    println!(
+                        "Pipeline run '{}' has {} state issue(s):",
+                        run.title,
+                        issues.len()
+                    );
+                    for issue in &issues {
+                        println!("  - {}", issue);
+                    }
+                }
+                if failed_guards > 0 {
+                    println!(
+                        "Pipeline run '{}' has {} guard failure(s). Run `popsicle pipeline review` for details.",
+                        run.title, failed_guards
+                    );
                 }
             }
         }
@@ -189,13 +217,187 @@ fn verify_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()>
             let result = serde_json::json!({
                 "run_id": run.id,
                 "title": run.title,
-                "verified": passed,
+                "verified": state_passed && failed_guards == 0,
+                "state_passed": state_passed,
                 "issues": issues,
+                "failed_guards": failed_guards,
             });
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
 
+    Ok(())
+}
+
+/// Shared guard evaluation logic used by `review` and `verify`.
+///
+/// Evaluates all guards on forward transitions for each completed stage's skills.
+/// Returns a list of per-stage guard results.
+fn evaluate_all_guards(
+    run: &PipelineRun,
+    pipeline_def: &PipelineDef,
+    db: &IndexDb,
+    registry: &popsicle_core::registry::SkillRegistry,
+) -> anyhow::Result<Vec<StageGuardReport>> {
+    let docs = db
+        .query_documents(None, None, Some(&run.id))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    let mut reports = Vec::new();
+
+    for stage in &pipeline_def.stages {
+        let state = run.stage_states.get(&stage.name).copied();
+        if !matches!(state, Some(StageState::Completed)) {
+            continue;
+        }
+
+        for skill_name in stage.skill_names() {
+            let skill = match registry.get(skill_name) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+
+            // Find forward transitions that have guards (transitions leading to final states
+            // or any transition with a guard condition).
+            let guarded_transitions: Vec<_> = skill
+                .workflow
+                .states
+                .values()
+                .flat_map(|s| s.transitions.iter())
+                .filter(|t| t.guard.is_some())
+                .collect();
+
+            if guarded_transitions.is_empty() {
+                continue;
+            }
+
+            // Find the document for this skill in this run
+            let skill_doc_row = docs.iter().find(|d| d.skill_name == skill_name);
+            let doc = match skill_doc_row {
+                Some(row) => {
+                    match FileStorage::read_document(std::path::Path::new(&row.file_path)) {
+                        Ok(d) => d,
+                        Err(_) => continue,
+                    }
+                }
+                None => continue,
+            };
+
+            let mut guard_results = Vec::new();
+            for transition in &guarded_transitions {
+                if let Some(ref guard_str) = transition.guard {
+                    let result = check_guard(
+                        guard_str,
+                        &doc,
+                        &docs,
+                        registry,
+                        Some(pipeline_def),
+                        Some(run),
+                    )
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
+                    guard_results.push(result);
+                }
+            }
+
+            if !guard_results.is_empty() {
+                reports.push(StageGuardReport {
+                    stage_name: stage.name.clone(),
+                    skill_name: skill_name.to_string(),
+                    guards: guard_results,
+                });
+            }
+        }
+    }
+
+    Ok(reports)
+}
+
+struct StageGuardReport {
+    stage_name: String,
+    skill_name: String,
+    guards: Vec<popsicle_core::engine::GuardResult>,
+}
+
+fn review_run(run_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {
+    let layout = project_layout()?;
+    let db = IndexDb::open(&layout.db_path())?;
+    let run = get_run(&db, run_id)?;
+    let pipeline_def = find_pipeline(&run.pipeline_name)?;
+    let registry = load_registry()?;
+
+    let reports = evaluate_all_guards(&run, &pipeline_def, &db, &registry)?;
+
+    let total_guards: usize = reports.iter().map(|r| r.guards.len()).sum();
+    let failed_guards: usize = reports
+        .iter()
+        .map(|r| r.guards.iter().filter(|g| !g.passed).count())
+        .sum();
+    let failed_stages: usize = reports
+        .iter()
+        .filter(|r| r.guards.iter().any(|g| !g.passed))
+        .count();
+
+    match format {
+        OutputFormat::Text => {
+            println!("Pipeline Review: {} ({})\n", run.title, run.id);
+            if reports.is_empty() {
+                println!("  No guards configured on any completed stage.");
+            } else {
+                for report in &reports {
+                    println!("Stage: {} ({})", report.stage_name, report.skill_name);
+                    for guard in &report.guards {
+                        let icon = if guard.passed { "✅" } else { "❌" };
+                        println!("  {} {}  {}", icon, guard.guard_name, guard.message);
+                    }
+                    println!();
+                }
+                if failed_guards == 0 {
+                    println!(
+                        "Result: All {} guards passed across {} stages.",
+                        total_guards,
+                        reports.len()
+                    );
+                } else {
+                    println!(
+                        "Result: {} guard(s) failed in {} stage(s). Review the documents above.",
+                        failed_guards, failed_stages
+                    );
+                }
+            }
+        }
+        OutputFormat::Json => {
+            let stages: Vec<_> = reports
+                .iter()
+                .map(|r| {
+                    let guards: Vec<_> = r
+                        .guards
+                        .iter()
+                        .map(|g| {
+                            serde_json::json!({
+                                "guard": g.guard_name,
+                                "passed": g.passed,
+                                "message": g.message,
+                            })
+                        })
+                        .collect();
+                    serde_json::json!({
+                        "stage": r.stage_name,
+                        "skill": r.skill_name,
+                        "guards": guards,
+                    })
+                })
+                .collect();
+            let result = serde_json::json!({
+                "run_id": run.id,
+                "title": run.title,
+                "total_guards": total_guards,
+                "failed_guards": failed_guards,
+                "failed_stages": failed_stages,
+                "stages": stages,
+            });
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+    }
     Ok(())
 }
 
@@ -821,9 +1023,12 @@ fn stage_complete(
     format: &OutputFormat,
 ) -> anyhow::Result<()> {
     let layout = project_layout()?;
+    let config =
+        ProjectConfig::load(&layout.config_path()).map_err(|e| anyhow::anyhow!("{}", e))?;
     let db = IndexDb::open(&layout.db_path())?;
     let mut run = get_run(&db, run_id)?;
     let pipeline_def = find_pipeline(&run.pipeline_name)?;
+    let registry = load_registry()?;
 
     let stage = pipeline_def
         .stages
@@ -883,15 +1088,46 @@ fn stage_complete(
         if stage_skills.contains(&doc_row.skill_name.as_str()) && doc_row.status != "final" {
             let _ = db.update_document_status(&doc_row.id, "final");
             // Update file on disk
-            if let Ok(mut doc) = popsicle_core::storage::FileStorage::read_document(
-                std::path::Path::new(&doc_row.file_path),
-            ) {
+            if let Ok(mut doc) =
+                FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+            {
                 doc.status = "final".to_string();
                 doc.updated_at = Some(chrono::Utc::now());
-                let _ = popsicle_core::storage::FileStorage::write_document(
-                    &doc,
-                    std::path::Path::new(&doc_row.file_path),
-                );
+                let _ = FileStorage::write_document(&doc, std::path::Path::new(&doc_row.file_path));
+            }
+        }
+    }
+
+    // Run on_complete hooks and declarative extractions for each skill
+    let mut extraction_summary: Vec<String> = Vec::new();
+    for skill_name in &stage_skills {
+        if let Ok(skill) = registry.get(skill_name) {
+            // Run on_complete hook
+            for doc_row in docs.iter().filter(|d| d.skill_name == *skill_name) {
+                if let Ok(doc) =
+                    FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+                {
+                    let ctx = HookContext::from_document(&doc, "on_complete");
+                    if let Ok(Some(result)) =
+                        hooks::run_hook(&skill.hooks, HookEvent::OnComplete, &ctx)
+                        && !result.success
+                    {
+                        eprintln!(
+                            "Warning: on_complete hook for '{}' failed: {}",
+                            skill_name, result.stderr
+                        );
+                    }
+
+                    // Declarative extractions
+                    run_declarative_extractions(
+                        &skill.artifacts,
+                        &doc,
+                        &doc_row.id,
+                        &db,
+                        &config,
+                        &mut extraction_summary,
+                    );
+                }
             }
         }
     }
@@ -929,6 +1165,9 @@ fn stage_complete(
         OutputFormat::Text => {
             println!("Stage '{}' → completed", stage_name);
             println!("  Run: {}", run.id);
+            for line in &extraction_summary {
+                println!("  {}", line);
+            }
             if all_done {
                 println!("  All stages completed!");
                 if auto_released {
@@ -951,12 +1190,97 @@ fn stage_complete(
                 "run_id": run.id,
                 "all_done": all_done,
                 "auto_released": auto_released,
+                "extractions": extraction_summary,
                 "stage_states": run.stage_states,
             });
             println!("{}", serde_json::to_string_pretty(&out)?);
         }
     }
     Ok(())
+}
+
+/// Run declarative extractions for artifacts that have `extractions` configured.
+fn run_declarative_extractions(
+    artifacts: &[popsicle_core::model::skill::ArtifactDef],
+    doc: &popsicle_core::model::Document,
+    doc_id: &str,
+    db: &IndexDb,
+    config: &ProjectConfig,
+    summary: &mut Vec<String>,
+) {
+    let prefix = config.project.key_prefix_or_default();
+    let run_id_opt = if doc.pipeline_run_id.is_empty() {
+        None
+    } else {
+        Some(doc.pipeline_run_id.as_str())
+    };
+    let issue_id: Option<String> =
+        run_id_opt.and_then(|rid| db.find_issue_by_run_id(rid).ok().flatten().map(|i| i.id));
+
+    for artifact in artifacts {
+        if artifact.artifact_type != doc.doc_type {
+            continue;
+        }
+        for spec in &artifact.extractions {
+            match spec {
+                ExtractionSpec::UserStories => {
+                    let extracted = extractor::extract_user_stories(doc);
+                    let mut count = 0;
+                    for mut story in extracted {
+                        if let Ok(seq) = db.next_story_seq(prefix) {
+                            story.key = format!("US-{}-{}", prefix, seq);
+                            story.source_doc_id = Some(doc_id.to_string());
+                            story.pipeline_run_id = run_id_opt.map(String::from);
+                            story.issue_id = issue_id.clone();
+                            if db.create_user_story(&story).is_ok() {
+                                count += 1;
+                            }
+                        }
+                    }
+                    if count > 0 {
+                        summary.push(format!("Extracted {} user stories", count));
+                    }
+                }
+                ExtractionSpec::TestCases { test_type } => {
+                    let tt: TestType = test_type.parse().unwrap_or(TestType::Unit);
+                    let extracted = extractor::extract_test_cases(doc, tt);
+                    let mut count = 0;
+                    for mut tc in extracted {
+                        if let Ok(seq) = db.next_testcase_seq(prefix) {
+                            tc.key = format!("TC-{}-{}", prefix, seq);
+                            tc.source_doc_id = Some(doc_id.to_string());
+                            tc.pipeline_run_id = run_id_opt.map(String::from);
+                            tc.issue_id = issue_id.clone();
+                            if db.create_test_case(&tc).is_ok() {
+                                count += 1;
+                            }
+                        }
+                    }
+                    if count > 0 {
+                        summary.push(format!("Extracted {} test cases ({})", count, test_type));
+                    }
+                }
+                ExtractionSpec::Bugs => {
+                    let extracted = extractor::extract_bugs(doc);
+                    let mut count = 0;
+                    for mut bug in extracted {
+                        if let Ok(seq) = db.next_bug_seq(prefix) {
+                            bug.key = format!("BUG-{}-{}", prefix, seq);
+                            bug.source = BugSource::DocExtracted;
+                            bug.pipeline_run_id = run_id_opt.map(String::from);
+                            bug.issue_id = issue_id.clone();
+                            if db.create_bug(&bug).is_ok() {
+                                count += 1;
+                            }
+                        }
+                    }
+                    if count > 0 {
+                        summary.push(format!("Extracted {} bugs", count));
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn unlock_spec(spec_id: Option<&str>, format: &OutputFormat) -> anyhow::Result<()> {

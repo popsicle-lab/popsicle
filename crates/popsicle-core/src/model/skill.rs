@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -105,6 +106,69 @@ pub struct ArtifactDef {
     pub artifact_type: String,
     pub template: PathBuf,
     pub file_pattern: String,
+    /// Entities to auto-extract when the owning stage completes.
+    #[serde(default)]
+    pub extractions: Vec<ExtractionSpec>,
+}
+
+/// Declarative extraction specification.
+///
+/// YAML shorthand format:
+/// - `user-stories`
+/// - `test-cases:unit`   (with test_type parameter)
+/// - `bugs`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtractionSpec {
+    UserStories,
+    TestCases { test_type: String },
+    Bugs,
+}
+
+impl ExtractionSpec {
+    /// Parse from a shorthand string like "user-stories", "test-cases:unit", "bugs".
+    pub fn parse(s: &str) -> Result<Self, String> {
+        if let Some(rest) = s.strip_prefix("test-cases:") {
+            let tt = rest.trim();
+            if tt.is_empty() {
+                return Err("test-cases requires a type (e.g. test-cases:unit)".to_string());
+            }
+            Ok(Self::TestCases {
+                test_type: tt.to_string(),
+            })
+        } else {
+            match s {
+                "user-stories" => Ok(Self::UserStories),
+                "test-cases" => {
+                    Err("test-cases requires a type parameter (e.g. test-cases:unit)".to_string())
+                }
+                "bugs" => Ok(Self::Bugs),
+                other => Err(format!("unknown extraction type: {other}")),
+            }
+        }
+    }
+}
+
+impl fmt::Display for ExtractionSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UserStories => write!(f, "user-stories"),
+            Self::TestCases { test_type } => write!(f, "test-cases:{test_type}"),
+            Self::Bugs => write!(f, "bugs"),
+        }
+    }
+}
+
+impl Serialize for ExtractionSpec {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for ExtractionSpec {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
 }
 
 /// State-machine workflow definition within a Skill.
@@ -444,5 +508,99 @@ workflow:
         let skill: SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(skill.doc_lifecycle, DocLifecycle::Cumulative);
         assert!(skill.is_cumulative());
+    }
+
+    #[test]
+    fn test_extraction_spec_parse() {
+        assert_eq!(
+            ExtractionSpec::parse("user-stories").unwrap(),
+            ExtractionSpec::UserStories
+        );
+        assert_eq!(ExtractionSpec::parse("bugs").unwrap(), ExtractionSpec::Bugs);
+        assert_eq!(
+            ExtractionSpec::parse("test-cases:unit").unwrap(),
+            ExtractionSpec::TestCases {
+                test_type: "unit".to_string()
+            }
+        );
+        assert_eq!(
+            ExtractionSpec::parse("test-cases:e2e").unwrap(),
+            ExtractionSpec::TestCases {
+                test_type: "e2e".to_string()
+            }
+        );
+        assert!(ExtractionSpec::parse("test-cases").is_err());
+        assert!(ExtractionSpec::parse("test-cases:").is_err());
+        assert!(ExtractionSpec::parse("unknown").is_err());
+    }
+
+    #[test]
+    fn test_extraction_spec_display() {
+        assert_eq!(ExtractionSpec::UserStories.to_string(), "user-stories");
+        assert_eq!(ExtractionSpec::Bugs.to_string(), "bugs");
+        assert_eq!(
+            ExtractionSpec::TestCases {
+                test_type: "unit".to_string()
+            }
+            .to_string(),
+            "test-cases:unit"
+        );
+    }
+
+    #[test]
+    fn test_extraction_spec_serde_roundtrip() {
+        let specs = vec![
+            ExtractionSpec::UserStories,
+            ExtractionSpec::TestCases {
+                test_type: "api".to_string(),
+            },
+            ExtractionSpec::Bugs,
+        ];
+        let json = serde_json::to_string(&specs).unwrap();
+        let parsed: Vec<ExtractionSpec> = serde_json::from_str(&json).unwrap();
+        assert_eq!(specs, parsed);
+    }
+
+    #[test]
+    fn test_artifact_with_extractions_yaml() {
+        let yaml = r#"
+name: prd-writer
+description: Product requirements
+version: "0.1.0"
+artifacts:
+  - type: prd
+    template: templates/prd.md
+    file_pattern: "{slug}.prd.md"
+    extractions:
+      - user-stories
+      - test-cases:unit
+      - bugs
+workflow:
+  initial: draft
+  states:
+    draft:
+      transitions:
+        - to: done
+          action: finish
+    done:
+      final: true
+"#;
+        let skill: SkillDef = serde_yaml_ng::from_str(yaml).unwrap();
+        let artifact = &skill.artifacts[0];
+        assert_eq!(artifact.extractions.len(), 3);
+        assert_eq!(artifact.extractions[0], ExtractionSpec::UserStories);
+        assert_eq!(
+            artifact.extractions[1],
+            ExtractionSpec::TestCases {
+                test_type: "unit".to_string()
+            }
+        );
+        assert_eq!(artifact.extractions[2], ExtractionSpec::Bugs);
+    }
+
+    #[test]
+    fn test_artifact_without_extractions_defaults_empty() {
+        let skill: SkillDef = serde_yaml_ng::from_str(sample_skill_yaml()).unwrap();
+        assert!(skill.artifacts[0].extractions.is_empty());
     }
 }
