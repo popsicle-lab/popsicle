@@ -1,4 +1,5 @@
 mod bug;
+mod checklist;
 mod context;
 mod discussion;
 mod doc;
@@ -41,6 +42,10 @@ pub enum Command {
     /// Manage documents (artifacts)
     #[command(subcommand)]
     Doc(doc::DocCommand),
+
+    /// View and update document checklists (check/uncheck items via CLI)
+    #[command(subcommand)]
+    Checklist(checklist::ChecklistCommand),
 
     /// Git commit tracking and review management
     #[command(subcommand)]
@@ -125,6 +130,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Skill(sub) => skill::execute(sub, format),
         Command::Pipeline(sub) => pipeline::execute(sub, format),
         Command::Doc(sub) => doc::execute(sub, format),
+        Command::Checklist(sub) => checklist::execute(sub, format),
         Command::Git(sub) => git::execute(sub, format),
         Command::Discussion(sub) => discussion::execute(sub, format),
         Command::Issue(sub) => issue::execute(sub, format),

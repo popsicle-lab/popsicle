@@ -365,14 +365,23 @@ Do NOT skip this step. Documents without LLM-generated summaries will not appear
 
 When a pipeline run is complete or when running `popsicle pipeline review --checklist`:
 
-1. Run `popsicle pipeline review --checklist` to get all unchecked items as structured JSON
+1. Run `popsicle pipeline review --checklist` to get all unchecked items as structured JSON (includes doc IDs and line numbers)
 2. For **each unchecked item** (`- [ ]`), scan the codebase to determine if the work was actually done
-3. If the item IS implemented in code → update the document: change `- [ ]` to `- [x]` in the file
+3. If the item IS implemented in code → check it off: `popsicle checklist check --doc <doc_id> --lines <line1>,<line2>,...`
 4. If the item is NOT implemented → keep it unchecked and add to the remaining-work summary
 5. After updating documents, report:
    - How many items were auto-checked (with brief evidence for each)
    - How many items remain unchecked (with next-step suggestions)
 6. Run `popsicle pipeline verify` to confirm final status
+
+### Checklist CLI Commands
+
+- `popsicle checklist status --run <run_id>` — view checkbox status for all docs in a run
+- `popsicle checklist status --doc <doc_id>` — view checkbox status for one document
+- `popsicle checklist check --doc <doc_id> --lines 5,12,23` — check off items by line number
+- `popsicle checklist check --doc <doc_id> --match "search text"` — check items matching text
+- `popsicle checklist check --doc <doc_id> --all` — check all unchecked items
+- `popsicle checklist uncheck --doc <doc_id> --lines 5` — uncheck items (for corrections)
 
 **IMPORTANT**: Acceptance criteria in PRD documents represent features that should be checked off as they are implemented throughout the pipeline. Before completing the final stage, review the PRD and update all checkboxes that correspond to implemented functionality.
 
