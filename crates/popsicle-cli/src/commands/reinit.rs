@@ -132,12 +132,13 @@ pub fn execute(args: ReinitArgs, format: &OutputFormat) -> anyhow::Result<()> {
                     import_result.unmapped_columns.len()
                 );
                 for u in &import_result.unmapped_columns {
-                    println!("    {}.{} (samples: {:?})", u.table, u.column, u.sample_values);
+                    println!(
+                        "    {}.{} (samples: {:?})",
+                        u.table, u.column, u.sample_values
+                    );
                 }
                 println!();
-                println!(
-                    "  Run `popsicle reinit --generate-mapping` for AI-assisted recovery."
-                );
+                println!("  Run `popsicle reinit --generate-mapping` for AI-assisted recovery.");
             }
         }
         OutputFormat::Json => {
@@ -221,8 +222,7 @@ fn apply_mapping_file(
 
     let export_data: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(export_path)?)?;
-    let mapping: MigrationMapping =
-        serde_json::from_str(&std::fs::read_to_string(mapping_path)?)?;
+    let mapping: MigrationMapping = serde_json::from_str(&std::fs::read_to_string(mapping_path)?)?;
 
     if !db_path.exists() {
         anyhow::bail!("Database not found. Run `popsicle reinit` first to create fresh schema.");

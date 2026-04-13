@@ -125,9 +125,7 @@ pub fn execute(cmd: PipelineCommand, format: &OutputFormat) -> anyhow::Result<()
         PipelineCommand::Status { run } => show_status(run.as_deref(), format),
         PipelineCommand::Next { run } => show_next(run.as_deref(), format),
         PipelineCommand::Verify { run, strict } => verify_run(run.as_deref(), strict, format),
-        PipelineCommand::Review { run, checklist } => {
-            review_run(run.as_deref(), checklist, format)
-        }
+        PipelineCommand::Review { run, checklist } => review_run(run.as_deref(), checklist, format),
         PipelineCommand::Archive { run } => archive_run(run.as_deref(), format),
         PipelineCommand::Recommend { task } => recommend_pipeline(&task, format),
         PipelineCommand::Revise { run, stages } => {
@@ -288,9 +286,7 @@ fn verify_run(run_id: Option<&str>, strict: bool, format: &OutputFormat) -> anyh
 }
 
 /// Audit all documents for checkbox completion status.
-fn audit_all_checklists(
-    docs: &[popsicle_core::storage::DocumentRow],
-) -> Vec<ChecklistAudit> {
+fn audit_all_checklists(docs: &[popsicle_core::storage::DocumentRow]) -> Vec<ChecklistAudit> {
     let mut audits = Vec::new();
     for doc_row in docs {
         let doc = match FileStorage::read_document(std::path::Path::new(&doc_row.file_path)) {
@@ -497,10 +493,7 @@ fn review_run(run_id: Option<&str>, checklist: bool, format: &OutputFormat) -> a
 }
 
 /// `pipeline review --checklist` — output all unchecked checkboxes for agent-assisted review.
-fn review_checklist(
-    run: &PipelineRun,
-    db: &IndexDb,
-) -> anyhow::Result<()> {
+fn review_checklist(run: &PipelineRun, db: &IndexDb) -> anyhow::Result<()> {
     let docs = db
         .query_documents(None, None, Some(&run.id))
         .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -1244,8 +1237,7 @@ fn stage_complete(
     let stage_skills: Vec<&str> = stage.skill_names();
     for doc_row in &docs {
         if stage_skills.contains(&doc_row.skill_name.as_str())
-            && let Ok(doc) =
-                FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
+            && let Ok(doc) = FileStorage::read_document(std::path::Path::new(&doc_row.file_path))
         {
             let (checked, unchecked) = count_checkboxes(&doc.body);
             if unchecked > 0 {

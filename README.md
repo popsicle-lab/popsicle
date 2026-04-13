@@ -110,7 +110,7 @@ cargo build -p popsicle-cli --features ui --release
 
 ```bash
 # One-command setup: init + install module + scan context + generate agent instructions
-popsicle init --agent claude,cursor --module github:popsicle-lab/popsicle-spec-development
+popsicle init --agent claude,copilot --module github:popsicle-lab/popsicle-spec-development
 
 # Install git post-commit hook for automatic tracking
 popsicle git init
@@ -163,10 +163,15 @@ popsicle context scan --force     # Re-scan project context
 `popsicle init` auto-generates agent instruction files with the full skill catalog.
 Use `--agent` to select targets (default: `claude`).
 
-| Agent | Flag | Generated Files |
-|-------|------|-----------------|
-| Claude Code | `--agent claude` | `.claude/CLAUDE.md`, `.claude/skills/popsicle-*/SKILL.md` |
-| Cursor | `--agent cursor` | `.cursor/rules/popsicle.mdc`, `.cursor/skills/popsicle-*/SKILL.md` |
+| Agent | Flag | Main Instructions | Skills Directory |
+|-------|------|-------------------|-----------------|
+| Claude Code | `--agent claude` | `CLAUDE.md` | `.claude/skills/popsicle-*/SKILL.md` |
+| Cursor | `--agent cursor` | `AGENTS.md` | `.cursor/skills/popsicle-*/SKILL.md` |
+| GitHub Copilot | `--agent copilot` | `AGENTS.md` | `.github/skills/popsicle-*/SKILL.md` |
+| OpenAI Codex | `--agent codex` | `AGENTS.md` | `.codex/skills/popsicle-*/SKILL.md` |
+| OpenCode | `--agent opencode` | `AGENTS.md` | `.opencode/skills/popsicle-*/SKILL.md` |
+
+Cursor, Copilot, Codex, and OpenCode share a single `AGENTS.md` at the project root (written once when any of these targets is selected). Claude uses its own `CLAUDE.md`.
 
 Examples:
 
@@ -174,11 +179,11 @@ Examples:
 # Claude Code only (default)
 popsicle init
 
-# Cursor only
-popsicle init --agent cursor
+# Copilot + Codex
+popsicle init --agent copilot,codex
 
-# Both agents + module in one command
-popsicle init --agent claude,cursor --module github:popsicle-lab/popsicle-spec-development
+# All agents + module in one command
+popsicle init --agent claude,cursor,copilot,codex,opencode --module github:popsicle-lab/popsicle-spec-development
 
 # Skip agent files entirely
 popsicle init --no-agent-files

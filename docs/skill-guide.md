@@ -408,7 +408,7 @@ stages:
 ### Step 6: Regenerate Agent instructions
 
 ```bash
-popsicle init --agent claude,cursor
+popsicle init --agent claude,copilot
 ```
 
 This regenerates all Agent skill files, now including the new `security-review` skill with its workflow, CLI commands, and your writing guide.

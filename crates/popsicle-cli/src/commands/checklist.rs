@@ -48,7 +48,9 @@ pub enum ChecklistCommand {
 
 pub fn execute(cmd: ChecklistCommand, format: &OutputFormat) -> anyhow::Result<()> {
     match cmd {
-        ChecklistCommand::Status { doc, run } => checklist_status(doc.as_deref(), run.as_deref(), format),
+        ChecklistCommand::Status { doc, run } => {
+            checklist_status(doc.as_deref(), run.as_deref(), format)
+        }
         ChecklistCommand::Check {
             doc,
             lines,
@@ -66,10 +68,7 @@ fn project_layout() -> anyhow::Result<ProjectLayout> {
     helpers::project_layout(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
-fn find_doc_row(
-    db: &IndexDb,
-    doc_id: &str,
-) -> anyhow::Result<popsicle_core::storage::DocumentRow> {
+fn find_doc_row(db: &IndexDb, doc_id: &str) -> anyhow::Result<popsicle_core::storage::DocumentRow> {
     let all = db
         .query_documents(None, None, None)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -286,7 +285,10 @@ fn checklist_check(
             if updated_count == 0 {
                 println!("No items matched. Nothing changed.");
             } else {
-                println!("✅ Checked {} item(s) in '{}'", updated_count, doc_row.title);
+                println!(
+                    "✅ Checked {} item(s) in '{}'",
+                    updated_count, doc_row.title
+                );
                 for item in &updated_items {
                     let line = item["line"].as_u64().unwrap_or(0);
                     let text = item["text"].as_str().unwrap_or("?");
@@ -339,8 +341,7 @@ fn checklist_uncheck(
         .map(|(idx, line)| {
             let line_no = idx + 1;
             let trimmed = line.trim_start();
-            let is_checked =
-                trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ");
+            let is_checked = trimmed.starts_with("- [x] ") || trimmed.starts_with("- [X] ");
             if !is_checked {
                 return line.to_string();
             }

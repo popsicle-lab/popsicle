@@ -7,6 +7,9 @@ use crate::model::SkillDef;
 pub enum AgentTarget {
     Claude,
     Cursor,
+    Copilot,
+    Codex,
+    OpenCode,
 }
 
 impl AgentTarget {
@@ -14,6 +17,9 @@ impl AgentTarget {
         match s.to_lowercase().as_str() {
             "claude" => Some(Self::Claude),
             "cursor" => Some(Self::Cursor),
+            "copilot" => Some(Self::Copilot),
+            "codex" => Some(Self::Codex),
+            "opencode" => Some(Self::OpenCode),
             _ => None,
         }
     }
@@ -22,8 +28,21 @@ impl AgentTarget {
         match self {
             Self::Claude => "claude",
             Self::Cursor => "cursor",
+            Self::Copilot => "copilot",
+            Self::Codex => "codex",
+            Self::OpenCode => "opencode",
         }
     }
+
+    /// Whether this target uses the shared `AGENTS.md` file at the project root.
+    pub fn uses_agents_md(&self) -> bool {
+        matches!(
+            self,
+            Self::Cursor | Self::Copilot | Self::Codex | Self::OpenCode
+        )
+    }
+
+    pub const ALL_NAMES: &'static str = "claude, cursor, copilot, codex, opencode";
 }
 
 pub struct AgentInstaller;
@@ -45,6 +64,17 @@ impl AgentInstaller {
         let module_section = build_module_section(skills, module_name);
         let mut installed = Vec::new();
 
+        // Write shared AGENTS.md once if any target uses it.
+        let needs_agents_md = targets.iter().any(|t| t.uses_agents_md());
+        if needs_agents_md {
+            let instructions = format!(
+                "# Popsicle — Agent Instructions\n\n{}\n\n---\n\n{}\n",
+                core_rules, module_section
+            );
+            std::fs::write(project_root.join("AGENTS.md"), instructions)?;
+            installed.push("AGENTS.md".to_string());
+        }
+
         for target in &targets {
             match target {
                 AgentTarget::Claude => {
@@ -57,11 +87,34 @@ impl AgentInstaller {
                     )?);
                 }
                 AgentTarget::Cursor => {
-                    installed.extend(install_cursor(
+                    installed.extend(install_skills_to_dir(
                         project_root,
                         skills,
-                        &core_rules,
-                        &module_section,
+                        ".cursor/skills",
+                        module_name,
+                    )?);
+                }
+                AgentTarget::Copilot => {
+                    installed.extend(install_skills_to_dir(
+                        project_root,
+                        skills,
+                        ".github/skills",
+                        module_name,
+                    )?);
+                }
+                AgentTarget::Codex => {
+                    installed.extend(install_skills_to_dir(
+                        project_root,
+                        skills,
+                        ".codex/skills",
+                        module_name,
+                    )?);
+                }
+                AgentTarget::OpenCode => {
+                    installed.extend(install_skills_to_dir(
+                        project_root,
+                        skills,
+                        ".opencode/skills",
                         module_name,
                     )?);
                 }
@@ -463,18 +516,15 @@ fn install_claude(
     module_section: &str,
     module_name: &str,
 ) -> Result<Vec<String>> {
-    let claude_dir = root.join(".claude");
-    std::fs::create_dir_all(&claude_dir)?;
-
     let instructions = format!(
         "# Popsicle — Claude Code Instructions\n\n{}\n\n---\n\n{}\n",
         core_rules, module_section
     );
-    std::fs::write(claude_dir.join("CLAUDE.md"), instructions)?;
+    std::fs::write(root.join("CLAUDE.md"), instructions)?;
 
-    let mut installed = vec![".claude/CLAUDE.md".to_string()];
+    let mut installed = vec!["CLAUDE.md".to_string()];
 
-    let skills_dir = claude_dir.join("skills");
+    let skills_dir = root.join(".claude").join("skills");
     for skill in skills {
         let skill_dir = skills_dir.join(format!("popsicle-{}", skill.name));
         std::fs::create_dir_all(&skill_dir)?;
@@ -507,54 +557,46 @@ fn install_claude(
     Ok(installed)
 }
 
-fn install_cursor(
+/// Install per-skill SKILL.md files and meta-skills into a target-specific skills directory.
+/// Used by Cursor, Copilot, Codex, and OpenCode (all share AGENTS.md for the main instructions).
+fn install_skills_to_dir(
     root: &Path,
     skills: &[&SkillDef],
-    core_rules: &str,
-    module_section: &str,
+    skills_rel: &str,
     module_name: &str,
 ) -> Result<Vec<String>> {
-    let rules_dir = root.join(".cursor").join("rules");
-    std::fs::create_dir_all(&rules_dir)?;
+    let skills_dir = root.join(skills_rel);
+    let mut installed = Vec::new();
 
-    let rules = format!(
-        "---\ndescription: Popsicle spec-driven development workflow\nglobs:\nalwaysApply: true\n---\n\n# Popsicle Workflow\n\n{}\n\n---\n\n{}\n",
-        core_rules, module_section
-    );
-    std::fs::write(rules_dir.join("popsicle.mdc"), rules)?;
-
-    let mut installed = vec![".cursor/rules/popsicle.mdc".into()];
-
-    let skills_dir = root.join(".cursor").join("skills");
     for skill in skills {
         let skill_dir = skills_dir.join(format!("popsicle-{}", skill.name));
         std::fs::create_dir_all(&skill_dir)?;
 
         let content = build_agent_skill(skill, module_name);
         std::fs::write(skill_dir.join("SKILL.md"), &content)?;
-        installed.push(format!(".cursor/skills/popsicle-{}/SKILL.md", skill.name));
+        installed.push(format!("{}/popsicle-{}/SKILL.md", skills_rel, skill.name));
     }
 
     let memory_dir = skills_dir.join("popsicle-memory");
     std::fs::create_dir_all(&memory_dir)?;
     std::fs::write(memory_dir.join("SKILL.md"), SKILL_MEMORY)?;
-    installed.push(".cursor/skills/popsicle-memory/SKILL.md".to_string());
+    installed.push(format!("{}/popsicle-memory/SKILL.md", skills_rel));
 
     let ctx_scan_dir = skills_dir.join("popsicle-context-scan");
     std::fs::create_dir_all(&ctx_scan_dir)?;
     std::fs::write(ctx_scan_dir.join("SKILL.md"), SKILL_CONTEXT_SCAN)?;
-    installed.push(".cursor/skills/popsicle-context-scan/SKILL.md".to_string());
+    installed.push(format!("{}/popsicle-context-scan/SKILL.md", skills_rel));
 
     let bootstrap_dir = skills_dir.join("popsicle-bootstrap");
     std::fs::create_dir_all(&bootstrap_dir)?;
     std::fs::write(bootstrap_dir.join("SKILL.md"), SKILL_BOOTSTRAP)?;
-    installed.push(".cursor/skills/popsicle-bootstrap/SKILL.md".to_string());
+    installed.push(format!("{}/popsicle-bootstrap/SKILL.md", skills_rel));
 
     Ok(installed)
 }
 
 /// Build a SKILL.md file following the Agent Skills open standard.
-/// Used by both Claude Code (.claude/skills/) and Cursor (.cursor/skills/).
+/// Used by all agent targets for per-skill instruction files.
 fn build_agent_skill(skill: &SkillDef, module_name: &str) -> String {
     let mut s = String::new();
 
@@ -832,3 +874,167 @@ The project now has namespaces and specs. To start working:
 2. Start the issue (creates pipeline run): `popsicle issue start <issue-id>`
 3. Follow the pipeline: `popsicle pipeline next`
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_all_agent_targets() {
+        assert_eq!(AgentTarget::parse("claude"), Some(AgentTarget::Claude));
+        assert_eq!(AgentTarget::parse("cursor"), Some(AgentTarget::Cursor));
+        assert_eq!(AgentTarget::parse("copilot"), Some(AgentTarget::Copilot));
+        assert_eq!(AgentTarget::parse("codex"), Some(AgentTarget::Codex));
+        assert_eq!(AgentTarget::parse("opencode"), Some(AgentTarget::OpenCode));
+        assert_eq!(AgentTarget::parse("CLAUDE"), Some(AgentTarget::Claude));
+        assert_eq!(AgentTarget::parse("Copilot"), Some(AgentTarget::Copilot));
+        assert_eq!(AgentTarget::parse("unknown"), None);
+    }
+
+    #[test]
+    fn agent_target_name_roundtrip() {
+        let all = [
+            AgentTarget::Claude,
+            AgentTarget::Cursor,
+            AgentTarget::Copilot,
+            AgentTarget::Codex,
+            AgentTarget::OpenCode,
+        ];
+        for t in &all {
+            assert_eq!(AgentTarget::parse(t.name()), Some(*t));
+        }
+    }
+
+    #[test]
+    fn uses_agents_md() {
+        assert!(!AgentTarget::Claude.uses_agents_md());
+        assert!(AgentTarget::Cursor.uses_agents_md());
+        assert!(AgentTarget::Copilot.uses_agents_md());
+        assert!(AgentTarget::Codex.uses_agents_md());
+        assert!(AgentTarget::OpenCode.uses_agents_md());
+    }
+
+    #[test]
+    fn install_claude_writes_root_claude_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files =
+            AgentInstaller::install(tmp.path(), &[AgentTarget::Claude], &[], "test-mod").unwrap();
+
+        assert!(files.contains(&"CLAUDE.md".to_string()));
+        assert!(tmp.path().join("CLAUDE.md").exists());
+        // Old path should NOT exist
+        assert!(!tmp.path().join(".claude/CLAUDE.md").exists());
+    }
+
+    #[test]
+    fn install_cursor_writes_agents_md_and_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files =
+            AgentInstaller::install(tmp.path(), &[AgentTarget::Cursor], &[], "test-mod").unwrap();
+
+        assert!(files.contains(&"AGENTS.md".to_string()));
+        assert!(tmp.path().join("AGENTS.md").exists());
+        // Old mdc file should NOT exist
+        assert!(!tmp.path().join(".cursor/rules/popsicle.mdc").exists());
+        // Meta-skills installed
+        assert!(
+            tmp.path()
+                .join(".cursor/skills/popsicle-memory/SKILL.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn install_copilot_writes_agents_md_and_github_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files =
+            AgentInstaller::install(tmp.path(), &[AgentTarget::Copilot], &[], "test-mod").unwrap();
+
+        assert!(files.contains(&"AGENTS.md".to_string()));
+        assert!(tmp.path().join("AGENTS.md").exists());
+        assert!(
+            tmp.path()
+                .join(".github/skills/popsicle-memory/SKILL.md")
+                .exists()
+        );
+        assert!(
+            tmp.path()
+                .join(".github/skills/popsicle-bootstrap/SKILL.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn install_codex_writes_agents_md_and_codex_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files =
+            AgentInstaller::install(tmp.path(), &[AgentTarget::Codex], &[], "test-mod").unwrap();
+
+        assert!(files.contains(&"AGENTS.md".to_string()));
+        assert!(
+            tmp.path()
+                .join(".codex/skills/popsicle-memory/SKILL.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn install_opencode_writes_agents_md_and_opencode_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files =
+            AgentInstaller::install(tmp.path(), &[AgentTarget::OpenCode], &[], "test-mod").unwrap();
+
+        assert!(files.contains(&"AGENTS.md".to_string()));
+        assert!(
+            tmp.path()
+                .join(".opencode/skills/popsicle-memory/SKILL.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn shared_agents_md_written_once_for_multiple_targets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let targets = vec![
+            AgentTarget::Cursor,
+            AgentTarget::Copilot,
+            AgentTarget::Codex,
+        ];
+        let files = AgentInstaller::install(tmp.path(), &targets, &[], "test-mod").unwrap();
+
+        // AGENTS.md listed exactly once
+        assert_eq!(
+            files.iter().filter(|f| *f == "AGENTS.md").count(),
+            1,
+            "AGENTS.md should appear exactly once in installed files list"
+        );
+        // All skill dirs exist
+        assert!(
+            tmp.path()
+                .join(".cursor/skills/popsicle-memory/SKILL.md")
+                .exists()
+        );
+        assert!(
+            tmp.path()
+                .join(".github/skills/popsicle-memory/SKILL.md")
+                .exists()
+        );
+        assert!(
+            tmp.path()
+                .join(".codex/skills/popsicle-memory/SKILL.md")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn claude_and_agents_md_targets_coexist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let targets = vec![AgentTarget::Claude, AgentTarget::Copilot];
+        let files = AgentInstaller::install(tmp.path(), &targets, &[], "test-mod").unwrap();
+
+        assert!(files.contains(&"CLAUDE.md".to_string()));
+        assert!(files.contains(&"AGENTS.md".to_string()));
+        assert!(tmp.path().join("CLAUDE.md").exists());
+        assert!(tmp.path().join("AGENTS.md").exists());
+    }
+}

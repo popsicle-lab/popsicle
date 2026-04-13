@@ -2437,8 +2437,7 @@ impl IndexDb {
                 continue;
             }
 
-            let target_names: Vec<String> =
-                target_cols.iter().map(|c| c.name.clone()).collect();
+            let target_names: Vec<String> = target_cols.iter().map(|c| c.name.clone()).collect();
 
             for col in &source_cols {
                 if !target_names.contains(col) {
@@ -2467,10 +2466,7 @@ impl IndexDb {
     }
 
     /// Generate a structured LLM prompt for resolving schema mismatches.
-    pub fn generate_migration_prompt(
-        &self,
-        export: &serde_json::Value,
-    ) -> Result<String> {
+    pub fn generate_migration_prompt(&self, export: &serde_json::Value) -> Result<String> {
         let mismatches = self.detect_schema_mismatches(export)?;
         if mismatches.is_empty() {
             return Ok("No schema mismatches detected.".to_string());
@@ -2508,9 +2504,20 @@ impl IndexDb {
         // Target schema
         prompt.push_str("## Target Schema (current database)\n\n");
         let table_names = [
-            "namespaces", "specs", "documents", "pipeline_runs", "commit_links",
-            "discussions", "discussion_messages", "discussion_roles",
-            "issues", "bugs", "test_cases", "test_runs", "user_stories", "acceptance_criteria",
+            "namespaces",
+            "specs",
+            "documents",
+            "pipeline_runs",
+            "commit_links",
+            "discussions",
+            "discussion_messages",
+            "discussion_roles",
+            "issues",
+            "bugs",
+            "test_cases",
+            "test_runs",
+            "user_stories",
+            "acceptance_criteria",
         ];
         for table in &table_names {
             let cols = self.export_table_schema(table)?;
@@ -2785,11 +2792,7 @@ impl IndexDb {
                 let samples: Vec<String> = rows
                     .iter()
                     .take(3)
-                    .filter_map(|r| {
-                        r.get(&col)
-                            .filter(|v| !v.is_null())
-                            .map(|v| v.to_string())
-                    })
+                    .filter_map(|r| r.get(&col).filter(|v| !v.is_null()).map(|v| v.to_string()))
                     .collect();
                 UnmappedColumn {
                     table: table.to_string(),
@@ -2854,10 +2857,16 @@ impl SchemaMismatch {
     pub fn describe(&self) -> String {
         match &self.kind {
             MismatchKind::SourceOnlyTable => {
-                format!("Table \"{}\" exists in source but not in target", self.table)
+                format!(
+                    "Table \"{}\" exists in source but not in target",
+                    self.table
+                )
             }
             MismatchKind::TargetOnlyTable => {
-                format!("Table \"{}\" exists in target but not in source", self.table)
+                format!(
+                    "Table \"{}\" exists in target but not in source",
+                    self.table
+                )
             }
             MismatchKind::SourceOnlyColumn { column } => {
                 format!(
@@ -2891,7 +2900,8 @@ pub struct MigrationMapping {
     pub table_renames: std::collections::HashMap<String, String>,
     /// Map old column names to new column names, per table.
     #[serde(default)]
-    pub column_renames: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    pub column_renames:
+        std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     /// Default values for new columns with no source equivalent.
     #[serde(default)]
     pub default_values:

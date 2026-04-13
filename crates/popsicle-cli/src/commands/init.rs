@@ -17,7 +17,7 @@ pub struct InitArgs {
     path: Option<PathBuf>,
 
     /// Target AI agents to install instructions for (comma-separated)
-    /// Options: claude, cursor. Default: claude
+    /// Options: claude, cursor, copilot, codex, opencode. Default: claude
     #[arg(short, long, value_delimiter = ',', default_value = "claude")]
     agent: Vec<String>,
 
@@ -60,8 +60,9 @@ pub fn execute(args: InitArgs, format: &OutputFormat) -> anyhow::Result<()> {
         .filter_map(|s| {
             AgentTarget::parse(s).or_else(|| {
                 eprintln!(
-                    "Warning: unknown agent '{}', skipping. Available: claude, cursor",
-                    s
+                    "Warning: unknown agent '{}', skipping. Available: {}",
+                    s,
+                    AgentTarget::ALL_NAMES,
                 );
                 None
             })
