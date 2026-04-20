@@ -32,13 +32,13 @@ pub struct PackageVersion {
     #[serde(rename = "type")]
     pub pkg_type: PackageType,
     /// One-line description.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Author or organization.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     /// Source repository URL (for linking, not for install).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
     /// Install source reference (e.g. "github:org/repo#v1.0.0").
     pub source: String,
@@ -64,7 +64,7 @@ pub struct PackageVersion {
     pub yanked: bool,
 
     /// ISO-8601 publication timestamp.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub published_at: Option<DateTime<Utc>>,
 }
 
@@ -74,7 +74,7 @@ pub struct PackageDep {
     /// Dependency package name.
     pub name: String,
     /// Version requirement (e.g. ">=1.0.0", "^1.0").
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub req: Option<String>,
     /// Dependency type — "module" or "tool".
     #[serde(default = "default_dep_kind")]
@@ -225,6 +225,55 @@ mod tests {
         };
         let entry = PackageEntry::from_versions(vec![v1, v2, v3]).unwrap();
         assert_eq!(entry.latest().unwrap().vers, "1.0.0");
+    }
+
+    #[test]
+    fn test_optional_fields_omitted_when_none() {
+        // None-valued fields must not appear as JSON `null` in the index:
+        // downstream TypeScript consumers (e.g. the registry website) type
+        // these as `string` / `undefined` and reject explicit `null`.
+        let v = PackageVersion {
+            name: "x".into(),
+            vers: "0.1.0".into(),
+            pkg_type: PackageType::Module,
+            description: None,
+            author: None,
+            repository: None,
+            source: "s".into(),
+            skills: vec![],
+            pipelines: vec![],
+            tools: vec![],
+            deps: vec![PackageDep {
+                name: "dep".into(),
+                req: None,
+                kind: PackageType::Tool,
+            }],
+            keywords: vec![],
+            yanked: false,
+            published_at: None,
+        };
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(!json.contains("null"), "serialized JSON must not contain null: {json}");
+        assert!(!json.contains("\"description\""));
+        assert!(!json.contains("\"author\""));
+        assert!(!json.contains("\"repository\""));
+        assert!(!json.contains("\"published_at\""));
+        assert!(!json.contains("\"req\""));
+    }
+
+    #[test]
+    fn test_legacy_null_fields_still_deserialize() {
+        // Old registry entries published before the `skip_serializing_if`
+        // patch contain explicit `"field": null`. Deserialization must keep
+        // working so those lines are still readable.
+        let legacy = r#"{"name":"p","vers":"0.1.0","type":"module","description":null,"author":null,"repository":null,"source":".","skills":[],"pipelines":[],"tools":[],"deps":[{"name":"d","req":null,"kind":"tool"}],"keywords":[],"yanked":false,"published_at":null}"#;
+        let v: PackageVersion = serde_json::from_str(legacy).unwrap();
+        assert!(v.description.is_none());
+        assert!(v.author.is_none());
+        assert!(v.repository.is_none());
+        assert!(v.published_at.is_none());
+        assert_eq!(v.deps.len(), 1);
+        assert!(v.deps[0].req.is_none());
     }
 
     #[test]
