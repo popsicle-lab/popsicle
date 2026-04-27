@@ -18,6 +18,7 @@ mod reinit;
 mod skill;
 mod spec;
 mod story;
+mod sync;
 mod test;
 mod tool;
 
@@ -70,6 +71,10 @@ pub enum Command {
     /// Test case management: create, extract from specs, record results
     #[command(subcommand)]
     Test(test::TestCommand),
+
+    /// Cloud sync: login, push, pull, and reconcile against popsicle-cloud
+    #[command(subcommand)]
+    Sync(sync::SyncCommand),
 
     /// Extract structured entities (user stories, test cases, bugs) from documents
     #[command(subcommand)]
@@ -137,6 +142,7 @@ pub fn execute(cmd: Command, format: &OutputFormat) -> anyhow::Result<()> {
         Command::Bug(sub) => bug::execute(sub, format),
         Command::Story(sub) => story::execute(sub, format),
         Command::Test(sub) => test::execute(sub, format),
+        Command::Sync(sub) => sync::execute(sub, format),
         Command::Extract(sub) => extract::execute(sub, format),
         Command::Migrate(args) => migrate::execute(args, format),
         Command::Reinit(args) => reinit::execute(args, format),

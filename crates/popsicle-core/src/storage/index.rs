@@ -324,6 +324,35 @@ impl IndexDb {
             END;",
         )?;
 
+        // Sync state for popsicle-cloud cross-device replication.
+        // One row per locally-known entity. `remote_version` is the server
+        // version last observed; `local_hash` is a content hash of the
+        // local serialized payload; `dirty=1` means we have a local change
+        // that hasn't been pushed yet. `deleted=1` is a tombstone awaiting
+        // push of a delete operation.
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS sync_state (
+                entity_kind TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                local_hash TEXT,
+                remote_version INTEGER,
+                last_synced_at TEXT,
+                dirty INTEGER NOT NULL DEFAULT 0,
+                deleted INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (entity_kind, entity_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sync_state_dirty
+                ON sync_state(dirty) WHERE dirty = 1;
+
+            CREATE TABLE IF NOT EXISTS sync_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+            ",
+        )?;
+
         Ok(())
     }
 
@@ -2808,6 +2837,120 @@ impl IndexDb {
             unmapped_columns,
         })
     }
+
+    // ============================================================
+    // Sync state helpers (popsicle-cloud cross-device replication).
+    // ============================================================
+
+    /// Insert or update sync tracking for an entity.
+    pub fn upsert_sync_state(&self, row: &SyncStateRow) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO sync_state (entity_kind, entity_id, local_hash, remote_version, last_synced_at, dirty, deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(entity_kind, entity_id) DO UPDATE SET
+                local_hash = excluded.local_hash,
+                remote_version = excluded.remote_version,
+                last_synced_at = excluded.last_synced_at,
+                dirty = excluded.dirty,
+                deleted = excluded.deleted",
+            params![
+                row.entity_kind,
+                row.entity_id,
+                row.local_hash,
+                row.remote_version,
+                row.last_synced_at,
+                row.dirty as i64,
+                row.deleted as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_sync_state(&self, kind: &str, id: &str) -> Result<Option<SyncStateRow>> {
+        self.conn
+            .query_row(
+                "SELECT entity_kind, entity_id, local_hash, remote_version, last_synced_at, dirty, deleted
+                 FROM sync_state WHERE entity_kind = ?1 AND entity_id = ?2",
+                params![kind, id],
+                |r| {
+                    Ok(SyncStateRow {
+                        entity_kind: r.get(0)?,
+                        entity_id: r.get(1)?,
+                        local_hash: r.get(2)?,
+                        remote_version: r.get(3)?,
+                        last_synced_at: r.get(4)?,
+                        dirty: r.get::<_, i64>(5)? != 0,
+                        deleted: r.get::<_, i64>(6)? != 0,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn list_dirty_sync_state(&self) -> Result<Vec<SyncStateRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT entity_kind, entity_id, local_hash, remote_version, last_synced_at, dirty, deleted
+             FROM sync_state WHERE dirty = 1",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(SyncStateRow {
+                    entity_kind: r.get(0)?,
+                    entity_id: r.get(1)?,
+                    local_hash: r.get(2)?,
+                    remote_version: r.get(3)?,
+                    last_synced_at: r.get(4)?,
+                    dirty: r.get::<_, i64>(5)? != 0,
+                    deleted: r.get::<_, i64>(6)? != 0,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    pub fn mark_dirty(&self, kind: &str, id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO sync_state (entity_kind, entity_id, dirty)
+             VALUES (?1, ?2, 1)
+             ON CONFLICT(entity_kind, entity_id) DO UPDATE SET dirty = 1",
+            params![kind, id],
+        )?;
+        Ok(())
+    }
+
+    /// Read a key from `sync_meta`.
+    pub fn get_sync_meta(&self, key: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT value FROM sync_meta WHERE key = ?1",
+                params![key],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn set_sync_meta(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO sync_meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+}
+
+/// One row of `sync_state`.
+#[derive(Debug, Clone)]
+pub struct SyncStateRow {
+    pub entity_kind: String,
+    pub entity_id: String,
+    pub local_hash: Option<String>,
+    pub remote_version: Option<i64>,
+    pub last_synced_at: Option<String>,
+    pub dirty: bool,
+    pub deleted: bool,
 }
 
 /// Result of an import operation.

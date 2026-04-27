@@ -2,11 +2,11 @@ pub mod config;
 mod file;
 mod index;
 
-pub use config::{ModuleSection, ProjectConfig};
+pub use config::{ModuleSection, ProjectConfig, SyncSection};
 pub use file::FileStorage;
 pub use index::{
     DocumentRow, ImportResult, IndexDb, MigrationMapping, PipelineRunRow, SchemaMismatch,
-    UnmappedColumn, apply_mapping,
+    SyncStateRow, UnmappedColumn, apply_mapping,
 };
 
 use std::path::{Path, PathBuf};
@@ -55,6 +55,22 @@ impl ProjectLayout {
 
     pub fn modules_dir(&self) -> PathBuf {
         self.root.join("modules")
+    }
+
+    /// Cache directory for sync client state (CRDT snapshots, daemon PID,
+    /// pending updates). Populated by `popsicle sync` / daemon.
+    pub fn sync_dir(&self) -> PathBuf {
+        self.root.join(".sync")
+    }
+
+    /// Path to a per-document CRDT cache file.
+    pub fn sync_doc_path(&self, doc_id: &str) -> PathBuf {
+        self.sync_dir().join(format!("{}.crdt", doc_id))
+    }
+
+    /// PID file for the sync daemon.
+    pub fn sync_daemon_pid(&self) -> PathBuf {
+        self.sync_dir().join("daemon.pid")
     }
 
     pub fn module_dir(&self, name: &str) -> PathBuf {

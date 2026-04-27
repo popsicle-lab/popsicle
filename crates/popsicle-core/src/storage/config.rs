@@ -15,6 +15,50 @@ pub struct ProjectConfig {
     pub agent: AgentSection,
     #[serde(default)]
     pub module: ModuleSection,
+    #[serde(default)]
+    pub sync: SyncSection,
+}
+
+/// Cloud-sync configuration. All fields optional; sync is opt-in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncSection {
+    /// Base URL of a popsicle-cloud-compatible server (e.g.
+    /// `https://api.popsicle.cloud`). When empty, sync is disabled.
+    #[serde(default)]
+    pub endpoint: String,
+    /// Master switch. Sync requires both `enabled = true` and a non-empty
+    /// `endpoint`.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Periodic full-reconcile interval for the sync daemon, in seconds.
+    #[serde(default = "default_sync_interval")]
+    pub interval_secs: u64,
+    /// Whether `popsicle` should auto-spawn the sync daemon on relevant
+    /// commands. Manual `popsicle sync daemon start` is always available.
+    #[serde(default)]
+    pub auto_start_daemon: bool,
+}
+
+impl Default for SyncSection {
+    fn default() -> Self {
+        Self {
+            endpoint: String::new(),
+            enabled: false,
+            interval_secs: default_sync_interval(),
+            auto_start_daemon: false,
+        }
+    }
+}
+
+impl SyncSection {
+    /// Whether sync is fully configured and enabled.
+    pub fn is_active(&self) -> bool {
+        self.enabled && !self.endpoint.is_empty()
+    }
+}
+
+fn default_sync_interval() -> u64 {
+    300
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
