@@ -405,7 +405,7 @@ async fn push(format: &OutputFormat) -> Result<()> {
     }
     let operations: Vec<PushOperation> = dirty
         .iter()
-        .filter_map(row_to_push_op)
+        .filter_map(|row| row_to_push_op(&db, row))
         .collect();
     let req = PushRequest {
         schema_version: SCHEMA_VERSION,
@@ -604,19 +604,35 @@ fn write_entity_file(
     std::fs::write(path, body)
 }
 
-fn row_to_push_op(row: &SyncStateRow) -> Option<PushOperation> {
+fn row_to_push_op(db: &IndexDb, row: &SyncStateRow) -> Option<PushOperation> {
     let kind = EntityKind::parse(row.entity_kind.as_str())?;
     let id = Uuid::parse_str(&row.entity_id).ok()?;
+    let payload = if row.deleted {
+        serde_json::json!({"id": row.entity_id, "deleted": true})
+    } else {
+        build_entity_payload(db, kind, &row.entity_id)?
+    };
     Some(PushOperation {
         kind,
         id,
         base_version: row.remote_version.map(|v| v as u64),
         deleted: row.deleted,
-        // Real payload assembly will be wired in M4 (read entity from
-        // FileStorage / IndexDb and serialize). For now we send a stub
-        // marker so the protocol path is exercised end-to-end.
-        payload: serde_json::json!({"_stub": true, "kind": row.entity_kind, "id": row.entity_id}),
+        payload,
     })
+}
+
+fn build_entity_payload(db: &IndexDb, kind: EntityKind, id: &str) -> Option<serde_json::Value> {
+    match kind {
+        EntityKind::Namespace => db.get_namespace(id).ok().flatten().and_then(|n| serde_json::to_value(n).ok()),
+        EntityKind::Spec => db.get_spec(id).ok().flatten().and_then(|s| serde_json::to_value(s).ok()),
+        EntityKind::Issue => db.get_issue(id).ok().flatten().and_then(|i| serde_json::to_value(i).ok()),
+        EntityKind::PipelineRun => db.get_pipeline_run(id).ok().flatten().and_then(|p| serde_json::to_value(p).ok()),
+        EntityKind::Document => db.get_document_row(id).ok().flatten().and_then(|d| serde_json::to_value(d).ok()),
+        EntityKind::Bug => db.get_bug(id).ok().flatten().and_then(|b| serde_json::to_value(b).ok()),
+        EntityKind::UserStory => db.get_user_story(id).ok().flatten().and_then(|u| serde_json::to_value(u).ok()),
+        EntityKind::TestCase => db.get_test_case(id).ok().flatten().and_then(|t| serde_json::to_value(t).ok()),
+        EntityKind::Skill | EntityKind::Pipeline => None,
+    }
 }
 
 // ---- document CRDT commands --------------------------------------------

@@ -414,6 +414,32 @@ impl IndexDb {
         Ok(())
     }
 
+    /// Get a document row by ID.
+    pub fn get_document_row(&self, id: &str) -> Result<Option<DocumentRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, doc_type, title, status, skill_name, pipeline_run_id, spec_id, version, parent_doc_id, file_path, created_at, updated_at, COALESCE(summary, '') AS summary, COALESCE(doc_tags, '[]') AS doc_tags FROM documents WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(DocumentRow {
+                id: row.get(0)?,
+                doc_type: row.get(1)?,
+                title: row.get(2)?,
+                status: row.get(3)?,
+                skill_name: row.get(4)?,
+                pipeline_run_id: row.get(5)?,
+                spec_id: row.get(6)?,
+                version: row.get(7)?,
+                parent_doc_id: row.get(8)?,
+                file_path: row.get(9)?,
+                created_at: row.get(10)?,
+                updated_at: row.get(11)?,
+                summary: row.get(12)?,
+                doc_tags: row.get(13)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
     /// Full-text search across documents using FTS5.
     ///
     /// Returns documents matching the query, optionally filtered by status,
