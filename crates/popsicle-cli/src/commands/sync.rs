@@ -133,11 +133,9 @@ fn load_creds(email: &str) -> Result<Credentials> {
 fn save_creds(email: &str, creds: &Credentials) -> Result<()> {
     let stored: StoredCreds = creds.clone().into();
     let json = serde_json::to_string(&stored)?;
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, email)
-        && entry.set_password(&json).is_ok()
-    {
-        return Ok(());
-    }
+
+    // Always write to the file store first — this is the authoritative path.
+    // keyring access may silently fail on unsigned binaries or locked keychains.
     let path = fallback_creds_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -149,6 +147,12 @@ fn save_creds(email: &str, creds: &Credentials) -> Result<()> {
     };
     map.insert(email.to_string(), serde_json::to_value(stored)?);
     write_secure(&path, serde_json::to_string_pretty(&map)?.as_bytes())?;
+
+    // Best-effort keyring write so the credential is available system-wide.
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, email) {
+        let _ = entry.set_password(&json);
+    }
+
     Ok(())
 }
 
