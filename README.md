@@ -1,6 +1,48 @@
 # Popsicle
 
-Popsicle is a spec-driven development orchestration engine — a border collie that oversees AI coding.
+> **The border collie for your AI coding agents.**
+> A spec-driven orchestration engine that turns "vibe-coding with Claude/Cursor" into a structured, reviewable software development lifecycle.
+
+```
+   ┌─────────────────┐    invokes    ┌──────────────────┐    visualizes
+   │   You + your    │  ───────────▶ │   Popsicle CLI   │ ◀─── Desktop UI / Web
+   │  AI agent (LLM) │               │  (skills, runs,  │       (read-only)
+   │                 │ ◀───────────  │  specs, memory)  │
+   └─────────────────┘  context &    └────────┬─────────┘
+                        next-step             │ (optional)
+                        guidance              ▼
+                                       ┌──────────────────┐
+                                       │  popsicle-cloud  │ ── multi-device
+                                       │   (sync + web)   │    sync, audit,
+                                       └──────────────────┘    team workspace
+```
+
+## Who is this for?
+
+- **Developers who pair-program with AI agents** (Claude Code, Cursor, Codex, OpenCode, Copilot CLI) and want their agent to **stop forgetting context** and **stop skipping steps**.
+- **Tech leads** who want **traceable, reviewable AI work** — every doc, debate, bug, and commit linked to a stage of a real pipeline.
+- **Teams** building AI-assisted internal tooling who need a **stable contract** (skills + pipelines) instead of brittle prompt-engineering.
+
+## What you actually get
+
+| You give Popsicle… | Popsicle gives you back… |
+|---|---|
+| A natural-language issue (`popsicle issue start "add JWT refresh"`) | A scoped pipeline run with a recommended skill DAG |
+| A skill template (`rfc-writer`, `arch-debate`, …) | Deterministic prompts, frontmatter-locked artefacts, forward-only state machine |
+| Your repo | Auto-scanned project context injected into every prompt |
+| A second machine + a popsicle-cloud account | A reconstructable `.popsicle/` workspace from cloud state alone (M8) |
+
+## 30-second demo
+
+```bash
+popsicle init                 # bootstrap .popsicle/ in cwd
+popsicle module install full-sdlc
+popsicle issue start "Add password reset flow"
+# → AI agent now has a pipeline, prompts, and skills to drive
+popsicle pipeline next        # ask for the next CLI command + prompt
+```
+
+---
 
 It organizes the full software development lifecycle through composable **Skills** and **Pipelines**, provides a CLI for AI agents to call, tracks Git commits with document associations, and offers a desktop UI for read-only visualization. It also auto-scans project context, maintains cross-session memory, tracks work items (bugs, stories, test cases), and recommends the right pipeline for every task.
 
