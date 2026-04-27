@@ -388,10 +388,9 @@ impl IndexDb {
                 tags_json,
             ],
         )?;
+        self.mark_dirty("document", &doc.id)?;
         Ok(())
     }
-
-    /// Update summary and tags for a document.
     pub fn update_document_summary(
         &self,
         doc_id: &str,
@@ -580,6 +579,7 @@ impl IndexDb {
                 issue_id_db,
             ],
         )?;
+        self.mark_dirty("pipeline_run", &run.id)?;
         Ok(())
     }
 
@@ -702,6 +702,7 @@ impl IndexDb {
                 spec.locked_at.map(|t| t.to_rfc3339()),
             ],
         )?;
+        self.mark_dirty("spec", &spec.id)?;
         Ok(())
     }
 
@@ -907,6 +908,7 @@ impl IndexDb {
 
     /// Delete a spec by ID.
     pub fn delete_spec(&self, id: &str) -> Result<()> {
+        self.mark_deleted("spec", id)?;
         self.conn
             .execute("DELETE FROM specs WHERE id = ?1", params![id])?;
         Ok(())
@@ -971,6 +973,7 @@ impl IndexDb {
                 namespace.updated_at.to_rfc3339(),
             ],
         )?;
+        self.mark_dirty("namespace", &namespace.id)?;
         Ok(())
     }
 
@@ -1097,6 +1100,7 @@ impl IndexDb {
     }
 
     pub fn delete_namespace(&self, id: &str) -> Result<()> {
+        self.mark_deleted("namespace", id)?;
         self.conn
             .execute("DELETE FROM namespaces WHERE id = ?1", params![id])?;
         Ok(())
@@ -1656,6 +1660,7 @@ impl IndexDb {
                 issue.updated_at.to_rfc3339(),
             ],
         )?;
+        self.mark_dirty("issue", &issue.id)?;
         Ok(())
     }
 
@@ -1676,6 +1681,7 @@ impl IndexDb {
                 issue.id,
             ],
         )?;
+        self.mark_dirty("issue", &issue.id)?;
         Ok(())
     }
 
@@ -1810,6 +1816,7 @@ impl IndexDb {
                 bug.created_at.to_rfc3339(), bug.updated_at.to_rfc3339(),
             ],
         )?;
+        self.mark_dirty("bug", &bug.id)?;
         Ok(())
     }
 
@@ -1828,6 +1835,7 @@ impl IndexDb {
                 chrono::Utc::now().to_rfc3339(), bug.id,
             ],
         )?;
+        self.mark_dirty("bug", &bug.id)?;
         Ok(())
     }
 
@@ -2003,6 +2011,7 @@ impl IndexDb {
                 labels_json, tc.created_at.to_rfc3339(), tc.updated_at.to_rfc3339(),
             ],
         )?;
+        self.mark_dirty("test_case", &tc.id)?;
         Ok(())
     }
 
@@ -2020,6 +2029,7 @@ impl IndexDb {
                 chrono::Utc::now().to_rfc3339(), tc.id,
             ],
         )?;
+        self.mark_dirty("test_case", &tc.id)?;
         Ok(())
     }
 
@@ -2200,6 +2210,7 @@ impl IndexDb {
         for ac in &story.acceptance_criteria {
             self.upsert_acceptance_criterion(&story.id, ac)?;
         }
+        self.mark_dirty("user_story", &story.id)?;
         Ok(())
     }
 
@@ -2212,6 +2223,7 @@ impl IndexDb {
                 chrono::Utc::now().to_rfc3339(), story.id,
             ],
         )?;
+        self.mark_dirty("user_story", &story.id)?;
         Ok(())
     }
 
@@ -2917,6 +2929,41 @@ impl IndexDb {
             params![kind, id],
         )?;
         Ok(())
+    }
+
+    pub fn mark_deleted(&self, kind: &str, id: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO sync_state (entity_kind, entity_id, dirty, deleted)
+             VALUES (?1, ?2, 1, 1)
+             ON CONFLICT(entity_kind, entity_id) DO UPDATE SET dirty = 1, deleted = 1",
+            params![kind, id],
+        )?;
+        Ok(())
+    }
+
+    /// Bulk-seed `sync_state` from all existing entities with `dirty = 1`.
+    /// Uses INSERT OR IGNORE so already-tracked rows are not disturbed.
+    /// Returns the total number of newly inserted rows.
+    pub fn seed_sync_state(&self) -> Result<usize> {
+        let pairs = [
+            ("namespace", "namespaces"),
+            ("spec", "specs"),
+            ("issue", "issues"),
+            ("pipeline_run", "pipeline_runs"),
+            ("document", "documents"),
+            ("bug", "bugs"),
+            ("user_story", "user_stories"),
+            ("test_case", "test_cases"),
+        ];
+        let mut total = 0usize;
+        for (kind, table) in &pairs {
+            let sql = format!(
+                "INSERT OR IGNORE INTO sync_state (entity_kind, entity_id, dirty) \
+                 SELECT '{kind}', id, 1 FROM {table}"
+            );
+            total += self.conn.execute(&sql, [])?;
+        }
+        Ok(total)
     }
 
     /// Read a key from `sync_meta`.

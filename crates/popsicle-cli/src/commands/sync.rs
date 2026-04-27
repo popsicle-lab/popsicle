@@ -79,6 +79,8 @@ pub enum SyncCommand {
         #[arg(long, default_value_t = true)]
         full: bool,
     },
+    /// Mark all existing local entities as dirty so they are included in the next push
+    Seed,
 }
 
 pub fn execute(cmd: SyncCommand, format: &OutputFormat) -> Result<()> {
@@ -100,6 +102,7 @@ pub fn execute(cmd: SyncCommand, format: &OutputFormat) -> Result<()> {
             SyncCommand::Watch => watch(format).await,
             SyncCommand::Daemon { interval } => daemon(interval, format).await,
             SyncCommand::Clone { full } => clone_workspace(full, format).await,
+            SyncCommand::Seed => seed(format),
         }
     })
 }
@@ -957,6 +960,17 @@ async fn clone_workspace(_full: bool, format: &OutputFormat) -> Result<()> {
             "Workspace cloned. Hydrated {} document body(ies). Run `popsicle reindex` to rebuild the local index.",
             doc_count
         ),
+    );
+    Ok(())
+}
+
+fn seed(format: &OutputFormat) -> Result<()> {
+    let (_layout, _cfg, db) = open_project()?;
+    let n = db.seed_sync_state().map_err(|e| anyhow!("{}", e))?;
+    print_result(
+        format,
+        json!({"seeded": n}),
+        &format!("Seeded {n} entities into sync state. Run `popsicle sync push` to upload."),
     );
     Ok(())
 }
