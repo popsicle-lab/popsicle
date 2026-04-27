@@ -8,8 +8,8 @@
 
 use std::path::Path;
 
-use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as B64;
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
@@ -109,8 +109,7 @@ impl CrdtDoc {
     /// Persist the doc to `.popsicle/.sync/<doc-id>.crdt`.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| SyncError::Other(format!("mkdir: {e}")))?;
+            std::fs::create_dir_all(parent).map_err(|e| SyncError::Other(format!("mkdir: {e}")))?;
         }
         std::fs::write(path, self.encode_state())
             .map_err(|e| SyncError::Other(format!("write crdt: {e}")))?;
@@ -123,8 +122,7 @@ impl CrdtDoc {
         if !path.exists() {
             return Ok(Self::new());
         }
-        let bytes =
-            std::fs::read(path).map_err(|e| SyncError::Other(format!("read crdt: {e}")))?;
+        let bytes = std::fs::read(path).map_err(|e| SyncError::Other(format!("read crdt: {e}")))?;
         Self::from_update_bytes(&bytes)
     }
 }

@@ -253,7 +253,10 @@ mod tests {
             published_at: None,
         };
         let json = serde_json::to_string(&v).unwrap();
-        assert!(!json.contains("null"), "serialized JSON must not contain null: {json}");
+        assert!(
+            !json.contains("null"),
+            "serialized JSON must not contain null: {json}"
+        );
         assert!(!json.contains("\"description\""));
         assert!(!json.contains("\"author\""));
         assert!(!json.contains("\"repository\""));

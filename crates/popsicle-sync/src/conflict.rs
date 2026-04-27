@@ -18,7 +18,7 @@
 //! Document bodies (the long-form text content) live in the CRDT log and
 //! never reach this code path.
 
-use std::fs::{create_dir_all, OpenOptions};
+use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 use std::path::Path;
 
@@ -116,7 +116,10 @@ pub fn append_log(
     if let Some(parent) = log_path.parent() {
         create_dir_all(parent)?;
     }
-    let mut f = OpenOptions::new().create(true).append(true).open(log_path)?;
+    let mut f = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
     let entry = serde_json::json!({
         "ts": Utc::now().to_rfc3339(),
         "kind": kind.as_str(),

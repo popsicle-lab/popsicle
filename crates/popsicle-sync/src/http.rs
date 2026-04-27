@@ -2,15 +2,15 @@ use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use reqwest::{Client, Method, StatusCode};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use url::Url;
 use uuid::Uuid;
 
+use crate::SCHEMA_VERSION;
 use crate::client::SyncClient;
 use crate::error::{Result, SyncError};
 use crate::types::*;
-use crate::SCHEMA_VERSION;
 
 /// Authentication credentials persisted by the CLI.
 #[derive(Debug, Clone, Default)]
@@ -108,7 +108,10 @@ impl HttpSyncClient {
         if status.is_success() {
             return Ok(());
         }
-        Err(Self::error_from(status, resp.text().await.unwrap_or_default()))
+        Err(Self::error_from(
+            status,
+            resp.text().await.unwrap_or_default(),
+        ))
     }
 
     async fn parse_response<R: DeserializeOwned>(resp: reqwest::Response) -> Result<R> {
@@ -176,7 +179,8 @@ impl SyncClient for HttpSyncClient {
     }
 
     async fn me(&self) -> Result<User> {
-        self.send_json::<(), User>(Method::GET, "v1/me", None, true).await
+        self.send_json::<(), User>(Method::GET, "v1/me", None, true)
+            .await
     }
 
     async fn pull_changes(&self, since: u64, limit: usize) -> Result<ChangesPage> {
@@ -202,6 +206,7 @@ impl SyncClient for HttpSyncClient {
         updates: DocUpdates,
     ) -> Result<DocUpdatesResponse> {
         let path = format!("v1/sync/documents/{}/updates", doc_id);
-        self.send_json(Method::POST, &path, Some(&updates), true).await
+        self.send_json(Method::POST, &path, Some(&updates), true)
+            .await
     }
 }

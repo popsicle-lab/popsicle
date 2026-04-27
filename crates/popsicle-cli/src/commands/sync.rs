@@ -6,14 +6,15 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use clap::Subcommand;
+use popsicle_core::model::{Bug, Issue, Namespace, PipelineRun, Spec, TestCase, UserStory};
 use popsicle_core::storage::{IndexDb, ProjectConfig, ProjectLayout, SyncStateRow};
 use popsicle_sync::{
-    conflict, crdt::b64_encode, path::canonical_path, CrdtDoc, Credentials, DocUpdates,
-    EntityKind, HttpSyncClient, LoginRequest, PushOperation, PushOutcome, PushRequest,
-    RegisterRequest, SyncClient, WsClient, WsEvent, SCHEMA_VERSION,
+    CrdtDoc, Credentials, DocUpdates, EntityKind, HttpSyncClient, LoginRequest, PushOperation,
+    PushOutcome, PushRequest, RegisterRequest, SCHEMA_VERSION, SyncClient, WsClient, WsEvent,
+    conflict, crdt::b64_encode, path::canonical_path,
 };
 use serde_json::json;
 use tokio::runtime::Runtime;
@@ -237,7 +238,9 @@ fn open_project() -> Result<(ProjectLayout, ProjectConfig, IndexDb)> {
 }
 
 fn ensure_client_id(db: &IndexDb) -> Result<Uuid> {
-    if let Some(s) = db.get_sync_meta(META_CLIENT_ID).map_err(|e| anyhow!("{}", e))?
+    if let Some(s) = db
+        .get_sync_meta(META_CLIENT_ID)
+        .map_err(|e| anyhow!("{}", e))?
         && let Ok(u) = Uuid::parse_str(&s)
     {
         return Ok(u);
@@ -318,7 +321,10 @@ async fn login(email_arg: Option<String>, register: bool, format: &OutputFormat)
 
 fn logout(format: &OutputFormat) -> Result<()> {
     let (_layout, _cfg, db) = open_project()?;
-    if let Some(email) = db.get_sync_meta(META_USER_EMAIL).map_err(|e| anyhow!("{}", e))? {
+    if let Some(email) = db
+        .get_sync_meta(META_USER_EMAIL)
+        .map_err(|e| anyhow!("{}", e))?
+    {
         clear_creds(&email)?;
     }
     db.set_sync_meta(META_USER_EMAIL, "")
@@ -359,8 +365,7 @@ fn status(format: &OutputFormat) -> Result<()> {
     let (conflicts_total, conflicts_recent) = if conflicts_log.exists() {
         let txt = std::fs::read_to_string(&conflicts_log).unwrap_or_default();
         let lines: Vec<&str> = txt.lines().filter(|l| !l.trim().is_empty()).collect();
-        let recent: Vec<String> =
-            lines.iter().rev().take(5).map(|s| s.to_string()).collect();
+        let recent: Vec<String> = lines.iter().rev().take(5).map(|s| s.to_string()).collect();
         (lines.len(), recent)
     } else {
         (0, vec![])
@@ -425,7 +430,8 @@ async fn push(format: &OutputFormat) -> Result<()> {
                     new_row.dirty = false;
                     new_row.remote_version = r.version.map(|v| v as i64);
                     new_row.last_synced_at = Some(Utc::now().to_rfc3339());
-                    db.upsert_sync_state(&new_row).map_err(|e| anyhow!("{}", e))?;
+                    db.upsert_sync_state(&new_row)
+                        .map_err(|e| anyhow!("{}", e))?;
                 }
             }
             PushOutcome::Conflict => {
@@ -472,13 +478,13 @@ fn handle_conflict(
         .server_payload
         .clone()
         .unwrap_or(serde_json::Value::Null);
-    // Local payload reconstruction: we currently only know the stub. Without
-    // a stored last-pushed payload, we treat every non-equal field as a
-    // potential local edit. Document bodies are not affected (they go via
-    // the CRDT log), so this conservatively logs metadata divergences.
-    let local_stub = serde_json::json!({"_stub": true, "kind": row.entity_kind, "id": row.entity_id});
-    let report = conflict::merge(&local_stub, &serde_json::Value::Null, &server_payload);
     let kind = EntityKind::parse(&row.entity_kind).unwrap_or(EntityKind::Namespace);
+    // Reconstruct the local payload from IndexDb so the conflict report
+    // is based on real fields, not a placeholder. Document bodies are
+    // not part of this comparison (they ride the CRDT channel).
+    let local_payload =
+        build_entity_payload(db, kind, &row.entity_id).unwrap_or(serde_json::Value::Null);
+    let report = conflict::merge(&local_payload, &serde_json::Value::Null, &server_payload);
     if let Ok(id) = Uuid::parse_str(&row.entity_id) {
         let _ = conflict::append_log(&layout.sync_conflicts_log(), kind, id, &report);
     }
@@ -486,7 +492,8 @@ fn handle_conflict(
     new_row.dirty = false;
     new_row.remote_version = result.version.map(|v| v as i64);
     new_row.last_synced_at = Some(Utc::now().to_rfc3339());
-    db.upsert_sync_state(&new_row).map_err(|e| anyhow!("{}", e))?;
+    db.upsert_sync_state(&new_row)
+        .map_err(|e| anyhow!("{}", e))?;
     Ok(report.lost.len())
 }
 
@@ -518,9 +525,11 @@ async fn pull(format: &OutputFormat) -> Result<()> {
                 if ch.deleted {
                     if abs.exists() {
                         // Preserve any local-only edits before deletion.
-                        let recovered_path = layout
-                            .sync_recovered_dir()
-                            .join(format!("{}-{}.bak", ch.kind.as_str(), ch.id));
+                        let recovered_path = layout.sync_recovered_dir().join(format!(
+                            "{}-{}.bak",
+                            ch.kind.as_str(),
+                            ch.id
+                        ));
                         if let Some(parent) = recovered_path.parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
@@ -533,6 +542,16 @@ async fn pull(format: &OutputFormat) -> Result<()> {
                 } else {
                     materialised += 1;
                 }
+            }
+            // Apply the change to the local IndexDb so `popsicle list ...`
+            // and the desktop UI see pulled data without manual reindex.
+            if let Err(e) = apply_pulled_to_index(&db, ch.kind, ch.id, ch.deleted, &ch.payload) {
+                eprintln!(
+                    "warn: failed to index {} {}: {}",
+                    ch.kind.as_str(),
+                    ch.id,
+                    e
+                );
             }
             let row = SyncStateRow {
                 entity_kind: ch.kind.as_str().to_string(),
@@ -581,16 +600,10 @@ fn write_entity_file(
             .get("body")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                serde_yaml_ng::to_string(payload).unwrap_or_else(|_| "{}".into())
-            }),
+            .unwrap_or_else(|| serde_yaml_ng::to_string(payload).unwrap_or_else(|_| "{}".into())),
         _ => {
-            let yaml = serde_yaml_ng::to_string(payload)
-                .unwrap_or_else(|_| "{}".into());
-            let body_md = payload
-                .get("body")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let yaml = serde_yaml_ng::to_string(payload).unwrap_or_else(|_| "{}".into());
+            let body_md = payload.get("body").and_then(|v| v.as_str()).unwrap_or("");
             format!("---\n{}---\n\n{}", yaml, body_md)
         }
     };
@@ -623,16 +636,189 @@ fn row_to_push_op(db: &IndexDb, row: &SyncStateRow) -> Option<PushOperation> {
 
 fn build_entity_payload(db: &IndexDb, kind: EntityKind, id: &str) -> Option<serde_json::Value> {
     match kind {
-        EntityKind::Namespace => db.get_namespace(id).ok().flatten().and_then(|n| serde_json::to_value(n).ok()),
-        EntityKind::Spec => db.get_spec(id).ok().flatten().and_then(|s| serde_json::to_value(s).ok()),
-        EntityKind::Issue => db.get_issue(id).ok().flatten().and_then(|i| serde_json::to_value(i).ok()),
-        EntityKind::PipelineRun => db.get_pipeline_run(id).ok().flatten().and_then(|p| serde_json::to_value(p).ok()),
-        EntityKind::Document => db.get_document_row(id).ok().flatten().and_then(|d| serde_json::to_value(d).ok()),
-        EntityKind::Bug => db.get_bug(id).ok().flatten().and_then(|b| serde_json::to_value(b).ok()),
-        EntityKind::UserStory => db.get_user_story(id).ok().flatten().and_then(|u| serde_json::to_value(u).ok()),
-        EntityKind::TestCase => db.get_test_case(id).ok().flatten().and_then(|t| serde_json::to_value(t).ok()),
+        EntityKind::Namespace => db
+            .get_namespace(id)
+            .ok()
+            .flatten()
+            .and_then(|n| serde_json::to_value(n).ok()),
+        EntityKind::Spec => db
+            .get_spec(id)
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::to_value(s).ok()),
+        EntityKind::Issue => db
+            .get_issue(id)
+            .ok()
+            .flatten()
+            .and_then(|i| serde_json::to_value(i).ok()),
+        EntityKind::PipelineRun => db
+            .get_pipeline_run(id)
+            .ok()
+            .flatten()
+            .and_then(|p| serde_json::to_value(p).ok()),
+        EntityKind::Document => db.get_document_row(id).ok().flatten().and_then(|row| {
+            let doc = document_from_row(row);
+            serde_json::to_value(doc).ok()
+        }),
+        EntityKind::Bug => db
+            .get_bug(id)
+            .ok()
+            .flatten()
+            .and_then(|b| serde_json::to_value(b).ok()),
+        EntityKind::UserStory => db
+            .get_user_story(id)
+            .ok()
+            .flatten()
+            .and_then(|u| serde_json::to_value(u).ok()),
+        EntityKind::TestCase => db
+            .get_test_case(id)
+            .ok()
+            .flatten()
+            .and_then(|t| serde_json::to_value(t).ok()),
         EntityKind::Skill | EntityKind::Pipeline => None,
     }
+}
+
+fn document_from_row(row: popsicle_core::storage::DocumentRow) -> popsicle_core::model::Document {
+    use std::path::PathBuf;
+    let tags: Vec<String> = serde_json::from_str(&row.doc_tags).unwrap_or_default();
+    let created_at = row
+        .created_at
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|d| d.with_timezone(&chrono::Utc));
+    let updated_at = row
+        .updated_at
+        .as_deref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|d| d.with_timezone(&chrono::Utc));
+    popsicle_core::model::Document {
+        id: row.id,
+        doc_type: row.doc_type,
+        title: row.title,
+        status: row.status,
+        skill_name: row.skill_name,
+        pipeline_run_id: row.pipeline_run_id,
+        spec_id: row.spec_id,
+        version: row.version,
+        parent_doc_id: row.parent_doc_id,
+        tags,
+        summary: row.summary,
+        metadata: serde_yaml_ng::Value::Null,
+        created_at,
+        updated_at,
+        body: String::new(),
+        file_path: PathBuf::from(row.file_path),
+    }
+}
+
+/// Apply a pulled change to the local IndexDb so local listings and the
+/// desktop UI reflect remote state without a manual reindex.
+fn apply_pulled_to_index(
+    db: &IndexDb,
+    kind: EntityKind,
+    id: Uuid,
+    deleted: bool,
+    payload: &serde_json::Value,
+) -> Result<()> {
+    let id_str = id.to_string();
+    if deleted {
+        match kind {
+            EntityKind::Namespace => {
+                let _ = db.delete_namespace(&id_str);
+            }
+            EntityKind::Spec => {
+                let _ = db.delete_spec(&id_str);
+            }
+            EntityKind::Issue
+            | EntityKind::Bug
+            | EntityKind::UserStory
+            | EntityKind::TestCase
+            | EntityKind::Document
+            | EntityKind::PipelineRun
+            | EntityKind::Skill
+            | EntityKind::Pipeline => {
+                // No dedicated IndexDb delete API for these kinds; the
+                // file-side materialisation step removes/recovers the file.
+                // Orphan rows are reaped on the next `popsicle reindex`.
+            }
+        }
+        return Ok(());
+    }
+    match kind {
+        EntityKind::Namespace => {
+            if let Ok(ns) = serde_json::from_value::<Namespace>(payload.clone()) {
+                db.update_namespace(&ns).map_err(|e| anyhow!("{}", e))?;
+            }
+        }
+        EntityKind::Spec => {
+            if let Ok(s) = serde_json::from_value::<Spec>(payload.clone()) {
+                db.update_spec(&s).map_err(|e| anyhow!("{}", e))?;
+            }
+        }
+        EntityKind::Issue => {
+            if let Ok(i) = serde_json::from_value::<Issue>(payload.clone()) {
+                let exists = db.get_issue(&i.id).map_err(|e| anyhow!("{}", e))?.is_some();
+                if exists {
+                    db.update_issue(&i).map_err(|e| anyhow!("{}", e))?;
+                } else {
+                    db.create_issue(&i).map_err(|e| anyhow!("{}", e))?;
+                }
+            }
+        }
+        EntityKind::Bug => {
+            if let Ok(b) = serde_json::from_value::<Bug>(payload.clone()) {
+                let exists = db.get_bug(&b.id).map_err(|e| anyhow!("{}", e))?.is_some();
+                if exists {
+                    db.update_bug(&b).map_err(|e| anyhow!("{}", e))?;
+                } else {
+                    db.create_bug(&b).map_err(|e| anyhow!("{}", e))?;
+                }
+            }
+        }
+        EntityKind::UserStory => {
+            if let Ok(u) = serde_json::from_value::<UserStory>(payload.clone()) {
+                let exists = db
+                    .get_user_story(&u.id)
+                    .map_err(|e| anyhow!("{}", e))?
+                    .is_some();
+                if exists {
+                    db.update_user_story(&u).map_err(|e| anyhow!("{}", e))?;
+                } else {
+                    db.create_user_story(&u).map_err(|e| anyhow!("{}", e))?;
+                }
+            }
+        }
+        EntityKind::TestCase => {
+            if let Ok(t) = serde_json::from_value::<TestCase>(payload.clone()) {
+                let exists = db
+                    .get_test_case(&t.id)
+                    .map_err(|e| anyhow!("{}", e))?
+                    .is_some();
+                if exists {
+                    db.update_test_case(&t).map_err(|e| anyhow!("{}", e))?;
+                } else {
+                    db.create_test_case(&t).map_err(|e| anyhow!("{}", e))?;
+                }
+            }
+        }
+        EntityKind::PipelineRun => {
+            if let Ok(p) = serde_json::from_value::<PipelineRun>(payload.clone()) {
+                db.upsert_pipeline_run(&p).map_err(|e| anyhow!("{}", e))?;
+            }
+        }
+        EntityKind::Document => {
+            if let Ok(d) = serde_json::from_value::<popsicle_core::model::Document>(payload.clone())
+            {
+                db.upsert_document(&d).map_err(|e| anyhow!("{}", e))?;
+            }
+        }
+        EntityKind::Skill | EntityKind::Pipeline => {
+            // Skills and Pipelines are file-only artifacts; the canonical
+            // file write path already materialises them.
+        }
+    }
+    Ok(())
 }
 
 // ---- document CRDT commands --------------------------------------------
@@ -645,8 +831,7 @@ async fn doc_push(doc_id: Uuid, file: Option<PathBuf>, format: &OutputFormat) ->
 
     // Read new text content (file or stdin).
     let new_text = match file {
-        Some(p) => std::fs::read_to_string(&p)
-            .with_context(|| format!("read {}", p.display()))?,
+        Some(p) => std::fs::read_to_string(&p).with_context(|| format!("read {}", p.display()))?,
         None => {
             use std::io::Read;
             let mut s = String::new();
@@ -657,12 +842,14 @@ async fn doc_push(doc_id: Uuid, file: Option<PathBuf>, format: &OutputFormat) ->
 
     // Load (or initialise) the local CRDT cache.
     let crdt_path = layout.sync_doc_path(&doc_id.to_string());
-    let mut local =
-        CrdtDoc::load(&crdt_path).map_err(|e| anyhow!("load crdt: {}", e))?;
+    let mut local = CrdtDoc::load(&crdt_path).map_err(|e| anyhow!("load crdt: {}", e))?;
 
     // Sync with the server's current state first so our diff lands cleanly
     // even if another client raced us.
-    let remote_state = client.doc_state(doc_id).await.map_err(|e| anyhow!("{}", e))?;
+    let remote_state = client
+        .doc_state(doc_id)
+        .await
+        .map_err(|e| anyhow!("{}", e))?;
     if !remote_state.state.is_empty() {
         local
             .apply_update_b64(&remote_state.state)
@@ -675,7 +862,11 @@ async fn doc_push(doc_id: Uuid, file: Option<PathBuf>, format: &OutputFormat) ->
         .map_err(|e| anyhow!("apply local edit: {}", e))?;
     if update_bytes.is_empty() {
         local.save(&crdt_path).map_err(|e| anyhow!("{}", e))?;
-        print_result(format, json!({"version": remote_state.version, "noop": true}), "No changes.");
+        print_result(
+            format,
+            json!({"version": remote_state.version, "noop": true}),
+            "No changes.",
+        );
         return Ok(());
     }
     let payload = DocUpdates {
@@ -701,7 +892,10 @@ async fn doc_pull(doc_id: Uuid, out: Option<PathBuf>, format: &OutputFormat) -> 
     let creds = load_creds(&email)?;
     let client = build_client(&cfg, creds)?;
 
-    let remote = client.doc_state(doc_id).await.map_err(|e| anyhow!("{}", e))?;
+    let remote = client
+        .doc_state(doc_id)
+        .await
+        .map_err(|e| anyhow!("{}", e))?;
     let crdt_path = layout.sync_doc_path(&doc_id.to_string());
     let mut local = CrdtDoc::load(&crdt_path).map_err(|e| anyhow!("{}", e))?;
     if !remote.state.is_empty() {
@@ -721,18 +915,18 @@ async fn doc_pull(doc_id: Uuid, out: Option<PathBuf>, format: &OutputFormat) -> 
             print_result(
                 format,
                 json!({"version": remote.version, "bytes": text.len(), "path": p.display().to_string()}),
-                &format!("Wrote {} bytes to {} (version {}).", text.len(), p.display(), remote.version),
+                &format!(
+                    "Wrote {} bytes to {} (version {}).",
+                    text.len(),
+                    p.display(),
+                    remote.version
+                ),
             );
         }
-        None => {
-            match format {
-                OutputFormat::Json => println!(
-                    "{}",
-                    json!({"version": remote.version, "text": text})
-                ),
-                OutputFormat::Text => print!("{text}"),
-            }
-        }
+        None => match format {
+            OutputFormat::Json => println!("{}", json!({"version": remote.version, "text": text})),
+            OutputFormat::Text => print!("{text}"),
+        },
     }
     Ok(())
 }
@@ -752,18 +946,31 @@ async fn watch(format: &OutputFormat) -> Result<()> {
     while let Some(ev) = rx.recv().await {
         match format {
             OutputFormat::Json => match &ev {
-                WsEvent::Changed { kind, id, version, deleted } => {
+                WsEvent::Changed {
+                    kind,
+                    id,
+                    version,
+                    deleted,
+                } => {
                     println!(
                         "{}",
                         json!({"type":"changed","kind":kind,"id":id,"version":version,"deleted":deleted})
                     );
                 }
                 WsEvent::DocUpdate { id, update } => {
-                    println!("{}", json!({"type":"doc_update","id":id,"update_bytes":update.len()}));
+                    println!(
+                        "{}",
+                        json!({"type":"doc_update","id":id,"update_bytes":update.len()})
+                    );
                 }
             },
             OutputFormat::Text => match &ev {
-                WsEvent::Changed { kind, id, version, deleted } => {
+                WsEvent::Changed {
+                    kind,
+                    id,
+                    version,
+                    deleted,
+                } => {
                     println!(
                         "[changed] {} {} v{}{}",
                         kind,
@@ -804,9 +1011,7 @@ async fn daemon(interval_override: Option<u64>, _format: &OutputFormat) -> Resul
     }
     std::fs::write(&pid_path, std::process::id().to_string())?;
 
-    let interval = Duration::from_secs(
-        interval_override.unwrap_or(cfg.sync.interval_secs.max(10)),
-    );
+    let interval = Duration::from_secs(interval_override.unwrap_or(cfg.sync.interval_secs.max(10)));
     eprintln!(
         "popsicle daemon started (pid {}, interval {}s, endpoint {})",
         std::process::id(),
@@ -829,9 +1034,10 @@ async fn daemon(interval_override: Option<u64>, _format: &OutputFormat) -> Resul
         for ev in raw_rx {
             let Ok(ev) = ev else { continue };
             // Filter out our own .sync/ writes (PID file, .crdt cache).
-            let touched_self = ev.paths.iter().any(|p| {
-                p == &pid_path_for_filter || p.starts_with(&sync_dir_for_filter)
-            });
+            let touched_self = ev
+                .paths
+                .iter()
+                .any(|p| p == &pid_path_for_filter || p.starts_with(&sync_dir_for_filter));
             if touched_self {
                 continue;
             }
@@ -951,7 +1157,10 @@ async fn clone_workspace(_full: bool, format: &OutputFormat) -> Result<()> {
                 std::fs::create_dir_all(parent)?;
             }
             // Pull CRDT state, render text.
-            let remote = client.doc_state(ch.id).await.map_err(|e| anyhow!("{}", e))?;
+            let remote = client
+                .doc_state(ch.id)
+                .await
+                .map_err(|e| anyhow!("{}", e))?;
             let crdt_path = layout.sync_doc_path(&ch.id.to_string());
             let mut local = CrdtDoc::load(&crdt_path).map_err(|e| anyhow!("{}", e))?;
             if !remote.state.is_empty() {

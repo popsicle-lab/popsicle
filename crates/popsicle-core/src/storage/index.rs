@@ -940,6 +940,36 @@ impl IndexDb {
         Ok(())
     }
 
+    /// Update an existing spec (upsert semantics; used by sync pull).
+    pub fn update_spec(&self, spec: &crate::model::Spec) -> Result<()> {
+        let tags_json = serde_json::to_string(&spec.tags).unwrap_or_else(|_| "[]".to_string());
+        let namespace_id_param: Option<&str> = if spec.namespace_id.is_empty() {
+            None
+        } else {
+            Some(&spec.namespace_id)
+        };
+        let rows = self.conn.execute(
+            "UPDATE specs SET name=?2, slug=?3, description=?4, tags=?5, updated_at=?6, namespace_id=?7, locked_by_run_id=?8, locked_at=?9 WHERE id=?1",
+            params![
+                spec.id,
+                spec.name,
+                spec.slug,
+                spec.description,
+                tags_json,
+                spec.updated_at.to_rfc3339(),
+                namespace_id_param,
+                spec.locked_by_run_id.as_deref(),
+                spec.locked_at.map(|t| t.to_rfc3339()),
+            ],
+        )?;
+        if rows == 0 {
+            self.create_spec(spec)?;
+        } else {
+            self.mark_dirty("spec", &spec.id)?;
+        }
+        Ok(())
+    }
+
     /// Atomically acquire an exclusive lock on a spec for the given run.
     /// Returns Ok(true) if lock acquired, Ok(false) if already locked by another run.
     pub fn acquire_spec_lock(&self, spec_id: &str, run_id: &str) -> Result<bool> {
@@ -1110,7 +1140,7 @@ impl IndexDb {
 
     pub fn update_namespace(&self, namespace: &Namespace) -> Result<()> {
         let tags_json = serde_json::to_string(&namespace.tags).unwrap_or_else(|_| "[]".to_string());
-        self.conn.execute(
+        let rows = self.conn.execute(
             "UPDATE namespaces SET name=?1, slug=?2, description=?3, status=?4, tags=?5, updated_at=?6 WHERE id=?7",
             params![
                 namespace.name,
@@ -1122,6 +1152,11 @@ impl IndexDb {
                 namespace.id,
             ],
         )?;
+        if rows == 0 {
+            self.create_namespace(namespace)?;
+        } else {
+            self.mark_dirty("namespace", &namespace.id)?;
+        }
         Ok(())
     }
 

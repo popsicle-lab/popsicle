@@ -40,7 +40,11 @@ pub fn canonical_path(kind: EntityKind, id: Uuid, payload: &Value) -> Option<Pat
             let slug = string_field(payload, "slug")
                 .or_else(|| string_field(payload, "id"))
                 .unwrap_or_else(|| id.to_string());
-            Some(PathBuf::from("specs").join(safe_slug(&slug)).join("spec.md"))
+            Some(
+                PathBuf::from("specs")
+                    .join(safe_slug(&slug))
+                    .join("spec.md"),
+            )
         }
         EntityKind::Issue => {
             let spec = string_field(payload, "spec_slug")
@@ -80,7 +84,11 @@ pub fn canonical_path(kind: EntityKind, id: Uuid, payload: &Value) -> Option<Pat
             // Use document id as filename suffix to disambiguate retries/forks.
             let short = id.simple().to_string();
             let filename = format!("{}-{}.md", safe_slug(&kind), &short[..8]);
-            Some(PathBuf::from("artifacts").join(safe_slug(&run)).join(filename))
+            Some(
+                PathBuf::from("artifacts")
+                    .join(safe_slug(&run))
+                    .join(filename),
+            )
         }
         EntityKind::Bug | EntityKind::UserStory | EntityKind::TestCase => {
             let spec = string_field(payload, "spec_slug")
