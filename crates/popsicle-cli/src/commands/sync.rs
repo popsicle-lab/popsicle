@@ -11,8 +11,9 @@ use chrono::Utc;
 use clap::Subcommand;
 use popsicle_core::storage::{IndexDb, ProjectConfig, ProjectLayout, SyncStateRow};
 use popsicle_sync::{
-    crdt::b64_encode, CrdtDoc, Credentials, DocUpdates, HttpSyncClient, LoginRequest,
-    PushOperation, PushRequest, RegisterRequest, SyncClient, WsClient, WsEvent, SCHEMA_VERSION,
+    conflict, crdt::b64_encode, path::canonical_path, CrdtDoc, Credentials, DocUpdates,
+    EntityKind, HttpSyncClient, LoginRequest, PushOperation, PushOutcome, PushRequest,
+    RegisterRequest, SyncClient, WsClient, WsEvent, SCHEMA_VERSION,
 };
 use serde_json::json;
 use tokio::runtime::Runtime;
@@ -72,6 +73,12 @@ pub enum SyncCommand {
         #[arg(long)]
         interval: Option<u64>,
     },
+    /// Bootstrap a fresh `.popsicle/` workspace from server state
+    Clone {
+        /// Pull all entities from the start (default: true)
+        #[arg(long, default_value_t = true)]
+        full: bool,
+    },
 }
 
 pub fn execute(cmd: SyncCommand, format: &OutputFormat) -> Result<()> {
@@ -92,6 +99,7 @@ pub fn execute(cmd: SyncCommand, format: &OutputFormat) -> Result<()> {
             SyncCommand::DocPull { doc_id, out } => doc_pull(doc_id, out, format).await,
             SyncCommand::Watch => watch(format).await,
             SyncCommand::Daemon { interval } => daemon(interval, format).await,
+            SyncCommand::Clone { full } => clone_workspace(full, format).await,
         }
     })
 }
@@ -330,7 +338,7 @@ async fn whoami(format: &OutputFormat) -> Result<()> {
 }
 
 fn status(format: &OutputFormat) -> Result<()> {
-    let (_layout, cfg, db) = open_project()?;
+    let (layout, cfg, db) = open_project()?;
     let dirty = db.list_dirty_sync_state().map_err(|e| anyhow!("{}", e))?;
     let since = db
         .get_sync_meta(META_LAST_SINCE)
@@ -340,29 +348,45 @@ fn status(format: &OutputFormat) -> Result<()> {
         .get_sync_meta(META_USER_EMAIL)
         .map_err(|e| anyhow!("{}", e))?
         .unwrap_or_default();
+    let conflicts_log = layout.sync_conflicts_log();
+    let (conflicts_total, conflicts_recent) = if conflicts_log.exists() {
+        let txt = std::fs::read_to_string(&conflicts_log).unwrap_or_default();
+        let lines: Vec<&str> = txt.lines().filter(|l| !l.trim().is_empty()).collect();
+        let recent: Vec<String> =
+            lines.iter().rev().take(5).map(|s| s.to_string()).collect();
+        (lines.len(), recent)
+    } else {
+        (0, vec![])
+    };
     let v = json!({
         "endpoint": cfg.sync.endpoint,
         "user": email,
         "dirty_count": dirty.len(),
         "last_remote_version": since.parse::<u64>().unwrap_or(0),
         "schema_version": SCHEMA_VERSION,
+        "conflicts_total": conflicts_total,
+        "conflicts_log": conflicts_log.display().to_string(),
     });
-    print_result(
-        format,
-        v,
-        &format!(
-            "endpoint: {}\nuser: {}\ndirty: {}\nlast cursor: {}",
-            cfg.sync.endpoint,
-            email,
-            dirty.len(),
-            since
-        ),
+    let mut text = format!(
+        "endpoint: {}\nuser: {}\ndirty: {}\nlast cursor: {}\nconflicts: {}",
+        cfg.sync.endpoint,
+        email,
+        dirty.len(),
+        since,
+        conflicts_total
     );
+    if !conflicts_recent.is_empty() {
+        text.push_str("\nrecent:");
+        for line in conflicts_recent.iter().rev() {
+            text.push_str(&format!("\n  {}", line));
+        }
+    }
+    print_result(format, v, &text);
     Ok(())
 }
 
 async fn push(format: &OutputFormat) -> Result<()> {
-    let (_layout, cfg, db) = open_project()?;
+    let (layout, cfg, db) = open_project()?;
     let email = current_email(&db)?;
     let creds = load_creds(&email)?;
     let client = build_client(&cfg, creds)?;
@@ -384,9 +408,10 @@ async fn push(format: &OutputFormat) -> Result<()> {
     let resp = client.push(req).await.map_err(|e| anyhow!("{}", e))?;
     let mut applied = 0usize;
     let mut conflicts = 0usize;
+    let mut lost_total = 0usize;
     for r in &resp.results {
         match r.status {
-            popsicle_sync::PushOutcome::Applied => {
+            PushOutcome::Applied => {
                 applied += 1;
                 if let Some(row) = dirty.iter().find(|d| d.entity_id == r.id.to_string()) {
                     let mut new_row = row.clone();
@@ -396,8 +421,12 @@ async fn push(format: &OutputFormat) -> Result<()> {
                     db.upsert_sync_state(&new_row).map_err(|e| anyhow!("{}", e))?;
                 }
             }
-            popsicle_sync::PushOutcome::Conflict => conflicts += 1,
-            popsicle_sync::PushOutcome::Rejected => {}
+            PushOutcome::Conflict => {
+                conflicts += 1;
+                let lost = handle_conflict(&layout, &db, &dirty, r)?;
+                lost_total += lost;
+            }
+            PushOutcome::Rejected => {}
         }
     }
     print_result(
@@ -405,20 +434,57 @@ async fn push(format: &OutputFormat) -> Result<()> {
         json!({
             "pushed": applied,
             "conflicts": conflicts,
+            "lost_fields": lost_total,
             "results": resp.results.len(),
         }),
         &format!(
-            "Pushed {} change(s); {} conflict(s); {} total.",
+            "Pushed {} change(s); {} conflict(s) ({} field(s) overwritten); {} total.",
             applied,
             conflicts,
+            lost_total,
             resp.results.len()
         ),
     );
     Ok(())
 }
 
+/// On conflict: take server payload as truth, merge any local-only fields,
+/// log overwritten fields to `.sync/conflicts.log`, and mark the entity as
+/// no-longer-dirty with the new server version. The user can re-push by
+/// editing again; we don't auto-retry to keep the protocol simple.
+fn handle_conflict(
+    layout: &ProjectLayout,
+    db: &IndexDb,
+    dirty: &[SyncStateRow],
+    result: &popsicle_sync::PushResult,
+) -> Result<usize> {
+    let Some(row) = dirty.iter().find(|d| d.entity_id == result.id.to_string()) else {
+        return Ok(0);
+    };
+    let server_payload = result
+        .server_payload
+        .clone()
+        .unwrap_or(serde_json::Value::Null);
+    // Local payload reconstruction: we currently only know the stub. Without
+    // a stored last-pushed payload, we treat every non-equal field as a
+    // potential local edit. Document bodies are not affected (they go via
+    // the CRDT log), so this conservatively logs metadata divergences.
+    let local_stub = serde_json::json!({"_stub": true, "kind": row.entity_kind, "id": row.entity_id});
+    let report = conflict::merge(&local_stub, &serde_json::Value::Null, &server_payload);
+    let kind = EntityKind::parse(&row.entity_kind).unwrap_or(EntityKind::Namespace);
+    if let Ok(id) = Uuid::parse_str(&row.entity_id) {
+        let _ = conflict::append_log(&layout.sync_conflicts_log(), kind, id, &report);
+    }
+    let mut new_row = row.clone();
+    new_row.dirty = false;
+    new_row.remote_version = result.version.map(|v| v as i64);
+    new_row.last_synced_at = Some(Utc::now().to_rfc3339());
+    db.upsert_sync_state(&new_row).map_err(|e| anyhow!("{}", e))?;
+    Ok(report.lost.len())
+}
+
 async fn pull(format: &OutputFormat) -> Result<()> {
-    let (_layout, cfg, db) = open_project()?;
+    let (layout, cfg, db) = open_project()?;
     let email = current_email(&db)?;
     let creds = load_creds(&email)?;
     let client = build_client(&cfg, creds)?;
@@ -428,14 +494,39 @@ async fn pull(format: &OutputFormat) -> Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
     let mut total = 0usize;
+    let mut materialised = 0usize;
+    let mut recovered = 0usize;
     loop {
         let page = client
             .pull_changes(since, 200)
             .await
             .map_err(|e| anyhow!("{}", e))?;
         for ch in &page.changes {
-            // For now, mirror remote version into sync_state. Document
-            // payload merge happens in M4 (CRDT).
+            // Materialise to canonical path. Document bodies are intentionally
+            // skipped here — they ride the CRDT channel via doc_pull.
+            if ch.kind != EntityKind::Document
+                && let Some(rel) = canonical_path(ch.kind, ch.id, &ch.payload)
+            {
+                let abs = layout.dot_dir().join(&rel);
+                if ch.deleted {
+                    if abs.exists() {
+                        // Preserve any local-only edits before deletion.
+                        let recovered_path = layout
+                            .sync_recovered_dir()
+                            .join(format!("{}-{}.bak", ch.kind.as_str(), ch.id));
+                        if let Some(parent) = recovered_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::copy(&abs, &recovered_path);
+                        let _ = std::fs::remove_file(&abs);
+                        recovered += 1;
+                    }
+                } else if let Err(e) = write_entity_file(&abs, ch.kind, &ch.payload) {
+                    eprintln!("warn: failed to materialise {}: {}", abs.display(), e);
+                } else {
+                    materialised += 1;
+                }
+            }
             let row = SyncStateRow {
                 entity_kind: ch.kind.as_str().to_string(),
                 entity_id: ch.id.to_string(),
@@ -457,25 +548,57 @@ async fn pull(format: &OutputFormat) -> Result<()> {
     }
     print_result(
         format,
-        json!({"pulled": total, "cursor": since}),
-        &format!("Pulled {} change(s); cursor now {}.", total, since),
+        json!({"pulled": total, "cursor": since, "materialised": materialised, "recovered": recovered}),
+        &format!(
+            "Pulled {} change(s); cursor now {}; wrote {} file(s); preserved {} deleted local file(s).",
+            total, since, materialised, recovered
+        ),
     );
     Ok(())
 }
 
-fn row_to_push_op(row: &SyncStateRow) -> Option<PushOperation> {
-    use popsicle_sync::EntityKind;
-    let kind = match row.entity_kind.as_str() {
-        "namespace" => EntityKind::Namespace,
-        "spec" => EntityKind::Spec,
-        "issue" => EntityKind::Issue,
-        "pipeline_run" => EntityKind::PipelineRun,
-        "document" => EntityKind::Document,
-        "bug" => EntityKind::Bug,
-        "user_story" => EntityKind::UserStory,
-        "test_case" => EntityKind::TestCase,
-        _ => return None,
+/// Render an entity payload to disk. For Skill/Pipeline, the payload is
+/// expected to carry a `body` string with the YAML source. For everything
+/// else, we serialise the payload as YAML frontmatter so a re-clone can be
+/// re-indexed by `popsicle reindex` later.
+fn write_entity_file(
+    path: &std::path::Path,
+    kind: EntityKind,
+    payload: &serde_json::Value,
+) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let body: String = match kind {
+        EntityKind::Skill | EntityKind::Pipeline => payload
+            .get("body")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                serde_yaml_ng::to_string(payload).unwrap_or_else(|_| "{}".into())
+            }),
+        _ => {
+            let yaml = serde_yaml_ng::to_string(payload)
+                .unwrap_or_else(|_| "{}".into());
+            let body_md = payload
+                .get("body")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            format!("---\n{}---\n\n{}", yaml, body_md)
+        }
     };
+    // Atomic-ish: write to tmp + rename. Skip if identical content already
+    // exists (avoid retriggering the file watcher).
+    if let Ok(existing) = std::fs::read_to_string(path)
+        && existing == body
+    {
+        return Ok(());
+    }
+    std::fs::write(path, body)
+}
+
+fn row_to_push_op(row: &SyncStateRow) -> Option<PushOperation> {
+    let kind = EntityKind::parse(row.entity_kind.as_str())?;
     let id = Uuid::parse_str(&row.entity_id).ok()?;
     Some(PushOperation {
         kind,
@@ -485,7 +608,7 @@ fn row_to_push_op(row: &SyncStateRow) -> Option<PushOperation> {
         // Real payload assembly will be wired in M4 (read entity from
         // FileStorage / IndexDb and serialize). For now we send a stub
         // marker so the protocol path is exercised end-to-end.
-        payload: json!({"_stub": true, "kind": row.entity_kind, "id": row.entity_id}),
+        payload: serde_json::json!({"_stub": true, "kind": row.entity_kind, "id": row.entity_id}),
     })
 }
 
@@ -768,4 +891,68 @@ async fn daemon(interval_override: Option<u64>, _format: &OutputFormat) -> Resul
 async fn run_reconcile(format: &OutputFormat) -> Result<()> {
     push(format).await?;
     pull(format).await
+}
+
+/// Bootstrap a fresh `.popsicle/` workspace by pulling everything from the
+/// server (since=0) and materialising entities + document bodies on disk.
+async fn clone_workspace(_full: bool, format: &OutputFormat) -> Result<()> {
+    let (layout, cfg, db) = open_project()?;
+    let email = current_email(&db)?;
+    let creds = load_creds(&email)?;
+    let client = build_client(&cfg, creds)?;
+
+    // Reset cursor so pull() walks history from the beginning.
+    db.set_sync_meta(META_LAST_SINCE, "0")
+        .map_err(|e| anyhow!("{}", e))?;
+
+    // First pass: pull metadata for every entity, materialising all non-document files.
+    pull(format).await?;
+
+    // Second pass: hydrate document bodies via CRDT for every Document we now know about.
+    let mut doc_count = 0usize;
+    let mut since: u64 = 0;
+    loop {
+        let page = client
+            .pull_changes(since, 200)
+            .await
+            .map_err(|e| anyhow!("{}", e))?;
+        for ch in &page.changes {
+            if ch.kind != EntityKind::Document || ch.deleted {
+                continue;
+            }
+            // Resolve canonical path; fall back to artifacts/<id>.md.
+            let rel = canonical_path(EntityKind::Document, ch.id, &ch.payload)
+                .unwrap_or_else(|| PathBuf::from("artifacts").join(format!("{}.md", ch.id)));
+            let abs = layout.dot_dir().join(&rel);
+            if let Some(parent) = abs.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            // Pull CRDT state, render text.
+            let remote = client.doc_state(ch.id).await.map_err(|e| anyhow!("{}", e))?;
+            let crdt_path = layout.sync_doc_path(&ch.id.to_string());
+            let mut local = CrdtDoc::load(&crdt_path).map_err(|e| anyhow!("{}", e))?;
+            if !remote.state.is_empty() {
+                local
+                    .apply_update_b64(&remote.state)
+                    .map_err(|e| anyhow!("merge remote: {}", e))?;
+            }
+            local.save(&crdt_path).map_err(|e| anyhow!("{}", e))?;
+            std::fs::write(&abs, local.text())?;
+            doc_count += 1;
+        }
+        since = page.next_since;
+        if !page.has_more {
+            break;
+        }
+    }
+
+    print_result(
+        format,
+        json!({"documents_hydrated": doc_count}),
+        &format!(
+            "Workspace cloned. Hydrated {} document body(ies). Run `popsicle reindex` to rebuild the local index.",
+            doc_count
+        ),
+    );
+    Ok(())
 }

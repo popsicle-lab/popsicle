@@ -37,6 +37,21 @@ impl ProjectLayout {
         self.root.join("skills")
     }
 
+    pub fn pipelines_dir(&self) -> PathBuf {
+        self.root.join("pipelines")
+    }
+
+    /// Where overwrite-saved local copies are stashed when the server tombstones
+    /// an entity that still had unpushed local edits.
+    pub fn sync_recovered_dir(&self) -> PathBuf {
+        self.sync_dir().join("recovered")
+    }
+
+    /// Append-only conflict log written by the sync client.
+    pub fn sync_conflicts_log(&self) -> PathBuf {
+        self.sync_dir().join("conflicts.log")
+    }
+
     pub fn db_path(&self) -> PathBuf {
         self.root.join("popsicle.db")
     }

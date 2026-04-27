@@ -14,6 +14,8 @@ pub enum EntityKind {
     Bug,
     UserStory,
     TestCase,
+    Skill,
+    Pipeline,
 }
 
 impl EntityKind {
@@ -27,7 +29,26 @@ impl EntityKind {
             EntityKind::Bug => "bug",
             EntityKind::UserStory => "user_story",
             EntityKind::TestCase => "test_case",
+            EntityKind::Skill => "skill",
+            EntityKind::Pipeline => "pipeline",
         }
+    }
+
+    /// Inverse of [`as_str`]. Returns `None` for unrecognised strings.
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "namespace" => EntityKind::Namespace,
+            "spec" => EntityKind::Spec,
+            "issue" => EntityKind::Issue,
+            "pipeline_run" => EntityKind::PipelineRun,
+            "document" => EntityKind::Document,
+            "bug" => EntityKind::Bug,
+            "user_story" => EntityKind::UserStory,
+            "test_case" => EntityKind::TestCase,
+            "skill" => EntityKind::Skill,
+            "pipeline" => EntityKind::Pipeline,
+            _ => return None,
+        })
     }
 }
 

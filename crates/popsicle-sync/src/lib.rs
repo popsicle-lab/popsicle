@@ -8,9 +8,11 @@
 //! `popsicle_core::storage::config::SyncSection`.
 
 pub mod client;
+pub mod conflict;
 pub mod crdt;
 pub mod error;
 pub mod http;
+pub mod path;
 pub mod types;
 pub mod ws;
 
