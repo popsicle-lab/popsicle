@@ -1,17 +1,13 @@
 use regex::Regex;
+use serde_json::json;
 
-use crate::model::bug::{Bug, BugSeverity};
 use crate::model::document::Document;
-use crate::model::story::{AcceptanceCriterion, UserStory};
-use crate::model::testcase::{TestCase, TestPriority, TestType};
+use crate::model::work_item::{WorkItem, WorkItemKind};
 
-/// Extract user stories from a PRD document.
+/// Extract user stories from a PRD document as WorkItems with kind=Story.
 ///
-/// Parses the "User Stories & Acceptance Criteria" section, looking for:
-/// - `### Story N: [Title]` or `### [Title]` headings
-/// - `**As a** ... **I want to** ... **So that** ...` pattern
-/// - `- [ ]` checklist items as acceptance criteria
-pub fn extract_user_stories(doc: &Document) -> Vec<UserStory> {
+/// `fields` is populated with `persona`, `goal`, `benefit`, and `acceptance` (Vec<String>).
+pub fn extract_user_stories(doc: &Document) -> Vec<WorkItem> {
     let body = &doc.body;
     let mut stories = Vec::new();
 
@@ -41,37 +37,36 @@ pub fn extract_user_stories(doc: &Document) -> Vec<UserStory> {
             .unwrap_or(section.len());
         let subsection = &section[m.start()..subsection_end];
 
-        let mut story = UserStory::new(String::new(), &title);
+        let mut wi = WorkItem::new(String::new(), WorkItemKind::Story, &title);
 
+        let (mut persona, mut goal, mut benefit) = (String::new(), String::new(), String::new());
         if let Some(as_caps) = as_a_re.captures(subsection) {
-            story.persona = as_caps[1].trim().to_string();
-            story.goal = as_caps[2].trim().to_string();
-            story.benefit = as_caps[3].trim().to_string();
+            persona = as_caps[1].trim().to_string();
+            goal = as_caps[2].trim().to_string();
+            benefit = as_caps[3].trim().to_string();
         }
 
-        for ac_cap in ac_re.captures_iter(subsection) {
-            let desc = ac_cap[1].trim().to_string();
-            story
-                .acceptance_criteria
-                .push(AcceptanceCriterion::new(&desc));
-        }
+        let acceptance: Vec<String> = ac_re
+            .captures_iter(subsection)
+            .map(|c| c[1].trim().to_string())
+            .collect();
 
-        story.description = format!(
-            "As a {} I want to {} so that {}",
-            story.persona, story.goal, story.benefit
-        );
+        wi.description = format!("As a {persona} I want to {goal} so that {benefit}");
+        wi.set_field("persona", json!(persona));
+        wi.set_field("goal", json!(goal));
+        wi.set_field("benefit", json!(benefit));
+        wi.set_field("acceptance", json!(acceptance));
 
-        stories.push(story);
+        stories.push(wi);
     }
 
     stories
 }
 
-/// Extract test cases from a test-spec document.
+/// Extract test cases from a test-spec document as WorkItems with kind=TestCase.
 ///
-/// Parses H3 headings as test case titles and checklist items as steps.
-/// Attempts to infer priority from P0/P1/P2 section context.
-pub fn extract_test_cases(doc: &Document, test_type: TestType) -> Vec<TestCase> {
+/// `fields` is populated with `test_type`, `priority_level` (P0/P1/P2), and `steps` (Vec<String>).
+pub fn extract_test_cases(doc: &Document, test_type: &str) -> Vec<WorkItem> {
     let body = &doc.body;
     let mut cases = Vec::new();
 
@@ -97,7 +92,7 @@ pub fn extract_test_cases(doc: &Document, test_type: TestType) -> Vec<TestCase> 
             .unwrap_or(body.len());
         let subsection = &body[m.start()..subsection_end];
 
-        let mut tc = TestCase::new(String::new(), &title, test_type.clone());
+        let mut wi = WorkItem::new(String::new(), WorkItemKind::TestCase, &title);
 
         let mut steps: Vec<String> = step_re
             .captures_iter(subsection)
@@ -111,19 +106,23 @@ pub fn extract_test_cases(doc: &Document, test_type: TestType) -> Vec<TestCase> 
                 .collect();
         }
 
-        tc.steps = steps;
-        tc.priority_level = infer_priority(m.start(), &priority_context);
+        let priority_level = infer_priority(m.start(), &priority_context);
 
-        cases.push(tc);
+        wi.set_field("test_type", json!(test_type));
+        wi.set_field("priority_level", json!(priority_level));
+        wi.set_field("steps", json!(steps));
+
+        cases.push(wi);
     }
 
     cases
 }
 
-/// Extract bugs from a bug-report document.
+/// Extract bugs from a bug-report document as WorkItems with kind=Bug.
 ///
-/// Parses entries matching `### BUG-XXXX: [Title]` pattern with structured fields.
-pub fn extract_bugs(doc: &Document) -> Vec<Bug> {
+/// `fields` is populated with `severity`, `expected_behavior`, `actual_behavior`,
+/// `steps_to_reproduce` (Vec<String>).
+pub fn extract_bugs(doc: &Document) -> Vec<WorkItem> {
     let body = &doc.body;
     let mut bugs = Vec::new();
 
@@ -153,26 +152,28 @@ pub fn extract_bugs(doc: &Document) -> Vec<Bug> {
 
         let severity = severity_re
             .captures(subsection)
-            .and_then(|c| c[1].trim().parse::<BugSeverity>().ok())
-            .unwrap_or_default();
+            .map(|c| c[1].trim().to_lowercase())
+            .unwrap_or_else(|| "major".to_string());
 
-        let mut bug = Bug::new(String::new(), &title, severity);
+        let mut wi = WorkItem::new(String::new(), WorkItemKind::Bug, &title);
+        wi.set_field("severity", json!(severity));
 
         if let Some(caps) = expected_re.captures(subsection) {
-            bug.expected_behavior = caps[1].trim().to_string();
+            wi.set_field("expected_behavior", json!(caps[1].trim()));
         }
         if let Some(caps) = actual_re.captures(subsection) {
-            bug.actual_behavior = caps[1].trim().to_string();
+            wi.set_field("actual_behavior", json!(caps[1].trim()));
         }
         if let Some(caps) = steps_re.captures(subsection) {
-            bug.steps_to_reproduce = caps[1]
+            let steps: Vec<String> = caps[1]
                 .split(';')
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
+            wi.set_field("steps_to_reproduce", json!(steps));
         }
 
-        bugs.push(bug);
+        bugs.push(wi);
     }
 
     bugs
@@ -201,7 +202,7 @@ fn extract_section(body: &str, heading: &str) -> Option<String> {
 struct PriorityRange {
     start: usize,
     end: usize,
-    priority: TestPriority,
+    priority: String,
 }
 
 fn detect_priority_context(body: &str) -> Vec<PriorityRange> {
@@ -215,7 +216,7 @@ fn detect_priority_context(body: &str) -> Vec<PriorityRange> {
         let caps = h2_re.captures(m.as_str()).unwrap();
         let heading = caps[1].trim();
         if let Some(p_caps) = p_re.captures(heading) {
-            let priority = p_caps[1].to_uppercase().parse().unwrap_or(TestPriority::P1);
+            let priority = p_caps[1].to_uppercase();
             let end = h2_matches
                 .get(i + 1)
                 .map(|n| n.start())
@@ -231,13 +232,13 @@ fn detect_priority_context(body: &str) -> Vec<PriorityRange> {
     ranges
 }
 
-fn infer_priority(pos: usize, ranges: &[PriorityRange]) -> TestPriority {
+fn infer_priority(pos: usize, ranges: &[PriorityRange]) -> String {
     for r in ranges {
         if pos >= r.start && pos < r.end {
             return r.priority.clone();
         }
     }
-    TestPriority::P1
+    "P1".to_string()
 }
 
 fn is_section_header(title: &str) -> bool {
@@ -289,10 +290,14 @@ mod tests {
         let stories = extract_user_stories(&doc);
         assert_eq!(stories.len(), 2);
         assert_eq!(stories[0].title, "Create Project");
-        assert_eq!(stories[0].persona, "developer");
-        assert_eq!(stories[0].acceptance_criteria.len(), 2);
+        assert_eq!(stories[0].field_str("persona"), Some("developer"));
+        let acc = stories[0]
+            .fields
+            .get("acceptance")
+            .and_then(|v| v.as_array())
+            .unwrap();
+        assert_eq!(acc.len(), 2);
         assert_eq!(stories[1].title, "Run Tests");
-        assert_eq!(stories[1].acceptance_criteria.len(), 1);
     }
 
     #[test]
@@ -314,12 +319,17 @@ mod tests {
 - [ ] Verify results appear
 "#;
         let doc = make_doc(body);
-        let cases = extract_test_cases(&doc, TestType::E2e);
+        let cases = extract_test_cases(&doc, "e2e");
         assert_eq!(cases.len(), 2);
         assert_eq!(cases[0].title, "Login with valid credentials");
-        assert_eq!(cases[0].priority_level, TestPriority::P0);
-        assert_eq!(cases[0].steps.len(), 4);
-        assert_eq!(cases[1].priority_level, TestPriority::P1);
+        assert_eq!(cases[0].field_str("priority_level"), Some("P0"));
+        let steps = cases[0]
+            .fields
+            .get("steps")
+            .and_then(|v| v.as_array())
+            .unwrap();
+        assert_eq!(steps.len(), 4);
+        assert_eq!(cases[1].field_str("priority_level"), Some("P1"));
     }
 
     #[test]
@@ -343,8 +353,13 @@ mod tests {
         let bugs = extract_bugs(&doc);
         assert_eq!(bugs.len(), 2);
         assert_eq!(bugs[0].title, "Login fails on Safari");
-        assert_eq!(bugs[0].severity, BugSeverity::Critical);
-        assert_eq!(bugs[0].steps_to_reproduce.len(), 4);
-        assert_eq!(bugs[1].severity, BugSeverity::Minor);
+        assert_eq!(bugs[0].field_str("severity"), Some("critical"));
+        let steps = bugs[0]
+            .fields
+            .get("steps_to_reproduce")
+            .and_then(|v| v.as_array())
+            .unwrap();
+        assert_eq!(steps.len(), 4);
+        assert_eq!(bugs[1].field_str("severity"), Some("minor"));
     }
 }

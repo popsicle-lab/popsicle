@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use clap::Subcommand;
-use popsicle_core::model::{Bug, Issue, Namespace, PipelineRun, Spec, TestCase, UserStory};
+use popsicle_core::model::{Issue, Namespace, PipelineRun, Spec, WorkItem};
 use popsicle_core::storage::{IndexDb, ProjectConfig, ProjectLayout, SyncStateRow};
 use popsicle_sync::{
     CrdtDoc, Credentials, DocUpdates, EntityKind, HttpSyncClient, LoginRequest, PushOperation,
@@ -660,21 +660,11 @@ fn build_entity_payload(db: &IndexDb, kind: EntityKind, id: &str) -> Option<serd
             let doc = document_from_row(row);
             serde_json::to_value(doc).ok()
         }),
-        EntityKind::Bug => db
-            .get_bug(id)
+        EntityKind::WorkItem => db
+            .get_work_item(id)
             .ok()
             .flatten()
-            .and_then(|b| serde_json::to_value(b).ok()),
-        EntityKind::UserStory => db
-            .get_user_story(id)
-            .ok()
-            .flatten()
-            .and_then(|u| serde_json::to_value(u).ok()),
-        EntityKind::TestCase => db
-            .get_test_case(id)
-            .ok()
-            .flatten()
-            .and_then(|t| serde_json::to_value(t).ok()),
+            .and_then(|w| serde_json::to_value(w).ok()),
         EntityKind::Skill | EntityKind::Pipeline => None,
     }
 }
@@ -731,9 +721,7 @@ fn apply_pulled_to_index(
                 let _ = db.delete_spec(&id_str);
             }
             EntityKind::Issue
-            | EntityKind::Bug
-            | EntityKind::UserStory
-            | EntityKind::TestCase
+            | EntityKind::WorkItem
             | EntityKind::Document
             | EntityKind::PipelineRun
             | EntityKind::Skill
@@ -766,39 +754,16 @@ fn apply_pulled_to_index(
                 }
             }
         }
-        EntityKind::Bug => {
-            if let Ok(b) = serde_json::from_value::<Bug>(payload.clone()) {
-                let exists = db.get_bug(&b.id).map_err(|e| anyhow!("{}", e))?.is_some();
-                if exists {
-                    db.update_bug(&b).map_err(|e| anyhow!("{}", e))?;
-                } else {
-                    db.create_bug(&b).map_err(|e| anyhow!("{}", e))?;
-                }
-            }
-        }
-        EntityKind::UserStory => {
-            if let Ok(u) = serde_json::from_value::<UserStory>(payload.clone()) {
+        EntityKind::WorkItem => {
+            if let Ok(w) = serde_json::from_value::<WorkItem>(payload.clone()) {
                 let exists = db
-                    .get_user_story(&u.id)
+                    .get_work_item(&w.id)
                     .map_err(|e| anyhow!("{}", e))?
                     .is_some();
                 if exists {
-                    db.update_user_story(&u).map_err(|e| anyhow!("{}", e))?;
+                    db.update_work_item(&w).map_err(|e| anyhow!("{}", e))?;
                 } else {
-                    db.create_user_story(&u).map_err(|e| anyhow!("{}", e))?;
-                }
-            }
-        }
-        EntityKind::TestCase => {
-            if let Ok(t) = serde_json::from_value::<TestCase>(payload.clone()) {
-                let exists = db
-                    .get_test_case(&t.id)
-                    .map_err(|e| anyhow!("{}", e))?
-                    .is_some();
-                if exists {
-                    db.update_test_case(&t).map_err(|e| anyhow!("{}", e))?;
-                } else {
-                    db.create_test_case(&t).map_err(|e| anyhow!("{}", e))?;
+                    db.create_work_item(&w).map_err(|e| anyhow!("{}", e))?;
                 }
             }
         }

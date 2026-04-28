@@ -1,6 +1,9 @@
 use std::env;
 
-use popsicle_core::engine::{ContextInput, assemble_input_context};
+use popsicle_core::engine::{
+    ContextInput, ContextLayer, HistoricalRefsLayer, MemoriesLayer, ProjectContextLayer,
+    UpstreamDocsLayer, assemble_input_context, assemble_layers,
+};
 use popsicle_core::helpers;
 use popsicle_core::memory::{self, Memory, MemoryStore};
 use popsicle_core::registry::SkillRegistry;
@@ -57,19 +60,28 @@ pub fn execute(args: PromptArgs, format: &OutputFormat) -> anyhow::Result<()> {
         None
     };
 
-    // Attention-optimized ordering:
-    //   1. Project context (background, lowest relevance — front of prompt)
-    //   2. Project memories (accumulated experience — low relevance)
-    //   3. Historical references (cross-run related docs — low-medium relevance)
-    //   4. Input context (low→med→high from upstream skills)
-    //   5. Prompt instruction (highest attention — end of prompt)
-    let full_prompt = build_full_prompt(
-        &project_context,
-        &memories,
-        &historical_refs,
-        &assembled,
-        &base_prompt,
-    );
+    // Build pluggable context layers; `assemble_layers` sorts by relevance
+    // (Low → High) and appends the base prompt at the end.
+    let mut layers: Vec<Box<dyn ContextLayer>> = Vec::new();
+    if let Some(ref pc) = project_context {
+        layers.push(Box::new(ProjectContextLayer {
+            content: pc.clone(),
+        }));
+    }
+    if let Some(ref mems) = memories {
+        layers.push(Box::new(MemoriesLayer {
+            memories: mems.clone(),
+        }));
+    }
+    if let Some(ref refs) = historical_refs {
+        layers.push(Box::new(HistoricalRefsLayer { refs: refs.clone() }));
+    }
+    if let Some(ref a) = assembled {
+        layers.push(Box::new(UpstreamDocsLayer {
+            assembled: a.clone(),
+        }));
+    }
+    let full_prompt = assemble_layers(layers, &base_prompt);
 
     match format {
         OutputFormat::Text => {
@@ -233,85 +245,6 @@ fn load_ranked_memories(
     } else {
         Some(ranked)
     }
-}
-
-/// Format memories as a prompt section.
-fn format_memories_section(memories: &[Memory]) -> String {
-    let mut lines = vec![
-        "## Project Memories".to_string(),
-        String::new(),
-        "以下是项目积累的经验，请在工作中注意避免已知问题：".to_string(),
-    ];
-    for m in memories {
-        let stale_mark = if m.stale { " [STALE]" } else { "" };
-        lines.push(format!("- [{}] {}{}", m.memory_type, m.summary, stale_mark));
-    }
-    lines.join("\n")
-}
-
-/// Format historical references as a prompt section.
-fn format_historical_refs_section(refs: &[DocumentRow]) -> String {
-    let mut lines = vec![
-        "## Historical References (from previous runs)".to_string(),
-        String::new(),
-        "以下是项目中可能相关的历史设计文档，如需详细内容请读取对应文件：".to_string(),
-        String::new(),
-    ];
-    for doc in refs {
-        lines.push(format!(
-            "- **[{}] {}** ({}) — {}",
-            doc.doc_type.to_uppercase(),
-            doc.title,
-            doc.status,
-            doc.file_path,
-        ));
-        if !doc.summary.is_empty() {
-            let preview: String = doc.summary.lines().next().unwrap_or("").to_string();
-            if !preview.is_empty() {
-                lines.push(format!("  {}", preview));
-            }
-        }
-    }
-    lines.join("\n")
-}
-
-/// Assemble the final prompt with attention-optimized ordering.
-fn build_full_prompt(
-    project_context: &Option<String>,
-    memories: &Option<Vec<Memory>>,
-    historical_refs: &Option<Vec<DocumentRow>>,
-    assembled: &Option<popsicle_core::engine::AssembledContext>,
-    base_prompt: &str,
-) -> String {
-    let mut sections = Vec::new();
-
-    if let Some(pc) = project_context {
-        sections.push(format!("## Project Context (background)\n\n{}", pc.trim()));
-    }
-
-    if let Some(mems) = memories {
-        sections.push(format_memories_section(mems));
-    }
-
-    if let Some(refs) = historical_refs
-        && !refs.is_empty()
-    {
-        sections.push(format_historical_refs_section(refs));
-    }
-
-    if let Some(ctx) = assembled {
-        sections.push(format!(
-            "## Input Context (from upstream skills)\n\n{}",
-            ctx.full_text
-        ));
-    }
-
-    if sections.is_empty() {
-        return base_prompt.to_string();
-    }
-
-    sections.push(base_prompt.trim().to_string());
-    sections.join("\n\n---\n\n")
 }
 
 /// Load historical related documents from other pipeline runs using FTS5 search.
@@ -537,16 +470,39 @@ mod tests {
     use popsicle_core::engine::{AssembledContext, ContextPart};
     use popsicle_core::memory::{MemoryLayer, MemoryType};
 
+    fn run(
+        pc: Option<String>,
+        mems: Option<Vec<Memory>>,
+        refs: Option<Vec<DocumentRow>>,
+        assembled: Option<AssembledContext>,
+        base: &str,
+    ) -> String {
+        let mut layers: Vec<Box<dyn ContextLayer>> = Vec::new();
+        if let Some(p) = pc {
+            layers.push(Box::new(ProjectContextLayer { content: p }));
+        }
+        if let Some(m) = mems {
+            layers.push(Box::new(MemoriesLayer { memories: m }));
+        }
+        if let Some(r) = refs {
+            layers.push(Box::new(HistoricalRefsLayer { refs: r }));
+        }
+        if let Some(a) = assembled {
+            layers.push(Box::new(UpstreamDocsLayer { assembled: a }));
+        }
+        assemble_layers(layers, base)
+    }
+
     #[test]
     fn test_build_full_prompt_no_context() {
-        let result = build_full_prompt(&None, &None, &None, &None, "Do the thing.");
+        let result = run(None, None, None, None, "Do the thing.");
         assert_eq!(result, "Do the thing.");
     }
 
     #[test]
     fn test_build_full_prompt_project_context_only() {
         let pc = Some("## Tech Stack\n- Rust".to_string());
-        let result = build_full_prompt(&pc, &None, &None, &None, "Do the thing.");
+        let result = run(pc, None, None, None, "Do the thing.");
         assert!(result.starts_with("## Project Context (background)"));
         assert!(result.contains("## Tech Stack\n- Rust"));
         assert!(result.ends_with("Do the thing."));
@@ -564,7 +520,7 @@ mod tests {
             }],
             full_text: "### [Primary] prd — PRD [approved]\n\nPRD body".into(),
         });
-        let result = build_full_prompt(&None, &None, &None, &assembled, "Do the thing.");
+        let result = run(None, None, None, assembled, "Do the thing.");
         assert!(!result.contains("Project Context"));
         assert!(result.contains("## Input Context (from upstream skills)"));
         assert!(result.contains("PRD body"));
@@ -591,7 +547,7 @@ mod tests {
             parts: vec![],
             full_text: "upstream docs".into(),
         });
-        let result = build_full_prompt(&pc, &mems, &None, &assembled, "instruction");
+        let result = run(pc, mems, None, assembled, "instruction");
 
         let pc_pos = result.find("Project Context").unwrap();
         let mem_pos = result.find("Project Memories").unwrap();
@@ -617,7 +573,7 @@ mod tests {
             stale: false,
             detail: String::new(),
         }]);
-        let result = build_full_prompt(&None, &mems, &None, &None, "Do the thing.");
+        let result = run(None, mems, None, None, "Do the thing.");
         assert!(result.contains("## Project Memories"));
         assert!(result.contains("[PATTERN] Always use serde(default)"));
         assert!(result.ends_with("Do the thing."));
@@ -641,7 +597,7 @@ mod tests {
             version: 1,
             parent_doc_id: None,
         }]);
-        let result = build_full_prompt(&None, &None, &refs, &None, "Do the thing.");
+        let result = run(None, None, refs, None, "Do the thing.");
         assert!(result.contains("Historical References"));
         assert!(result.contains("Auth RFC"));
         assert!(result.contains("auth-rfc.md"));
@@ -684,7 +640,7 @@ mod tests {
             parts: vec![],
             full_text: "upstream docs".into(),
         });
-        let result = build_full_prompt(&pc, &mems, &refs, &assembled, "instruction");
+        let result = run(pc, mems, refs, assembled, "instruction");
 
         let pc_pos = result.find("Project Context").unwrap();
         let mem_pos = result.find("Project Memories").unwrap();

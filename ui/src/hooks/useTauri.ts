@@ -274,50 +274,7 @@ export async function getCommitLinks(filters?: {
   return invoke("get_commit_links", filters || {});
 }
 
-export interface DiscussionInfo {
-  id: string;
-  document_id: string | null;
-  skill: string;
-  pipeline_run_id: string;
-  topic: string;
-  status: string;
-  user_confidence: number | null;
-  message_count: number;
-  created_at: string;
-  concluded_at: string | null;
-}
-
-export interface DiscussionFull {
-  id: string;
-  document_id: string | null;
-  skill: string;
-  pipeline_run_id: string;
-  topic: string;
-  status: string;
-  user_confidence: number | null;
-  roles: DiscussionRoleInfo[];
-  messages: DiscussionMessageInfo[];
-  created_at: string;
-  concluded_at: string | null;
-}
-
-export interface DiscussionRoleInfo {
-  role_id: string;
-  role_name: string;
-  perspective: string | null;
-  source: string;
-}
-
-export interface DiscussionMessageInfo {
-  id: string;
-  phase: string;
-  role_id: string;
-  role_name: string;
-  content: string;
-  message_type: string;
-  reply_to: string | null;
-  timestamp: string;
-}
+// ── (Discussion entity removed; discussions are Documents with kind='discussion') ──
 
 // ── Issue types ──
 
@@ -432,190 +389,53 @@ export async function getProjectContext(): Promise<ProjectContextInfo> {
   return invoke("get_project_context");
 }
 
-// ── Bug types ──
+// ── WorkItem types (unified bug / user_story / test_case) ──
 
-export interface BugInfo {
+export type WorkItemKind = "bug" | "story" | "testcase";
+
+export interface WorkItemInfo {
   id: string;
   key: string;
+  kind: string;
   title: string;
-  severity: string;
-  priority: string;
   status: string;
-  source: string;
+  priority: string;
+  labels: string[];
   issue_id: string | null;
   pipeline_run_id: string | null;
-  labels: string[];
   created_at: string;
   updated_at: string;
 }
 
-export interface BugFull {
+export interface WorkItemFull {
   id: string;
   key: string;
+  kind: string;
   title: string;
   description: string;
-  severity: string;
-  priority: string;
   status: string;
-  steps_to_reproduce: string[];
-  expected_behavior: string;
-  actual_behavior: string;
-  environment: string | null;
-  stack_trace: string | null;
-  source: string;
-  related_test_case_id: string | null;
-  related_commit_sha: string | null;
-  fix_commit_sha: string | null;
+  priority: string;
+  labels: string[];
   issue_id: string | null;
   pipeline_run_id: string | null;
-  labels: string[];
+  source_doc_id: string | null;
+  /** Kind-specific extras (e.g. severity for bugs, steps for test cases, acceptance for stories). */
+  fields: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
 
-export async function listBugs(filters?: {
-  severity?: string;
+export async function listWorkItems(filters?: {
+  kind?: WorkItemKind | string;
   status?: string;
   issueId?: string;
   runId?: string;
-}): Promise<BugInfo[]> {
-  return invoke("list_bugs", filters || {});
+}): Promise<WorkItemInfo[]> {
+  return invoke("list_work_items", filters || {});
 }
 
-export async function getBug(key: string): Promise<BugFull> {
-  return invoke("get_bug", { key });
-}
-
-// ── TestCase types ──
-
-export interface TestCaseInfo {
-  id: string;
-  key: string;
-  title: string;
-  test_type: string;
-  priority_level: string;
-  status: string;
-  source_doc_id: string | null;
-  user_story_id: string | null;
-  issue_id: string | null;
-  pipeline_run_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TestCaseFull {
-  id: string;
-  key: string;
-  title: string;
-  description: string;
-  test_type: string;
-  priority_level: string;
-  status: string;
-  preconditions: string[];
-  steps: string[];
-  expected_result: string;
-  source_doc_id: string | null;
-  user_story_id: string | null;
-  issue_id: string | null;
-  pipeline_run_id: string | null;
-  labels: string[];
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TestCoverageSummary {
-  total: number;
-  passed: number;
-  failed: number;
-  no_runs: number;
-  pass_rate: number;
-}
-
-export async function listTestCases(filters?: {
-  testType?: string;
-  priority?: string;
-  status?: string;
-  runId?: string;
-}): Promise<TestCaseInfo[]> {
-  return invoke("list_test_cases", filters || {});
-}
-
-export async function getTestCase(key: string): Promise<TestCaseFull> {
-  return invoke("get_test_case", { key });
-}
-
-export async function getTestCoverage(filters?: {
-  runId?: string;
-}): Promise<TestCoverageSummary> {
-  return invoke("get_test_coverage", filters || {});
-}
-
-// ── UserStory types ──
-
-export interface UserStoryInfo {
-  id: string;
-  key: string;
-  title: string;
-  persona: string;
-  priority: string;
-  status: string;
-  issue_id: string | null;
-  pipeline_run_id: string | null;
-  ac_count: number;
-  ac_verified: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface UserStoryFull {
-  id: string;
-  key: string;
-  title: string;
-  description: string;
-  persona: string;
-  goal: string;
-  benefit: string;
-  priority: string;
-  status: string;
-  source_doc_id: string | null;
-  issue_id: string | null;
-  pipeline_run_id: string | null;
-  acceptance_criteria: AcceptanceCriterionInfo[];
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AcceptanceCriterionInfo {
-  id: string;
-  description: string;
-  verified: boolean;
-  test_case_ids: string[];
-}
-
-export async function listUserStories(filters?: {
-  status?: string;
-  issueId?: string;
-  runId?: string;
-}): Promise<UserStoryInfo[]> {
-  return invoke("list_user_stories", filters || {});
-}
-
-export async function getUserStory(key: string): Promise<UserStoryFull> {
-  return invoke("get_user_story", { key });
-}
-
-export async function listDiscussions(filters?: {
-  runId?: string;
-  skill?: string;
-  status?: string;
-}): Promise<DiscussionInfo[]> {
-  return invoke("list_discussions", filters || {});
-}
-
-export async function getDiscussion(
-  discussionId: string
-): Promise<DiscussionFull> {
-  return invoke("get_discussion", { discussionId });
+export async function getWorkItem(key: string): Promise<WorkItemFull> {
+  return invoke("get_work_item", { key });
 }
 
 // ── Spec types ──

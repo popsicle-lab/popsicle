@@ -44,7 +44,7 @@ popsicle pipeline next        # ask for the next CLI command + prompt
 
 ---
 
-It organizes the full software development lifecycle through composable **Skills** and **Pipelines**, provides a CLI for AI agents to call, tracks Git commits with document associations, and offers a desktop UI for read-only visualization. It also auto-scans project context, maintains cross-session memory, tracks work items (bugs, stories, test cases), and recommends the right pipeline for every task.
+It organizes the full software development lifecycle through composable **Skills** and **Pipelines**, provides a CLI for AI agents to call, tracks Git commits with document associations, and offers a desktop UI for read-only visualization. It also auto-scans project context, maintains cross-session memory, tracks unified **Work Items** (bugs, stories, test cases), and recommends the right pipeline for every task.
 
 ## Core Concepts
 
@@ -55,18 +55,16 @@ It organizes the full software development lifecycle through composable **Skills
 - **Spec** — Document collection with tags, reusable across Issues; belongs to a Namespace (required). Tags enable automatic Issue→Spec matching. Groups pipeline runs and documents under a development theme (e.g., "jwt-migration"). Specs have an **exclusive lock** (`locked_by_run_id`) — only one pipeline run can operate on a Spec at a time
 - **Issue** — Requirement entry point — must be created before any work. Auto-matched to a Spec by tags, or explicitly specified with `--spec`. `issue start` is the **only** way to create a PipelineRun and acquires the Spec lock — rejects if the Spec is already locked by another run
 - **PipelineRun** — State machine on a Spec, triggered exclusively by `issue start`. Cannot be created directly — use `issue start` to begin a run
-- **Document** — Belongs to a PipelineRun and Spec. Created as "active" and becomes "final" when the owning pipeline stage is completed. Documents no longer have their own state machine — the pipeline stage is the source of truth. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness
+- **Document** — Belongs to a PipelineRun and Spec. Created as "active" and becomes "final" when the owning pipeline stage is completed. Documents no longer have their own state machine — the pipeline stage is the source of truth. Singleton skills reuse/update the same document across runs; cumulative skills create a new document each time. Stored as YAML frontmatter + Markdown files for Git-friendliness. Multi-role debates produced by `arch-debate` / `product-debate` are stored as Documents with `kind = "discussion"` (no separate Discussion entity).
 - **Bootstrap** — LLM-driven project initialization that reads a module's `bootstrap.md` (natural language spec), scans the project, and generates a structured plan covering architecture, bounded contexts, conventions, and team decisions — all before the first pipeline run
-- **Discussion** — Persistent multi-role review conversations captured during debate skills (e.g., `arch-debate`, `product-debate`), stored in SQLite with conversational UI rendering
 - **Git Tracking** — Links Git commits to pipeline stages, skills, and documents; tracks review status per commit
 - **Guard** — Conditions on stage transitions that enforce upstream stage completion and document completeness
 - **Advisor** — Recommends the next step (CLI command + AI prompt) based on current pipeline and document state
-- **Project Context** — Auto-scanned technical profile (tech stack, structure, dev practices, dependencies) injected into all AI prompts as background context
+- **Context Layer** — Pluggable trait (`engine::context_layer::ContextLayer`) for assembling LLM prompt context. Built-in layers: `ProjectContextLayer` (tech stack scan), `MemoriesLayer` (cross-session memory), `HistoricalRefsLayer` (related past docs), `UpstreamDocsLayer` (current pipeline upstream artifacts). Sorted by relevance (Low → High) so the highest-relevance content sits closest to the user prompt.
 - **Memory** — Two-layer (short-term / long-term) cross-session memory for bugs, decisions, patterns, and gotchas, stored in a single Markdown file with event-driven staleness
-- **Work Items** — First-class Bug, UserStory, and TestCase entities extracted from documents or created manually, linked to pipeline runs, issues, and commits
+- **Work Item** — Unified entity for bugs, user stories, and test cases. Single `work_items` table with a `kind` discriminator (`bug` / `story` / `testcase`) and a JSON `fields` blob for kind-specific extras (severity, acceptance criteria, steps). Linked to pipeline runs, issues, and commits. CLI: `popsicle item add --kind bug …`.
 - **Pipeline Recommender** — Suggests the best pipeline based on task description keywords and project scale
-- **Extractor** — Parses structured entities (stories, test cases, bugs) from Markdown documents
-- **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, discussions, git status, work items, memories, and commit-document associations
+- **Desktop UI** — Read-only Tauri app that visualizes pipelines, documents, git status, work items, memories, and commit-document associations
 
 ### Document Lifecycle (`doc_lifecycle`)
 
@@ -163,7 +161,7 @@ popsicle context bootstrap --generate-prompt   # Outputs an LLM prompt to stdout
 popsicle context bootstrap --apply @bootstrap-plan.json
 
 # 1. Create a namespace (or let bootstrap do it)
-popsicle namespace create "backend-v2" -d "Backend rewrite"
+popsicle admin namespace create "backend-v2" -d "Backend rewrite"
 
 # 2. Create a spec with tags (required before issues)
 popsicle spec create "jwt-migration" -t auth,security --namespace "backend-v2"
@@ -185,8 +183,8 @@ popsicle pipeline revise <run-id> --stages design,implementation
 popsicle spec show "jwt-migration"
 
 # Extract structured entities from documents
-popsicle extract user-stories --from-doc <doc-id>
-popsicle extract test-cases --from-doc <doc-id> --type unit
+popsicle doc extract user-stories --from-doc <doc-id>
+popsicle doc extract test-cases --from-doc <doc-id> --type unit
 
 # Save a memory for future sessions
 popsicle memory save --type bug --summary "SQLite WAL mode required for concurrent access"
@@ -267,11 +265,11 @@ Generated files include the complete skill registry — agent names, artifact ty
 
 | Command | Description |
 |---------|-------------|
-| `popsicle namespace create <name> [-d <desc>] [-t <tags>]` | Create a new namespace |
-| `popsicle namespace list [--status <s>]` | List namespaces; filter by status (active/completed/archived) |
-| `popsicle namespace show <name>` | Show namespace details with associated specs |
-| `popsicle namespace update <name> [--status/--description/--tags]` | Update namespace fields |
-| `popsicle namespace delete <name> [--force]` | Delete a namespace (--force to delete with existing specs) |
+| `popsicle admin namespace create <name> [-d <desc>] [-t <tags>]` | Create a new namespace |
+| `popsicle admin namespace list [--status <s>]` | List namespaces; filter by status (active/completed/archived) |
+| `popsicle admin namespace show <name>` | Show namespace details with associated specs |
+| `popsicle admin namespace update <name> [--status/--description/--tags]` | Update namespace fields |
+| `popsicle admin namespace delete <name> [--force]` | Delete a namespace (--force to delete with existing specs) |
 
 ### Module Management
 
@@ -345,45 +343,28 @@ When `--spec` is not specified, `issue create` auto-matches the issue to a Spec 
 | `bug` | `test-only` |
 | `idea` | `design-only` |
 
-### Bug Tracking
+### Work Items (unified `popsicle item`)
+
+Bugs, user stories, and test cases share the same `popsicle item` surface, distinguished by `--kind`:
 
 | Command | Description |
 |---------|-------------|
-| `popsicle bug create` | Create a bug report |
-| `popsicle bug list [--severity/--status/--issue/--run]` | List bugs with filters |
-| `popsicle bug show <key>` | Show bug details |
-| `popsicle bug update <key>` | Update bug fields |
-| `popsicle bug link <key> --commit <sha>` | Link bug to a fix commit |
-| `popsicle bug record --from-test --error <msg>` | Create bug from test failure (auto-dedup) |
+| `popsicle item add --kind <bug\|story\|tc> [--priority/--field k=v]` | Create a work item (kind-specific extras go in `--field`) |
+| `popsicle item list [--kind/--issue/--run]` | List work items with filters |
+| `popsicle item show <key>` | Show details (e.g. `BUG-PRJ-1`, `STORY-PRJ-1`, `TC-PRJ-1`) |
+| `popsicle item update <key> [--status/--priority/--field k=v]` | Update fields |
+| `popsicle item link <key> --commit <sha>` | Link a work item to a commit |
 
-### User Stories
+Discussion has been folded into Documents (`kind = "discussion"`) and is no longer a separate CLI command.
 
-| Command | Description |
-|---------|-------------|
-| `popsicle story create` | Create a user story |
-| `popsicle story list [--status/--issue/--run]` | List user stories |
-| `popsicle story show <key>` | Show story details with acceptance criteria |
-| `popsicle story update <key>` | Update story fields |
-| `popsicle story extract --from-doc <doc-id>` | Extract stories from a PRD document |
-| `popsicle story link --ac <ac-id> --test-case <tc-key>` | Link acceptance criterion to test case |
-
-### Test Cases
+### Document Helpers (under `popsicle doc`)
 
 | Command | Description |
 |---------|-------------|
-| `popsicle test list [--type/--priority/--status]` | List test cases |
-| `popsicle test show <key>` | Show test case details |
-| `popsicle test extract --from-doc <doc-id> --type <t>` | Extract test cases from test spec document |
-| `popsicle test run-result` | Record a test execution result |
-| `popsicle test coverage` | Show test coverage summary |
-
-### Entity Extraction
-
-| Command | Description |
-|---------|-------------|
-| `popsicle extract user-stories --from-doc <doc-id>` | Parse user stories from document |
-| `popsicle extract test-cases --from-doc <doc-id> --type <t>` | Parse test cases from document |
-| `popsicle extract bugs --from-doc <doc-id>` | Parse bugs from document |
+| `popsicle doc check <list/toggle>` | View / update document checklists |
+| `popsicle doc extract user-stories --from-doc <doc-id>` | Parse user stories from a document |
+| `popsicle doc extract test-cases --from-doc <doc-id> --type <t>` | Parse test cases from a document |
+| `popsicle doc extract bugs --from-doc <doc-id>` | Parse bugs from a document |
 
 ### Git Tracking
 
@@ -394,18 +375,6 @@ When `--spec` is not specified, `issue create` auto-matches the issue to a Spec 
 | `popsicle git status` | Git status + review statistics |
 | `popsicle git log [-n]` | Commit history with review status and associations |
 | `popsicle git review <sha> <passed/failed/skipped>` | Update commit review status |
-
-### Discussion Persistence
-
-| Command | Description |
-|---------|-------------|
-| `popsicle discussion create --skill <s> --topic <t> --run <id>` | Create a new discussion session |
-| `popsicle discussion message <id> --role <r> --phase <p> --content <c>` | Add a message to a discussion |
-| `popsicle discussion role <id> --role-id <r> --name <n>` | Register a participant role |
-| `popsicle discussion list [--run/--skill/--status]` | Query discussions |
-| `popsicle discussion show <id>` | Show discussion with full conversation |
-| `popsicle discussion conclude <id> [--confidence <1-5>]` | Conclude a discussion |
-| `popsicle discussion export <id> [--output <path>]` | Export discussion as Markdown |
 
 ### Memory
 
@@ -431,7 +400,7 @@ When `--spec` is not specified, `issue create` auto-matches the issue to a Spec 
 | `popsicle context bootstrap --generate-prompt` | Generate a bootstrap LLM prompt from the module's `bootstrap.md` |
 | `popsicle context bootstrap --apply <file>` | Apply a bootstrap plan (LLM output) to create namespaces and specs |
 | `popsicle prompt <skill> [--state <s>] [--run <id>]` | AI prompt with upstream context + memory injected |
-| `popsicle migrate --skill <s> <paths...>` | Import existing Markdown docs into a pipeline run |
+| `popsicle admin migrate --skill <s> <paths...>` | Import existing Markdown docs into a pipeline run |
 | `popsicle completions <zsh/bash/fish>` | Generate shell completions |
 
 All commands support `--format json` for machine consumption.
@@ -554,7 +523,7 @@ Popsicle enforces a strict entity creation order and an exclusive Spec lock:
 Namespace → Spec (with tags) → Issue → PipelineRun → Document
 ```
 
-1. **Create a Namespace** — `popsicle namespace create "my-project"`
+1. **Create a Namespace** — `popsicle admin namespace create "my-project"`
 2. **Create Specs with tags** — `popsicle spec create "auth" -t security,backend --namespace "my-project"`
 3. **Create an Issue** — `popsicle issue create --type product --title "Add JWT auth"` (auto-matched to spec by tags, or use `--spec`)
 4. **Start the Issue** — `popsicle issue start PROJ-1` — this is the **only** way to create a PipelineRun. This also **acquires an exclusive lock** on the Spec — if the Spec is already locked by another run, the command is rejected. Direct `pipeline run` no longer exists.

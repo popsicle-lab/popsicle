@@ -33,10 +33,7 @@ const navItems: {
 
 const issueChildKinds = new Set<Page["kind"]>([
   "issue",
-  "story",
-  "bug",
-  "testcase",
-  "discussion",
+  "workitem",
 ]);
 
 export function Sidebar({ page, setPage }: Props) {

@@ -6,7 +6,7 @@ use popsicle_core::git::GitTracker;
 use popsicle_core::helpers;
 use popsicle_core::memory::{MemoryLayer, MemoryStore, MemoryType};
 use popsicle_core::model::{
-    Bug, BugSeverity, Issue, IssueStatus, IssueType, PipelineRun, Priority, Spec, StageState,
+    Issue, IssueStatus, IssueType, PipelineRun, Priority, Spec, StageState, WorkItem, WorkItemKind,
 };
 use popsicle_core::storage::{DocumentRow, FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 use tauri::State;
@@ -503,99 +503,6 @@ pub fn get_commit_links(
     Ok(result)
 }
 
-#[tauri::command]
-pub fn list_discussions(
-    run_id: Option<String>,
-    skill: Option<String>,
-    status: Option<String>,
-    state: State<AppState>,
-) -> Result<Vec<DiscussionInfo>, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let discussions = db
-        .query_discussions(run_id.as_deref(), skill.as_deref(), status.as_deref())
-        .map_err(|e| e.to_string())?;
-
-    Ok(discussions
-        .iter()
-        .map(|d| {
-            let msg_count = db
-                .get_discussion_messages(&d.id)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            DiscussionInfo {
-                id: d.id.clone(),
-                document_id: d.document_id.clone(),
-                skill: d.skill.clone(),
-                pipeline_run_id: d.pipeline_run_id.clone(),
-                topic: d.topic.clone(),
-                status: d.status.to_string(),
-                user_confidence: d.user_confidence,
-                message_count: msg_count,
-                created_at: d.created_at.to_rfc3339(),
-                concluded_at: d.concluded_at.map(|t| t.to_rfc3339()),
-            }
-        })
-        .collect())
-}
-
-#[tauri::command]
-pub fn get_discussion(
-    discussion_id: String,
-    state: State<AppState>,
-) -> Result<DiscussionFull, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let disc = db
-        .get_discussion(&discussion_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Discussion not found: {}", discussion_id))?;
-    let roles = db
-        .get_discussion_roles(&discussion_id)
-        .map_err(|e| e.to_string())?;
-    let messages = db
-        .get_discussion_messages(&discussion_id)
-        .map_err(|e| e.to_string())?;
-
-    Ok(DiscussionFull {
-        id: disc.id,
-        document_id: disc.document_id,
-        skill: disc.skill,
-        pipeline_run_id: disc.pipeline_run_id,
-        topic: disc.topic,
-        status: disc.status.to_string(),
-        user_confidence: disc.user_confidence,
-        roles: roles
-            .iter()
-            .map(|r| DiscussionRoleInfo {
-                role_id: r.role_id.clone(),
-                role_name: r.role_name.clone(),
-                perspective: r.perspective.clone(),
-                source: r.source.to_string(),
-            })
-            .collect(),
-        messages: messages
-            .iter()
-            .map(|m| DiscussionMessageInfo {
-                id: m.id.clone(),
-                phase: m.phase.clone(),
-                role_id: m.role_id.clone(),
-                role_name: m.role_name.clone(),
-                content: m.content.clone(),
-                message_type: m.message_type.to_string(),
-                reply_to: m.reply_to.clone(),
-                timestamp: m.timestamp.to_rfc3339(),
-            })
-            .collect(),
-        created_at: disc.created_at.to_rfc3339(),
-        concluded_at: disc.concluded_at.map(|t| t.to_rfc3339()),
-    })
-}
-
 // ── Document search ──
 
 #[tauri::command]
@@ -1079,338 +986,158 @@ pub fn get_project_context(state: State<AppState>) -> Result<ProjectContextInfo,
     }
 }
 
-// ── Bug commands ──
+// ── WorkItem commands (unified bug/story/test_case) ──
 
-fn bug_to_info(b: &Bug) -> BugInfo {
-    BugInfo {
-        id: b.id.clone(),
-        key: b.key.clone(),
-        title: b.title.clone(),
-        severity: b.severity.to_string(),
-        priority: b.priority.to_string(),
-        status: b.status.to_string(),
-        source: b.source.to_string(),
-        issue_id: b.issue_id.clone(),
-        pipeline_run_id: b.pipeline_run_id.clone(),
-        labels: b.labels.clone(),
-        created_at: b.created_at.to_rfc3339(),
-        updated_at: b.updated_at.to_rfc3339(),
+fn work_item_to_info(w: &WorkItem) -> WorkItemInfo {
+    WorkItemInfo {
+        id: w.id.clone(),
+        key: w.key.clone(),
+        kind: w.kind.as_str().to_string(),
+        title: w.title.clone(),
+        status: w.status.clone(),
+        priority: w.priority.to_string(),
+        labels: w.labels.clone(),
+        issue_id: w.issue_id.clone(),
+        pipeline_run_id: w.pipeline_run_id.clone(),
+        created_at: w.created_at.to_rfc3339(),
+        updated_at: w.updated_at.to_rfc3339(),
+    }
+}
+
+fn work_item_to_full(w: WorkItem) -> WorkItemFull {
+    WorkItemFull {
+        id: w.id,
+        key: w.key,
+        kind: w.kind.as_str().to_string(),
+        title: w.title,
+        description: w.description,
+        status: w.status,
+        priority: w.priority.to_string(),
+        labels: w.labels,
+        issue_id: w.issue_id,
+        pipeline_run_id: w.pipeline_run_id,
+        source_doc_id: w.source_doc_id,
+        fields: w.fields,
+        created_at: w.created_at.to_rfc3339(),
+        updated_at: w.updated_at.to_rfc3339(),
     }
 }
 
 #[tauri::command]
-pub fn list_bugs(
-    severity: Option<String>,
+pub fn list_work_items(
+    kind: Option<String>,
     status: Option<String>,
     issue_id: Option<String>,
     run_id: Option<String>,
     state: State<AppState>,
-) -> Result<Vec<BugInfo>, String> {
+) -> Result<Vec<WorkItemInfo>, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
 
-    let bugs = db
-        .query_bugs(
-            severity.as_deref(),
-            status.as_deref(),
-            issue_id.as_deref(),
-            run_id.as_deref(),
-        )
+    let k = match kind {
+        Some(s) => Some(s.parse::<WorkItemKind>().map_err(|e| e.to_string())?),
+        None => None,
+    };
+    let items = db
+        .query_work_items(k, status.as_deref(), issue_id.as_deref(), run_id.as_deref())
         .map_err(|e| e.to_string())?;
-
-    Ok(bugs.iter().map(bug_to_info).collect())
+    Ok(items.iter().map(work_item_to_info).collect())
 }
 
 #[tauri::command]
-pub fn get_bug(key: String, state: State<AppState>) -> Result<BugFull, String> {
+pub fn get_work_item(key: String, state: State<AppState>) -> Result<WorkItemFull, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let bug = db
-        .get_bug(&key)
+    let item = db
+        .get_work_item(&key)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Bug not found: {}", key))?;
-
-    Ok(BugFull {
-        id: bug.id,
-        key: bug.key,
-        title: bug.title,
-        description: bug.description,
-        severity: bug.severity.to_string(),
-        priority: bug.priority.to_string(),
-        status: bug.status.to_string(),
-        steps_to_reproduce: bug.steps_to_reproduce,
-        expected_behavior: bug.expected_behavior,
-        actual_behavior: bug.actual_behavior,
-        environment: bug.environment,
-        stack_trace: bug.stack_trace,
-        source: bug.source.to_string(),
-        related_test_case_id: bug.related_test_case_id,
-        related_commit_sha: bug.related_commit_sha,
-        fix_commit_sha: bug.fix_commit_sha,
-        issue_id: bug.issue_id,
-        pipeline_run_id: bug.pipeline_run_id,
-        labels: bug.labels,
-        created_at: bug.created_at.to_rfc3339(),
-        updated_at: bug.updated_at.to_rfc3339(),
-    })
+        .ok_or_else(|| format!("Work item not found: {}", key))?;
+    Ok(work_item_to_full(item))
 }
 
 #[tauri::command]
-pub fn create_bug(
+#[allow(clippy::too_many_arguments)]
+pub fn create_work_item(
+    kind: String,
     title: String,
-    severity: String,
+    description: Option<String>,
     priority: Option<String>,
     issue_id: Option<String>,
     run_id: Option<String>,
+    fields: Option<serde_json::Value>,
     state: State<AppState>,
-) -> Result<BugInfo, String> {
+) -> Result<WorkItemInfo, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let config = ProjectConfig::load(&layout.config_path()).map_err(|e| e.to_string())?;
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
 
-    let sev: BugSeverity = severity.parse().map_err(|e: String| e)?;
+    let k: WorkItemKind = kind.parse().map_err(|e: String| e)?;
     let prefix = config.project.key_prefix_or_default();
-    let seq = db.next_bug_seq(prefix).map_err(|e| e.to_string())?;
-    let key = format!("BUG-{}-{}", prefix, seq);
+    let seq = db
+        .next_work_item_seq(k, prefix)
+        .map_err(|e| e.to_string())?;
+    let key = format!("{}-{}-{}", k.key_prefix(), prefix, seq);
 
-    let mut bug = Bug::new(key, &title, sev);
+    let mut wi = WorkItem::new(key, k, &title);
+    if let Some(d) = description {
+        wi.description = d;
+    }
     if let Some(p) = priority {
-        bug.priority = p.parse().map_err(|e: String| e)?;
+        wi.priority = p.parse().map_err(|e: String| e)?;
     }
-    bug.issue_id = issue_id;
-    bug.pipeline_run_id = run_id;
+    wi.issue_id = issue_id;
+    wi.pipeline_run_id = run_id;
+    if let Some(f) = fields
+        && f.is_object()
+    {
+        wi.fields = f;
+    }
 
-    db.create_bug(&bug).map_err(|e| e.to_string())?;
-    Ok(bug_to_info(&bug))
+    db.create_work_item(&wi).map_err(|e| e.to_string())?;
+    Ok(work_item_to_info(&wi))
 }
 
 #[tauri::command]
-pub fn update_bug(
+pub fn update_work_item(
     key: String,
+    title: Option<String>,
     status: Option<String>,
-    severity: Option<String>,
-    fix_commit: Option<String>,
-    state: State<AppState>,
-) -> Result<BugInfo, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let mut bug = db
-        .get_bug(&key)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Bug not found: {}", key))?;
-
-    if let Some(s) = status {
-        bug.status = s.parse().map_err(|e: String| e)?;
-    }
-    if let Some(s) = severity {
-        bug.severity = s.parse().map_err(|e: String| e)?;
-    }
-    if let Some(fc) = fix_commit {
-        bug.fix_commit_sha = Some(fc);
-    }
-
-    db.update_bug(&bug).map_err(|e| e.to_string())?;
-    Ok(bug_to_info(&bug))
-}
-
-// ── TestCase commands ──
-
-#[tauri::command]
-pub fn list_test_cases(
-    test_type: Option<String>,
     priority: Option<String>,
-    status: Option<String>,
-    run_id: Option<String>,
+    fields: Option<serde_json::Value>,
     state: State<AppState>,
-) -> Result<Vec<TestCaseInfo>, String> {
+) -> Result<WorkItemInfo, String> {
     let dir = get_dir(&state)?;
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
 
-    let cases = db
-        .query_test_cases(
-            test_type.as_deref(),
-            priority.as_deref(),
-            status.as_deref(),
-            None,
-            run_id.as_deref(),
-        )
-        .map_err(|e| e.to_string())?;
-
-    Ok(cases
-        .iter()
-        .map(|tc| TestCaseInfo {
-            id: tc.id.clone(),
-            key: tc.key.clone(),
-            title: tc.title.clone(),
-            test_type: tc.test_type.to_string(),
-            priority_level: tc.priority_level.to_string(),
-            status: tc.status.to_string(),
-            source_doc_id: tc.source_doc_id.clone(),
-            user_story_id: tc.user_story_id.clone(),
-            issue_id: tc.issue_id.clone(),
-            pipeline_run_id: tc.pipeline_run_id.clone(),
-            created_at: tc.created_at.to_rfc3339(),
-            updated_at: tc.updated_at.to_rfc3339(),
-        })
-        .collect())
-}
-
-#[tauri::command]
-pub fn get_test_case(key: String, state: State<AppState>) -> Result<TestCaseFull, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let tc = db
-        .get_test_case(&key)
+    let mut wi = db
+        .get_work_item(&key)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("TestCase not found: {}", key))?;
+        .ok_or_else(|| format!("Work item not found: {}", key))?;
 
-    Ok(TestCaseFull {
-        id: tc.id,
-        key: tc.key,
-        title: tc.title,
-        description: tc.description,
-        test_type: tc.test_type.to_string(),
-        priority_level: tc.priority_level.to_string(),
-        status: tc.status.to_string(),
-        preconditions: tc.preconditions,
-        steps: tc.steps,
-        expected_result: tc.expected_result,
-        source_doc_id: tc.source_doc_id,
-        user_story_id: tc.user_story_id,
-        issue_id: tc.issue_id,
-        pipeline_run_id: tc.pipeline_run_id,
-        labels: tc.labels,
-        created_at: tc.created_at.to_rfc3339(),
-        updated_at: tc.updated_at.to_rfc3339(),
-    })
-}
-
-#[tauri::command]
-pub fn get_test_coverage(
-    run_id: Option<String>,
-    state: State<AppState>,
-) -> Result<TestCoverageSummary, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let cases = db
-        .query_test_cases(None, None, None, None, run_id.as_deref())
-        .map_err(|e| e.to_string())?;
-
-    let total = cases.len();
-    let mut passed = 0usize;
-    let mut failed = 0usize;
-    let mut no_runs = 0usize;
-
-    for tc in &cases {
-        match db.latest_test_run(&tc.id).map_err(|e| e.to_string())? {
-            Some(tr) if tr.passed => passed += 1,
-            Some(_) => failed += 1,
-            None => no_runs += 1,
+    if let Some(t) = title {
+        wi.title = t;
+    }
+    if let Some(s) = status {
+        wi.status = s;
+    }
+    if let Some(p) = priority {
+        wi.priority = p.parse().map_err(|e: String| e)?;
+    }
+    if let Some(f) = fields
+        && let Some(obj) = f.as_object()
+    {
+        for (k, v) in obj {
+            wi.set_field(k, v.clone());
         }
     }
+    wi.updated_at = chrono::Utc::now();
 
-    let pass_rate = if total > 0 {
-        (passed as f64 / total as f64) * 100.0
-    } else {
-        0.0
-    };
-
-    Ok(TestCoverageSummary {
-        total,
-        passed,
-        failed,
-        no_runs,
-        pass_rate,
-    })
-}
-
-// ── UserStory commands ──
-
-#[tauri::command]
-pub fn list_user_stories(
-    status: Option<String>,
-    issue_id: Option<String>,
-    run_id: Option<String>,
-    state: State<AppState>,
-) -> Result<Vec<UserStoryInfo>, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let stories = db
-        .query_user_stories(status.as_deref(), issue_id.as_deref(), run_id.as_deref())
-        .map_err(|e| e.to_string())?;
-
-    Ok(stories
-        .iter()
-        .map(|s| {
-            let verified = s.acceptance_criteria.iter().filter(|a| a.verified).count();
-            UserStoryInfo {
-                id: s.id.clone(),
-                key: s.key.clone(),
-                title: s.title.clone(),
-                persona: s.persona.clone(),
-                priority: s.priority.to_string(),
-                status: s.status.to_string(),
-                issue_id: s.issue_id.clone(),
-                pipeline_run_id: s.pipeline_run_id.clone(),
-                ac_count: s.acceptance_criteria.len(),
-                ac_verified: verified,
-                created_at: s.created_at.to_rfc3339(),
-                updated_at: s.updated_at.to_rfc3339(),
-            }
-        })
-        .collect())
-}
-
-#[tauri::command]
-pub fn get_user_story(key: String, state: State<AppState>) -> Result<UserStoryFull, String> {
-    let dir = get_dir(&state)?;
-    let layout = ProjectLayout::new(&dir);
-    let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
-
-    let story = db
-        .get_user_story(&key)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("User story not found: {}", key))?;
-
-    Ok(UserStoryFull {
-        id: story.id,
-        key: story.key,
-        title: story.title,
-        description: story.description,
-        persona: story.persona,
-        goal: story.goal,
-        benefit: story.benefit,
-        priority: story.priority.to_string(),
-        status: story.status.to_string(),
-        source_doc_id: story.source_doc_id,
-        issue_id: story.issue_id,
-        pipeline_run_id: story.pipeline_run_id,
-        acceptance_criteria: story
-            .acceptance_criteria
-            .iter()
-            .map(|ac| AcceptanceCriterionInfo {
-                id: ac.id.clone(),
-                description: ac.description.clone(),
-                verified: ac.verified,
-                test_case_ids: ac.test_case_ids.clone(),
-            })
-            .collect(),
-        created_at: story.created_at.to_rfc3339(),
-        updated_at: story.updated_at.to_rfc3339(),
-    })
+    db.update_work_item(&wi).map_err(|e| e.to_string())?;
+    Ok(work_item_to_info(&wi))
 }
 
 // ── Memory commands ──

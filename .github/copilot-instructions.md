@@ -37,20 +37,20 @@ CI enforces zero warnings via `RUSTFLAGS="-Dwarnings"`. The pre-commit hook (`ma
 ### Workspace layout
 
 - **`crates/popsicle-core`** — Domain models, storage, engine logic, registries. No CLI or UI concerns.
-- **`crates/popsicle-cli`** — clap v4 CLI (`popsicle` binary) with 22 subcommands. Also contains the Tauri backend behind `--features ui`.
+- **`crates/popsicle-cli`** — clap v4 CLI (`popsicle` binary) with ~17 top-level subcommands (low-frequency operations grouped under `popsicle admin`). Also contains the Tauri backend behind `--features ui`.
 - **`ui/`** — React 19 + TypeScript + Tailwind CSS frontend, bundled by Vite into `ui/dist/` and embedded into the Tauri binary.
 
 ### Entity hierarchy
 
 ```
 Namespace → Spec (locked_by_run_id) → Issue → PipelineRun → Document
-                                        ├── Bug
-                                        ├── UserStory
-                                        └── TestCase
+                                                          └─ WorkItem (kind: bug | story | testcase)
 ```
 
 - **Spec lock**: Only one PipelineRun can operate on a Spec at a time. `issue start` acquires the lock; it auto-releases when all stages complete.
 - **Documents have no independent state machine** — they are "active" while a stage runs and "final" when the stage completes.
+- **WorkItem unified**: Bugs / user stories / test cases share a single `work_items` table, distinguished by a `kind` discriminator and a JSON `fields` blob for kind-specific data (severity, acceptance criteria, steps). The legacy `Bug` / `UserStory` / `TestCase` model files no longer exist.
+- **Discussions are Documents**: Multi-role debates produced by `arch-debate` / `product-debate` are stored as `Document` rows with `kind = "discussion"`. There is no separate Discussion entity, table, or CLI command.
 
 ### Skill anatomy (three files, three audiences)
 
@@ -75,7 +75,9 @@ Skills, Pipelines, and Tools resolve in this order (later wins):
 
 ### Context assembly for LLM prompts
 
-The `engine::context` module assembles upstream documents sorted by `Relevance` (Low → Medium → High). Low-relevance inputs inject summary-only; High injects full text. This optimizes for LLM attention distribution.
+Upstream documents are assembled by `engine::context` and sorted by `Relevance` (Low → Medium → High). Low-relevance inputs inject summary-only; High injects full text. This optimizes for LLM attention distribution (most relevant content sits closest to the user prompt).
+
+The higher-level `engine::context_layer::ContextLayer` trait pluggably composes prompt sections. Built-in layers: `ProjectContextLayer`, `MemoriesLayer`, `HistoricalRefsLayer`, `UpstreamDocsLayer`. The `commands::prompt` command builds a `Vec<Box<dyn ContextLayer>>` and calls `assemble_layers(layers, &base_prompt)` instead of hand-rolling section ordering.
 
 ### CLI ↔ UI boundary
 

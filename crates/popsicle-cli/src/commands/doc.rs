@@ -7,6 +7,7 @@ use popsicle_core::model::{Document, PipelineDef, StageState};
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectLayout};
 
 use crate::OutputFormat;
+use crate::commands::{checklist, extract};
 
 #[derive(clap::Subcommand)]
 pub enum DocCommand {
@@ -55,6 +56,12 @@ pub enum DocCommand {
         #[arg(long, default_value_t = false)]
         generate_prompt: bool,
     },
+    /// View and update document checklists (check/uncheck items via CLI)
+    #[command(subcommand)]
+    Check(checklist::ChecklistCommand),
+    /// Extract structured entities (user stories, test cases, bugs) from documents
+    #[command(subcommand)]
+    Extract(extract::ExtractCommand),
 }
 
 pub fn execute(cmd: DocCommand, format: &OutputFormat) -> anyhow::Result<()> {
@@ -78,6 +85,8 @@ pub fn execute(cmd: DocCommand, format: &OutputFormat) -> anyhow::Result<()> {
             generate_prompt,
             format,
         ),
+        DocCommand::Check(sub) => checklist::execute(sub, format),
+        DocCommand::Extract(sub) => extract::execute(sub, format),
     }
 }
 

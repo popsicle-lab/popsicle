@@ -1,55 +1,6 @@
 use serde::Serialize;
 
 #[derive(Serialize)]
-pub struct DiscussionInfo {
-    pub id: String,
-    pub document_id: Option<String>,
-    pub skill: String,
-    pub pipeline_run_id: String,
-    pub topic: String,
-    pub status: String,
-    pub user_confidence: Option<i32>,
-    pub message_count: usize,
-    pub created_at: String,
-    pub concluded_at: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct DiscussionFull {
-    pub id: String,
-    pub document_id: Option<String>,
-    pub skill: String,
-    pub pipeline_run_id: String,
-    pub topic: String,
-    pub status: String,
-    pub user_confidence: Option<i32>,
-    pub roles: Vec<DiscussionRoleInfo>,
-    pub messages: Vec<DiscussionMessageInfo>,
-    pub created_at: String,
-    pub concluded_at: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct DiscussionRoleInfo {
-    pub role_id: String,
-    pub role_name: String,
-    pub perspective: Option<String>,
-    pub source: String,
-}
-
-#[derive(Serialize)]
-pub struct DiscussionMessageInfo {
-    pub id: String,
-    pub phase: String,
-    pub role_id: String,
-    pub role_name: String,
-    pub content: String,
-    pub message_type: String,
-    pub reply_to: Option<String>,
-    pub timestamp: String,
-}
-
-#[derive(Serialize)]
 pub struct ProjectInfo {
     pub path: String,
     pub initialized: bool,
@@ -354,151 +305,39 @@ pub struct ProjectContextInfo {
     pub path: Option<String>,
 }
 
-// ── Bug ──
+// ── WorkItem ──
 
 #[derive(Serialize)]
-pub struct BugInfo {
+pub struct WorkItemInfo {
     pub id: String,
     pub key: String,
+    pub kind: String,
     pub title: String,
-    pub severity: String,
-    pub priority: String,
     pub status: String,
-    pub source: String,
-    pub issue_id: Option<String>,
-    pub pipeline_run_id: Option<String>,
+    pub priority: String,
     pub labels: Vec<String>,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
 #[derive(Serialize)]
-pub struct BugFull {
+pub struct WorkItemFull {
     pub id: String,
     pub key: String,
+    pub kind: String,
     pub title: String,
     pub description: String,
-    pub severity: String,
-    pub priority: String,
     pub status: String,
-    pub steps_to_reproduce: Vec<String>,
-    pub expected_behavior: String,
-    pub actual_behavior: String,
-    pub environment: Option<String>,
-    pub stack_trace: Option<String>,
-    pub source: String,
-    pub related_test_case_id: Option<String>,
-    pub related_commit_sha: Option<String>,
-    pub fix_commit_sha: Option<String>,
-    pub issue_id: Option<String>,
-    pub pipeline_run_id: Option<String>,
+    pub priority: String,
     pub labels: Vec<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-// ── TestCase ──
-
-#[derive(Serialize)]
-pub struct TestCaseInfo {
-    pub id: String,
-    pub key: String,
-    pub title: String,
-    pub test_type: String,
-    pub priority_level: String,
-    pub status: String,
+    pub issue_id: Option<String>,
+    pub pipeline_run_id: Option<String>,
     pub source_doc_id: Option<String>,
-    pub user_story_id: Option<String>,
-    pub issue_id: Option<String>,
-    pub pipeline_run_id: Option<String>,
+    pub fields: serde_json::Value,
     pub created_at: String,
     pub updated_at: String,
-}
-
-#[derive(Serialize)]
-pub struct TestCaseFull {
-    pub id: String,
-    pub key: String,
-    pub title: String,
-    pub description: String,
-    pub test_type: String,
-    pub priority_level: String,
-    pub status: String,
-    pub preconditions: Vec<String>,
-    pub steps: Vec<String>,
-    pub expected_result: String,
-    pub source_doc_id: Option<String>,
-    pub user_story_id: Option<String>,
-    pub issue_id: Option<String>,
-    pub pipeline_run_id: Option<String>,
-    pub labels: Vec<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Serialize)]
-pub struct TestRunInfo {
-    pub id: String,
-    pub test_case_id: String,
-    pub passed: bool,
-    pub duration_ms: Option<u64>,
-    pub error_message: Option<String>,
-    pub commit_sha: Option<String>,
-    pub run_at: String,
-}
-
-#[derive(Serialize)]
-pub struct TestCoverageSummary {
-    pub total: usize,
-    pub passed: usize,
-    pub failed: usize,
-    pub no_runs: usize,
-    pub pass_rate: f64,
-}
-
-// ── UserStory ──
-
-#[derive(Serialize)]
-pub struct UserStoryInfo {
-    pub id: String,
-    pub key: String,
-    pub title: String,
-    pub persona: String,
-    pub priority: String,
-    pub status: String,
-    pub issue_id: Option<String>,
-    pub pipeline_run_id: Option<String>,
-    pub ac_count: usize,
-    pub ac_verified: usize,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Serialize)]
-pub struct UserStoryFull {
-    pub id: String,
-    pub key: String,
-    pub title: String,
-    pub description: String,
-    pub persona: String,
-    pub goal: String,
-    pub benefit: String,
-    pub priority: String,
-    pub status: String,
-    pub source_doc_id: Option<String>,
-    pub issue_id: Option<String>,
-    pub pipeline_run_id: Option<String>,
-    pub acceptance_criteria: Vec<AcceptanceCriterionInfo>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Serialize)]
-pub struct AcceptanceCriterionInfo {
-    pub id: String,
-    pub description: String,
-    pub verified: bool,
-    pub test_case_ids: Vec<String>,
 }
 
 // ── Spec ──

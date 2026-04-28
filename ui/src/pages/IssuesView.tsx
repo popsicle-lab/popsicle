@@ -4,9 +4,7 @@ import {
   listPipelines,
   createIssue,
   getIssueProgress,
-  listUserStories,
-  listTestCases,
-  listBugs,
+  listWorkItems,
   type IssueInfo,
   type IssueProgress,
   type PipelineInfo,
@@ -20,7 +18,6 @@ import {
   BookOpen,
   FlaskConical,
   Bug,
-  MessageCircle,
 } from "lucide-react";
 import type { Page } from "../App";
 
@@ -46,7 +43,6 @@ interface IssueCounts {
   stories: number;
   tests: number;
   bugs: number;
-  discussions: number;
 }
 
 export function IssuesView({ setPage }: Props) {
@@ -85,11 +81,14 @@ export function IssuesView({ setPage }: Props) {
 
         Promise.all(
           list.map(async (issue) => {
-            const [stories, tests, bugs, discussions] = await Promise.all([
-              listUserStories({ issueId: issue.id }).catch(() => []),
-              listTestCases({}).catch(() => []),
-              listBugs({ issueId: issue.id }).catch(() => []),
-              Promise.resolve([]),
+            const [stories, tests, bugs] = await Promise.all([
+              listWorkItems({ kind: "story", issueId: issue.id }).catch(
+                () => []
+              ),
+              listWorkItems({ kind: "testcase" }).catch(() => []),
+              listWorkItems({ kind: "bug", issueId: issue.id }).catch(
+                () => []
+              ),
             ]);
             return [
               issue.key,
@@ -97,7 +96,6 @@ export function IssuesView({ setPage }: Props) {
                 stories: stories.length,
                 tests: tests.length,
                 bugs: bugs.length,
-                discussions: discussions.length,
               },
             ] as const;
           })
@@ -272,11 +270,6 @@ export function IssuesView({ setPage }: Props) {
                             icon={Bug}
                             count={entityCounts.bugs}
                             color="text-red-400"
-                          />
-                          <EntityBadge
-                            icon={MessageCircle}
-                            count={entityCounts.discussions}
-                            color="text-purple-400"
                           />
                         </div>
                       )}

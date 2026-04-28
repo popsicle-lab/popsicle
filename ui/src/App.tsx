@@ -6,12 +6,9 @@ import { PipelineView } from "./pages/PipelineView";
 import { DocumentView } from "./pages/DocumentView";
 import { SkillsView } from "./pages/SkillsView";
 import { GitView } from "./pages/GitView";
-import { DiscussionDetailView } from "./pages/DiscussionDetailView";
 import { IssuesView } from "./pages/IssuesView";
 import { IssueDetailView } from "./pages/IssueDetailView";
-import { BugDetailView } from "./pages/BugDetailView";
-import { TestCaseDetailView } from "./pages/TestCaseDetailView";
-import { StoryDetailView } from "./pages/StoryDetailView";
+import { WorkItemDetailView } from "./pages/WorkItemDetailView";
 import { MemoriesView } from "./pages/MemoriesView";
 import { SearchView } from "./pages/SearchView";
 import { SpecsView } from "./pages/SpecsView";
@@ -28,10 +25,7 @@ export type Page =
   | { kind: "git" }
   | { kind: "issues" }
   | { kind: "issue"; issueKey: string; tab?: string }
-  | { kind: "discussion"; discussionId: string; fromIssue?: string }
-  | { kind: "bug"; bugKey: string; fromIssue?: string }
-  | { kind: "testcase"; testCaseKey: string; fromIssue?: string }
-  | { kind: "story"; storyKey: string; fromIssue?: string }
+  | { kind: "workitem"; itemKey: string; fromIssue?: string }
   | { kind: "memories" }
   | { kind: "search" }
   | { kind: "specs" }
@@ -114,34 +108,10 @@ export default function App() {
             initialTab={page.tab as any}
           />
         )}
-        {page.kind === "discussion" && (
-          <DiscussionDetailView
-            key={`${page.discussionId}-${refreshKey}`}
-            discussionId={page.discussionId}
-            setPage={setPage}
-            fromIssue={page.fromIssue}
-          />
-        )}
-        {page.kind === "bug" && (
-          <BugDetailView
-            key={`${page.bugKey}-${refreshKey}`}
-            bugKey={page.bugKey}
-            setPage={setPage}
-            fromIssue={page.fromIssue}
-          />
-        )}
-        {page.kind === "testcase" && (
-          <TestCaseDetailView
-            key={`${page.testCaseKey}-${refreshKey}`}
-            testCaseKey={page.testCaseKey}
-            setPage={setPage}
-            fromIssue={page.fromIssue}
-          />
-        )}
-        {page.kind === "story" && (
-          <StoryDetailView
-            key={`${page.storyKey}-${refreshKey}`}
-            storyKey={page.storyKey}
+        {page.kind === "workitem" && (
+          <WorkItemDetailView
+            key={`${page.itemKey}-${refreshKey}`}
+            itemKey={page.itemKey}
             setPage={setPage}
             fromIssue={page.fromIssue}
           />

@@ -90,7 +90,7 @@ pub fn canonical_path(kind: EntityKind, id: Uuid, payload: &Value) -> Option<Pat
                     .join(filename),
             )
         }
-        EntityKind::Bug | EntityKind::UserStory | EntityKind::TestCase => {
+        EntityKind::WorkItem => {
             let spec = string_field(payload, "spec_slug")
                 .or_else(|| string_field(payload, "spec_id"))
                 .unwrap_or_else(|| "_unknown".into());
@@ -100,18 +100,12 @@ pub fn canonical_path(kind: EntityKind, id: Uuid, payload: &Value) -> Option<Pat
             let slug = string_field(payload, "slug")
                 .or_else(|| string_field(payload, "key"))
                 .unwrap_or_else(|| id.to_string());
-            let dir = match kind {
-                EntityKind::Bug => "bugs",
-                EntityKind::UserStory => "stories",
-                EntityKind::TestCase => "tests",
-                _ => unreachable!(),
-            };
             Some(
                 PathBuf::from("specs")
                     .join(safe_slug(&spec))
                     .join("issues")
                     .join(safe_slug(&issue))
-                    .join(dir)
+                    .join("work_items")
                     .join(format!("{}.md", safe_slug(&slug))),
             )
         }

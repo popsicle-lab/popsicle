@@ -5,10 +5,8 @@ use popsicle_core::engine::guard::{check_guard, count_checkboxes};
 use popsicle_core::engine::hooks::{self, HookContext, HookEvent};
 use popsicle_core::engine::{Advisor, PipelineRecommender};
 use popsicle_core::helpers;
-use popsicle_core::model::bug::BugSource;
 use popsicle_core::model::skill::ExtractionSpec;
-use popsicle_core::model::testcase::TestType;
-use popsicle_core::model::{IssueStatus, PipelineDef, PipelineRun, StageState};
+use popsicle_core::model::{IssueStatus, PipelineDef, PipelineRun, StageState, WorkItemKind};
 use popsicle_core::storage::{FileStorage, IndexDb, ProjectConfig, ProjectLayout};
 
 use crate::OutputFormat;
@@ -1394,13 +1392,13 @@ fn run_declarative_extractions(
                 ExtractionSpec::UserStories => {
                     let extracted = extractor::extract_user_stories(doc);
                     let mut count = 0;
-                    for mut story in extracted {
-                        if let Ok(seq) = db.next_story_seq(prefix) {
-                            story.key = format!("US-{}-{}", prefix, seq);
-                            story.source_doc_id = Some(doc_id.to_string());
-                            story.pipeline_run_id = run_id_opt.map(String::from);
-                            story.issue_id = issue_id.clone();
-                            if db.create_user_story(&story).is_ok() {
+                    for mut item in extracted {
+                        if let Ok(seq) = db.next_work_item_seq(WorkItemKind::Story, prefix) {
+                            item.key = format!("STORY-{}-{}", prefix, seq);
+                            item.source_doc_id = Some(doc_id.to_string());
+                            item.pipeline_run_id = run_id_opt.map(String::from);
+                            item.issue_id = issue_id.clone();
+                            if db.create_work_item(&item).is_ok() {
                                 count += 1;
                             }
                         }
@@ -1410,16 +1408,15 @@ fn run_declarative_extractions(
                     }
                 }
                 ExtractionSpec::TestCases { test_type } => {
-                    let tt: TestType = test_type.parse().unwrap_or(TestType::Unit);
-                    let extracted = extractor::extract_test_cases(doc, tt);
+                    let extracted = extractor::extract_test_cases(doc, test_type);
                     let mut count = 0;
-                    for mut tc in extracted {
-                        if let Ok(seq) = db.next_testcase_seq(prefix) {
-                            tc.key = format!("TC-{}-{}", prefix, seq);
-                            tc.source_doc_id = Some(doc_id.to_string());
-                            tc.pipeline_run_id = run_id_opt.map(String::from);
-                            tc.issue_id = issue_id.clone();
-                            if db.create_test_case(&tc).is_ok() {
+                    for mut item in extracted {
+                        if let Ok(seq) = db.next_work_item_seq(WorkItemKind::TestCase, prefix) {
+                            item.key = format!("TC-{}-{}", prefix, seq);
+                            item.source_doc_id = Some(doc_id.to_string());
+                            item.pipeline_run_id = run_id_opt.map(String::from);
+                            item.issue_id = issue_id.clone();
+                            if db.create_work_item(&item).is_ok() {
                                 count += 1;
                             }
                         }
@@ -1431,13 +1428,13 @@ fn run_declarative_extractions(
                 ExtractionSpec::Bugs => {
                     let extracted = extractor::extract_bugs(doc);
                     let mut count = 0;
-                    for mut bug in extracted {
-                        if let Ok(seq) = db.next_bug_seq(prefix) {
-                            bug.key = format!("BUG-{}-{}", prefix, seq);
-                            bug.source = BugSource::DocExtracted;
-                            bug.pipeline_run_id = run_id_opt.map(String::from);
-                            bug.issue_id = issue_id.clone();
-                            if db.create_bug(&bug).is_ok() {
+                    for mut item in extracted {
+                        if let Ok(seq) = db.next_work_item_seq(WorkItemKind::Bug, prefix) {
+                            item.key = format!("BUG-{}-{}", prefix, seq);
+                            item.set_field("source", serde_json::json!("doc_extracted"));
+                            item.pipeline_run_id = run_id_opt.map(String::from);
+                            item.issue_id = issue_id.clone();
+                            if db.create_work_item(&item).is_ok() {
                                 count += 1;
                             }
                         }

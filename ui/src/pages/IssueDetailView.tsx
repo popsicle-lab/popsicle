@@ -5,17 +5,11 @@ import {
   updateIssue,
   getIssueProgress,
   getActivity,
-  listUserStories,
-  listTestCases,
-  listBugs,
-  listDiscussions,
+  listWorkItems,
   type IssueFull,
   type IssueProgress,
   type ActivityEvent,
-  type UserStoryInfo,
-  type TestCaseInfo,
-  type BugInfo,
-  type DiscussionInfo,
+  type WorkItemInfo,
 } from "../hooks/useTauri";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -31,13 +25,11 @@ import {
   BookOpen,
   FlaskConical,
   Bug,
-  MessageCircle,
   ArrowRight,
-  Users,
 } from "lucide-react";
 import type { Page } from "../App";
 
-type Tab = "overview" | "stories" | "tests" | "bugs" | "discussions";
+type Tab = "overview" | "stories" | "tests" | "bugs";
 
 interface Props {
   issueKey: string;
@@ -57,17 +49,15 @@ const tabDefs: { key: Tab; label: string; icon: typeof BookOpen }[] = [
   { key: "stories", label: "Stories", icon: BookOpen },
   { key: "tests", label: "Tests", icon: FlaskConical },
   { key: "bugs", label: "Bugs", icon: Bug },
-  { key: "discussions", label: "Discussions", icon: MessageCircle },
 ];
 
 export function IssueDetailView({ issueKey, setPage, initialTab }: Props) {
   const [issue, setIssue] = useState<IssueFull | null>(null);
   const [progress, setProgress] = useState<IssueProgress | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
-  const [stories, setStories] = useState<UserStoryInfo[]>([]);
-  const [testCases, setTestCases] = useState<TestCaseInfo[]>([]);
-  const [bugs, setBugs] = useState<BugInfo[]>([]);
-  const [discussions, setDiscussions] = useState<DiscussionInfo[]>([]);
+  const [stories, setStories] = useState<WorkItemInfo[]>([]);
+  const [testCases, setTestCases] = useState<WorkItemInfo[]>([]);
+  const [bugs, setBugs] = useState<WorkItemInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>(initialTab ?? "overview");
@@ -88,19 +78,18 @@ export function IssueDetailView({ issueKey, setPage, initialTab }: Props) {
         const loads: Promise<void>[] = [];
         if (runId) {
           loads.push(getActivity(runId).then(setActivity));
-          loads.push(
-            listDiscussions({ runId }).then(setDiscussions)
-          );
         }
         loads.push(
-          listUserStories({ issueId: issueData.id }).then(setStories)
+          listWorkItems({ kind: "story", issueId: issueData.id }).then(setStories)
         );
         loads.push(
-          listBugs({ issueId: issueData.id }).then(setBugs)
+          listWorkItems({ kind: "bug", issueId: issueData.id }).then(setBugs)
         );
-        loads.push(
-          listTestCases({ runId }).then(setTestCases)
-        );
+        if (runId) {
+          loads.push(
+            listWorkItems({ kind: "testcase", runId }).then(setTestCases)
+          );
+        }
 
         return Promise.all(loads);
       })
@@ -146,7 +135,6 @@ export function IssueDetailView({ issueKey, setPage, initialTab }: Props) {
     stories: stories.length,
     tests: testCases.length,
     bugs: bugs.length,
-    discussions: discussions.length,
   };
 
   return (
@@ -251,13 +239,6 @@ export function IssueDetailView({ issueKey, setPage, initialTab }: Props) {
       {activeTab === "bugs" && (
         <BugsTab bugs={bugs} setPage={setPage} issueKey={issueKey} />
       )}
-      {activeTab === "discussions" && (
-        <DiscussionsTab
-          discussions={discussions}
-          setPage={setPage}
-          issueKey={issueKey}
-        />
-      )}
     </div>
   );
 }
@@ -275,14 +256,14 @@ function OverviewTab({
   issue: IssueFull;
   progress: IssueProgress | null;
   activity: ActivityEvent[];
-  counts: { stories: number; tests: number; bugs: number; discussions: number };
+  counts: { stories: number; tests: number; bugs: number };
   setPage: (p: Page) => void;
   onStatusChange: (s: string) => void;
 }) {
   return (
     <div className="space-y-6">
       {/* Entity Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <SummaryCard
           icon={BookOpen}
           label="Stories"
@@ -300,12 +281,6 @@ function OverviewTab({
           label="Bugs"
           count={counts.bugs}
           color="var(--accent-red)"
-        />
-        <SummaryCard
-          icon={MessageCircle}
-          label="Discussions"
-          count={counts.discussions}
-          color="var(--accent-purple)"
         />
       </div>
 
@@ -517,149 +492,41 @@ function OverviewTab({
   );
 }
 
-// ── Stories Tab ──
+// ── Work-item Tabs (unified bug / story / testcase) ──
 
-const storyPriorityColors: Record<string, string> = {
-  critical: "text-red-400",
+const itemPriorityColors: Record<string, string> = {
+  critical: "text-red-400 font-bold",
   high: "text-orange-400",
   medium: "text-yellow-400",
   low: "text-gray-400",
-};
-
-function StoriesTab({
-  stories,
-  setPage,
-  issueKey,
-}: {
-  stories: UserStoryInfo[];
-  setPage: (p: Page) => void;
-  issueKey: string;
-}) {
-  if (stories.length === 0) {
-    return (
-      <EmptyState
-        icon={BookOpen}
-        title="No User Stories"
-        description="User stories linked to this issue will appear here. Extract them from PRD documents with the CLI."
-      />
-    );
-  }
-
-  const totalAc = stories.reduce((sum, s) => sum + s.ac_count, 0);
-  const verifiedAc = stories.reduce((sum, s) => sum + s.ac_verified, 0);
-
-  return (
-    <div className="space-y-4">
-      {/* Mini stats */}
-      <div className="flex gap-4">
-        <MiniStat label="Total" value={stories.length} />
-        <MiniStat label="Accepted" value={stories.filter((s) => s.status === "accepted").length} />
-        <MiniStat label="Verified" value={stories.filter((s) => s.status === "verified").length} />
-        <MiniStat
-          label="AC Verified"
-          value={`${verifiedAc}/${totalAc}`}
-          highlight={totalAc > 0 && verifiedAc === totalAc}
-        />
-      </div>
-
-      <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
-        <div className="divide-y divide-[var(--border)]">
-          {stories.map((story) => (
-            <button
-              key={story.id}
-              onClick={() =>
-                setPage({ kind: "story", storyKey: story.key, fromIssue: issueKey } as Page)
-              }
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-[var(--accent)]">
-                    {story.key}
-                  </span>
-                  <span className="font-medium truncate">{story.title}</span>
-                  <StatusBadge status={story.status} />
-                </div>
-                <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
-                  <span className={storyPriorityColors[story.priority] || ""}>
-                    {story.priority}
-                  </span>
-                  {story.persona && (
-                    <span className="italic">as {story.persona}</span>
-                  )}
-                  <span>
-                    AC: {story.ac_verified}/{story.ac_count}
-                  </span>
-                </div>
-                {story.ac_count > 0 && (
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <div className="flex-1 h-1 bg-[var(--bg-tertiary)] rounded-full overflow-hidden max-w-[200px]">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${(story.ac_verified / story.ac_count) * 100}%`,
-                          background:
-                            story.ac_verified === story.ac_count
-                              ? "var(--accent-green)"
-                              : "var(--accent-yellow)",
-                        }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-mono text-[var(--text-secondary)]">
-                      {story.ac_verified}/{story.ac_count} verified
-                    </span>
-                  </div>
-                )}
-              </div>
-              <ArrowRight
-                size={16}
-                className="text-[var(--text-secondary)] shrink-0 ml-2"
-              />
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Tests Tab ──
-
-const testTypeColors: Record<string, string> = {
-  unit: "bg-blue-500/20 text-blue-300",
-  api: "bg-purple-500/20 text-purple-300",
-  e2e: "bg-green-500/20 text-green-300",
-  ui: "bg-pink-500/20 text-pink-300",
-};
-
-const testPriorityColors: Record<string, string> = {
   p0: "text-red-400 font-bold",
   p1: "text-orange-400",
   p2: "text-yellow-400",
 };
 
-function TestsTab({
-  testCases,
+function WorkItemList({
+  items,
   setPage,
   issueKey,
+  emptyTitle,
+  emptyDescription,
+  emptyIcon,
+  extraStats,
 }: {
-  testCases: TestCaseInfo[];
+  items: WorkItemInfo[];
   setPage: (p: Page) => void;
   issueKey: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  emptyIcon: typeof BookOpen;
+  extraStats?: React.ReactNode;
 }) {
-  const [typeFilter, setTypeFilter] = useState("all");
-
-  const filtered =
-    typeFilter === "all"
-      ? testCases
-      : testCases.filter((tc) => tc.test_type === typeFilter);
-
-  if (testCases.length === 0) {
+  if (items.length === 0) {
     return (
       <EmptyState
-        icon={FlaskConical}
-        title="No Test Cases"
-        description="Test cases linked to this issue will appear here. Extract them from test spec documents with the CLI."
+        icon={emptyIcon}
+        title={emptyTitle}
+        description={emptyDescription}
       />
     );
   }
@@ -668,62 +535,43 @@ function TestsTab({
     <div className="space-y-4">
       <div className="flex gap-4 items-center justify-between">
         <div className="flex gap-4">
-          <MiniStat label="Total" value={testCases.length} />
-          <MiniStat label="Automated" value={testCases.filter((t) => t.status === "automated").length} />
-          <MiniStat label="Ready" value={testCases.filter((t) => t.status === "ready").length} />
-        </div>
-        <div className="flex gap-1.5">
-          {["all", "unit", "api", "e2e", "ui"].map((t) => (
-            <button
-              key={t}
-              onClick={() => setTypeFilter(t)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                typeFilter === t
-                  ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {t.toUpperCase()}
-            </button>
-          ))}
+          <MiniStat label="Total" value={items.length} />
+          {extraStats}
         </div>
       </div>
 
       <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
         <div className="divide-y divide-[var(--border)]">
-          {filtered.map((tc) => (
+          {items.map((item) => (
             <button
-              key={tc.id}
+              key={item.id}
               onClick={() =>
-                setPage({ kind: "testcase", testCaseKey: tc.key, fromIssue: issueKey } as Page)
+                setPage({
+                  kind: "workitem",
+                  itemKey: item.key,
+                  fromIssue: issueKey,
+                } as Page)
               }
               className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs text-[var(--accent)]">
-                    {tc.key}
+                    {item.key}
                   </span>
-                  <span className="font-medium truncate">{tc.title}</span>
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      testTypeColors[tc.test_type] ||
-                      "bg-gray-500/20 text-gray-300"
-                    }`}
-                  >
-                    {tc.test_type}
-                  </span>
-                  <StatusBadge status={tc.status} />
+                  <span className="font-medium truncate">{item.title}</span>
+                  {item.status && <StatusBadge status={item.status} />}
                 </div>
                 <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
-                  <span
-                    className={testPriorityColors[tc.priority_level] || ""}
-                  >
-                    {tc.priority_level.toUpperCase()}
+                  <span className={itemPriorityColors[item.priority] || ""}>
+                    {item.priority}
                   </span>
-                  <span>
-                    {new Date(tc.created_at).toLocaleDateString()}
-                  </span>
+                  {item.labels.slice(0, 3).map((l) => (
+                    <span key={l} className="font-mono">
+                      #{l}
+                    </span>
+                  ))}
+                  <span>{new Date(item.created_at).toLocaleDateString()}</span>
                 </div>
               </div>
               <ArrowRight
@@ -738,41 +586,69 @@ function TestsTab({
   );
 }
 
-// ── Bugs Tab ──
+function StoriesTab({
+  stories,
+  setPage,
+  issueKey,
+}: {
+  stories: WorkItemInfo[];
+  setPage: (p: Page) => void;
+  issueKey: string;
+}) {
+  return (
+    <WorkItemList
+      items={stories}
+      setPage={setPage}
+      issueKey={issueKey}
+      emptyTitle="No User Stories"
+      emptyDescription="User stories linked to this issue will appear here. Extract them from PRD documents with the CLI."
+      emptyIcon={BookOpen}
+      extraStats={
+        <MiniStat
+          label="Accepted"
+          value={stories.filter((s) => s.status === "accepted").length}
+        />
+      }
+    />
+  );
+}
 
-const bugSeverityColors: Record<string, string> = {
-  blocker: "text-red-400 font-bold",
-  critical: "text-red-400",
-  major: "text-orange-400",
-  minor: "text-yellow-400",
-  trivial: "text-gray-400",
-};
-
-const bugSourceColors: Record<string, string> = {
-  manual: "bg-gray-500/20 text-gray-300",
-  test_failure: "bg-red-500/20 text-red-300",
-  doc_extracted: "bg-blue-500/20 text-blue-300",
-};
+function TestsTab({
+  testCases,
+  setPage,
+  issueKey,
+}: {
+  testCases: WorkItemInfo[];
+  setPage: (p: Page) => void;
+  issueKey: string;
+}) {
+  return (
+    <WorkItemList
+      items={testCases}
+      setPage={setPage}
+      issueKey={issueKey}
+      emptyTitle="No Test Cases"
+      emptyDescription="Test cases linked to this issue will appear here. Extract them from test spec documents with the CLI."
+      emptyIcon={FlaskConical}
+      extraStats={
+        <MiniStat
+          label="Automated"
+          value={testCases.filter((t) => t.status === "automated").length}
+        />
+      }
+    />
+  );
+}
 
 function BugsTab({
   bugs,
   setPage,
   issueKey,
 }: {
-  bugs: BugInfo[];
+  bugs: WorkItemInfo[];
   setPage: (p: Page) => void;
   issueKey: string;
 }) {
-  if (bugs.length === 0) {
-    return (
-      <EmptyState
-        icon={Bug}
-        title="No Bugs"
-        description="Bugs linked to this issue will appear here. They can be created manually or extracted from test failures."
-      />
-    );
-  }
-
   const open = bugs.filter(
     (b) =>
       b.status === "open" ||
@@ -784,135 +660,20 @@ function BugsTab({
   ).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-4">
-        <MiniStat label="Total" value={bugs.length} />
-        <MiniStat label="Open" value={open} warn />
-        <MiniStat label="Fixed" value={fixed} />
-      </div>
-
-      <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
-        <div className="divide-y divide-[var(--border)]">
-          {bugs.map((bug) => (
-            <button
-              key={bug.id}
-              onClick={() =>
-                setPage({ kind: "bug", bugKey: bug.key, fromIssue: issueKey } as Page)
-              }
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-[var(--accent)]">
-                    {bug.key}
-                  </span>
-                  <span className="font-medium truncate">{bug.title}</span>
-                  <StatusBadge status={bug.status} />
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      bugSourceColors[bug.source] ||
-                      "bg-gray-500/20 text-gray-300"
-                    }`}
-                  >
-                    {bug.source.replace("_", " ")}
-                  </span>
-                </div>
-                <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
-                  <span className={bugSeverityColors[bug.severity] || ""}>
-                    {bug.severity}
-                  </span>
-                  <span>{bug.priority}</span>
-                  <span>
-                    {new Date(bug.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-              <ArrowRight
-                size={16}
-                className="text-[var(--text-secondary)] shrink-0 ml-2"
-              />
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Discussions Tab ──
-
-function DiscussionsTab({
-  discussions,
-  setPage,
-  issueKey,
-}: {
-  discussions: DiscussionInfo[];
-  setPage: (p: Page) => void;
-  issueKey: string;
-}) {
-  if (discussions.length === 0) {
-    return (
-      <EmptyState
-        icon={MessageCircle}
-        title="No Discussions"
-        description="Discussions from multi-role review sessions will appear here when the pipeline runs."
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-4">
-        <MiniStat label="Total" value={discussions.length} />
-        <MiniStat
-          label="Active"
-          value={discussions.filter((d) => d.status === "active").length}
-        />
-        <MiniStat
-          label="Concluded"
-          value={discussions.filter((d) => d.status === "concluded").length}
-        />
-      </div>
-
-      <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
-        <div className="divide-y divide-[var(--border)]">
-          {discussions.map((disc) => (
-            <button
-              key={disc.id}
-              onClick={() =>
-                setPage({
-                  kind: "discussion",
-                  discussionId: disc.id,
-                  fromIssue: issueKey,
-                } as Page)
-              }
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-tertiary)] transition-colors text-left"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium truncate">{disc.topic}</span>
-                  <StatusBadge status={disc.status} />
-                </div>
-                <div className="text-xs text-[var(--text-secondary)] mt-0.5 flex items-center gap-3">
-                  <span className="font-mono">{disc.skill}</span>
-                  <span className="flex items-center gap-1">
-                    <Users size={10} />
-                    {disc.message_count} messages
-                  </span>
-                  <span>
-                    {new Date(disc.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-              <ArrowRight
-                size={16}
-                className="text-[var(--text-secondary)] shrink-0 ml-2"
-              />
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+    <WorkItemList
+      items={bugs}
+      setPage={setPage}
+      issueKey={issueKey}
+      emptyTitle="No Bugs"
+      emptyDescription="Bugs linked to this issue will appear here. They can be created manually or extracted from test failures."
+      emptyIcon={Bug}
+      extraStats={
+        <>
+          <MiniStat label="Open" value={open} warn />
+          <MiniStat label="Fixed" value={fixed} />
+        </>
+      }
+    />
   );
 }
 
