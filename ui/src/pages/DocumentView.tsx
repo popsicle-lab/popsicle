@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getDocument,
   getCommitLinks,
@@ -43,7 +43,7 @@ export function DocumentView({ docId, setPage }: Props) {
   const [stage, setStage] = useState<StageStatusInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     getDocument(docId)
       .then((d) => {
         setDoc(d);
@@ -65,11 +65,11 @@ export function DocumentView({ docId, setPage }: Props) {
         setStage(stageInfo);
       })
       .catch((e) => setError(e?.toString()));
-  };
+  }, [docId]);
 
   useEffect(() => {
     loadData();
-  }, [docId]);
+  }, [loadData]);
 
   if (error)
     return (
@@ -434,7 +434,7 @@ function MetaRow({
   );
 }
 
-export function parseCheckboxes(body: string): {
+function parseCheckboxes(body: string): {
   checked: number;
   unchecked: number;
 } {

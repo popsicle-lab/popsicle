@@ -85,7 +85,9 @@ export function IssuesView({ setPage }: Props) {
               listWorkItems({ kind: "story", issueId: issue.id }).catch(
                 () => []
               ),
-              listWorkItems({ kind: "testcase" }).catch(() => []),
+              listWorkItems({ kind: "testcase", issueId: issue.id }).catch(
+                () => []
+              ),
               listWorkItems({ kind: "bug", issueId: issue.id }).catch(
                 () => []
               ),

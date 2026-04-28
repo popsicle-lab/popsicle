@@ -93,7 +93,9 @@ pub struct PipelineRunInfo {
     pub created_at: String,
     pub updated_at: String,
     pub spec_id: String,
-    pub issue_id: String,
+    /// Owning issue ID, when the run was created from one; otherwise `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue_id: Option<String>,
     pub run_type: String,
 }
 
@@ -353,6 +355,12 @@ pub struct SpecInfo {
     pub created_at: String,
     pub run_count: u32,
     pub doc_count: u32,
+    /// ID of the pipeline run currently holding the exclusive spec lock,
+    /// or `None` when the spec is unlocked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked_by_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -364,6 +372,10 @@ pub struct SpecDetailInfo {
     pub namespace_id: String,
     pub tags: Vec<String>,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked_by_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locked_at: Option<String>,
     pub runs: Vec<PipelineRunInfo>,
     pub documents: Vec<DocInfo>,
     pub issues: Vec<IssueInfo>,

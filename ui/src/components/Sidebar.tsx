@@ -82,7 +82,7 @@ export function Sidebar({ page, setPage }: Props) {
       </nav>
 
       <div className="p-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
-        v0.1.0 — Read-only UI
+        v0.1.0
       </div>
     </aside>
   );

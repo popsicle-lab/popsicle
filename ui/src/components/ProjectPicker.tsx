@@ -6,7 +6,7 @@ interface Props {
   initialPath?: string;
 }
 
-export function NamespacePicker({ onSelect, initialPath }: Props) {
+export function ProjectPicker({ onSelect, initialPath }: Props) {
   const [path, setPath] = useState(initialPath ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,7 +18,7 @@ export function NamespacePicker({ onSelect, initialPath }: Props) {
     setError(null);
     try {
       await onSelect(path.trim());
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(err?.toString() || "Failed to open project");
     } finally {
       setLoading(false);

@@ -151,19 +151,7 @@ pub fn list_pipeline_runs(state: State<AppState>) -> Result<Vec<PipelineRunInfo>
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
     let runs = db.list_pipeline_runs().map_err(|e| e.to_string())?;
-    Ok(runs
-        .iter()
-        .map(|r| PipelineRunInfo {
-            id: r.id.clone(),
-            pipeline_name: r.pipeline_name.clone(),
-            title: r.title.clone(),
-            created_at: r.created_at.clone(),
-            updated_at: r.updated_at.clone(),
-            spec_id: r.spec_id.clone(),
-            issue_id: r.issue_id.clone(),
-            run_type: r.run_type.clone(),
-        })
-        .collect())
+    Ok(runs.iter().map(run_row_to_info).collect())
 }
 
 #[tauri::command]
@@ -771,19 +759,7 @@ pub fn get_issue_progress(key: String, state: State<AppState>) -> Result<IssuePr
         .find_runs_by_issue(&issue.id)
         .map_err(|e| e.to_string())?;
 
-    let run_info_list: Vec<PipelineRunInfo> = runs
-        .iter()
-        .map(|r| PipelineRunInfo {
-            id: r.id.clone(),
-            pipeline_name: r.pipeline_name.clone(),
-            title: r.title.clone(),
-            created_at: r.created_at.clone(),
-            updated_at: r.updated_at.clone(),
-            spec_id: r.spec_id.clone(),
-            issue_id: r.issue_id.clone(),
-            run_type: r.run_type.clone(),
-        })
-        .collect();
+    let run_info_list: Vec<PipelineRunInfo> = runs.iter().map(run_row_to_info).collect();
 
     let latest_run = match runs.first() {
         Some(r) => r,
@@ -1249,30 +1225,50 @@ pub fn list_specs(state: State<AppState>) -> Result<Vec<SpecInfo>, String> {
     let layout = ProjectLayout::new(&dir);
     let db = IndexDb::open(&layout.db_path()).map_err(|e| e.to_string())?;
     let specs = db.list_specs().map_err(|e| e.to_string())?;
-    Ok(specs
-        .iter()
-        .map(|t| {
-            let run_count = db
-                .list_spec_runs(&t.id)
-                .map(|r| r.len() as u32)
-                .unwrap_or(0);
-            let doc_count = db
-                .query_spec_documents(&t.id)
-                .map(|d| d.len() as u32)
-                .unwrap_or(0);
-            SpecInfo {
-                id: t.id.clone(),
-                name: t.name.clone(),
-                slug: t.slug.clone(),
-                description: t.description.clone(),
-                namespace_id: t.namespace_id.clone(),
-                tags: t.tags.clone(),
-                created_at: t.created_at.to_rfc3339(),
-                run_count,
-                doc_count,
-            }
-        })
-        .collect())
+    Ok(specs.iter().map(|t| spec_to_info(&db, t)).collect())
+}
+
+fn run_row_to_info(r: &popsicle_core::storage::PipelineRunRow) -> PipelineRunInfo {
+    PipelineRunInfo {
+        id: r.id.clone(),
+        pipeline_name: r.pipeline_name.clone(),
+        title: r.title.clone(),
+        created_at: r.created_at.clone(),
+        updated_at: r.updated_at.clone(),
+        spec_id: r.spec_id.clone(),
+        // Storage layer flattens NULL into an empty string; surface it as
+        // an absent field so the frontend gets `string | undefined` semantics.
+        issue_id: if r.issue_id.is_empty() {
+            None
+        } else {
+            Some(r.issue_id.clone())
+        },
+        run_type: r.run_type.clone(),
+    }
+}
+
+fn spec_to_info(db: &IndexDb, t: &Spec) -> SpecInfo {
+    let run_count = db
+        .list_spec_runs(&t.id)
+        .map(|r| r.len() as u32)
+        .unwrap_or(0);
+    let doc_count = db
+        .query_spec_documents(&t.id)
+        .map(|d| d.len() as u32)
+        .unwrap_or(0);
+    SpecInfo {
+        id: t.id.clone(),
+        name: t.name.clone(),
+        slug: t.slug.clone(),
+        description: t.description.clone(),
+        namespace_id: t.namespace_id.clone(),
+        tags: t.tags.clone(),
+        created_at: t.created_at.to_rfc3339(),
+        run_count,
+        doc_count,
+        locked_by_run_id: t.locked_by_run_id.clone(),
+        locked_at: t.locked_at.map(|d| d.to_rfc3339()),
+    }
 }
 
 #[tauri::command]
@@ -1303,19 +1299,9 @@ pub fn get_spec(spec_name: String, state: State<AppState>) -> Result<SpecDetailI
         namespace_id: spec.namespace_id.clone(),
         tags: spec.tags.clone(),
         created_at: spec.created_at.to_rfc3339(),
-        runs: runs
-            .iter()
-            .map(|r| PipelineRunInfo {
-                id: r.id.clone(),
-                pipeline_name: r.pipeline_name.clone(),
-                title: r.title.clone(),
-                created_at: r.created_at.clone(),
-                updated_at: r.updated_at.clone(),
-                spec_id: r.spec_id.clone(),
-                issue_id: r.issue_id.clone(),
-                run_type: r.run_type.clone(),
-            })
-            .collect(),
+        locked_by_run_id: spec.locked_by_run_id.clone(),
+        locked_at: spec.locked_at.map(|d| d.to_rfc3339()),
+        runs: runs.iter().map(run_row_to_info).collect(),
         documents: docs.iter().map(doc_row_to_info).collect(),
         issues: issues.iter().map(issue_to_info).collect(),
     })
@@ -1378,30 +1364,7 @@ pub fn get_namespace_entity(
         description: namespace.description.clone(),
         status: namespace.status.to_string(),
         tags: namespace.tags.clone(),
-        specs: specs
-            .iter()
-            .map(|t| {
-                let run_count = db
-                    .list_spec_runs(&t.id)
-                    .map(|r| r.len() as u32)
-                    .unwrap_or(0);
-                let doc_count = db
-                    .query_spec_documents(&t.id)
-                    .map(|d| d.len() as u32)
-                    .unwrap_or(0);
-                SpecInfo {
-                    id: t.id.clone(),
-                    name: t.name.clone(),
-                    slug: t.slug.clone(),
-                    description: t.description.clone(),
-                    namespace_id: t.namespace_id.clone(),
-                    tags: t.tags.clone(),
-                    created_at: t.created_at.to_rfc3339(),
-                    run_count,
-                    doc_count,
-                }
-            })
-            .collect(),
+        specs: specs.iter().map(|t| spec_to_info(&db, t)).collect(),
         created_at: namespace.created_at.to_rfc3339(),
         updated_at: namespace.updated_at.to_rfc3339(),
     })

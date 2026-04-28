@@ -478,7 +478,13 @@ fn handle_conflict(
         .server_payload
         .clone()
         .unwrap_or(serde_json::Value::Null);
-    let kind = EntityKind::parse(&row.entity_kind).unwrap_or(EntityKind::Namespace);
+    let Some(kind) = EntityKind::parse(&row.entity_kind) else {
+        eprintln!(
+            "warn: skipping conflict report for {}: unknown entity kind `{}`",
+            row.entity_id, row.entity_kind
+        );
+        return Ok(0);
+    };
     // Reconstruct the local payload from IndexDb so the conflict report
     // is based on real fields, not a placeholder. Document bodies are
     // not part of this comparison (they ride the CRDT channel).
@@ -586,7 +592,7 @@ async fn pull(format: &OutputFormat) -> Result<()> {
 /// Render an entity payload to disk. For Skill/Pipeline, the payload is
 /// expected to carry a `body` string with the YAML source. For everything
 /// else, we serialise the payload as YAML frontmatter so a re-clone can be
-/// re-indexed by `popsicle reindex` later.
+/// re-indexed via `popsicle admin reinit` later.
 fn write_entity_file(
     path: &std::path::Path,
     kind: EntityKind,
@@ -720,15 +726,22 @@ fn apply_pulled_to_index(
             EntityKind::Spec => {
                 let _ = db.delete_spec(&id_str);
             }
-            EntityKind::Issue
-            | EntityKind::WorkItem
-            | EntityKind::Document
-            | EntityKind::PipelineRun
-            | EntityKind::Skill
-            | EntityKind::Pipeline => {
-                // No dedicated IndexDb delete API for these kinds; the
-                // file-side materialisation step removes/recovers the file.
-                // Orphan rows are reaped on the next `popsicle reindex`.
+            EntityKind::Issue => {
+                let _ = db.delete_issue(&id_str);
+            }
+            EntityKind::WorkItem => {
+                let _ = db.delete_work_item(&id_str);
+            }
+            EntityKind::Document => {
+                let _ = db.delete_document(&id_str);
+            }
+            EntityKind::PipelineRun => {
+                let _ = db.delete_pipeline_run(&id_str);
+            }
+            EntityKind::Skill | EntityKind::Pipeline => {
+                // Skills and pipelines are file-only artefacts; the
+                // materialisation step removes the file. There is no
+                // IndexDb table to clean up.
             }
         }
         return Ok(());
@@ -1147,7 +1160,7 @@ async fn clone_workspace(_full: bool, format: &OutputFormat) -> Result<()> {
         format,
         json!({"documents_hydrated": doc_count}),
         &format!(
-            "Workspace cloned. Hydrated {} document body(ies). Run `popsicle reindex` to rebuild the local index.",
+            "Workspace cloned. Hydrated {} document body(ies). Run `popsicle admin reinit` to rebuild the local index.",
             doc_count
         ),
     );

@@ -1,10 +1,16 @@
 use anyhow::Result;
 use clap::Subcommand;
-use popsicle_core::model::{Spec, WorkItem, WorkItemKind};
-use popsicle_core::storage::IndexDb;
+use popsicle_core::helpers;
+use popsicle_core::model::{WorkItem, WorkItemKind};
+use popsicle_core::storage::{IndexDb, ProjectConfig, ProjectLayout};
 use serde_json::json;
 
 use crate::OutputFormat;
+
+fn project_layout() -> Result<ProjectLayout> {
+    let cwd = std::env::current_dir()?;
+    helpers::project_layout(&cwd).map_err(|e| anyhow::anyhow!("{}", e))
+}
 
 #[derive(Subcommand)]
 pub enum ItemCommand {
@@ -86,7 +92,9 @@ pub enum ItemCommand {
 }
 
 pub fn execute(cmd: ItemCommand, format: &OutputFormat) -> Result<()> {
-    let db = IndexDb::open(&std::path::PathBuf::from(".popsicle/popsicle.db"))?;
+    let layout = project_layout()?;
+    let db = IndexDb::open(&layout.db_path())?;
+    let config = ProjectConfig::load(&layout.config_path()).map_err(|e| anyhow::anyhow!("{e}"))?;
     match cmd {
         ItemCommand::Add {
             kind,
@@ -101,6 +109,7 @@ pub fn execute(cmd: ItemCommand, format: &OutputFormat) -> Result<()> {
             spec,
         } => add(
             &db,
+            &config,
             &kind,
             title,
             description,
@@ -156,6 +165,7 @@ fn apply_fields(item: &mut WorkItem, raw: &[String]) -> Result<()> {
 #[allow(clippy::too_many_arguments)]
 fn add(
     db: &IndexDb,
+    config: &ProjectConfig,
     kind: &str,
     title: String,
     description: String,
@@ -171,14 +181,15 @@ fn add(
     let kind = parse_kind(kind)?;
     let priority = parse_priority(&priority)?;
 
-    // Determine prefix from spec name (or fallback to "GEN")
-    let prefix = match spec.as_deref() {
-        Some(name) => name.to_uppercase(),
-        None => match db.list_specs()?.first() {
-            Some(s) => spec_prefix(s),
-            None => "GEN".to_string(),
-        },
-    };
+    // Key prefix follows the project-wide convention so that all entry points
+    // (`popsicle item add`, `popsicle doc extract`, …) generate consistent
+    // keys like BUG-PRJ-1. `--spec` only overrides for the rare case where a
+    // user wants a different namespace; it is not used to compute the prefix
+    // automatically anymore.
+    let prefix = spec
+        .as_deref()
+        .map(slug_to_prefix)
+        .unwrap_or_else(|| config.project.key_prefix_or_default().to_string());
 
     let seq = db.next_work_item_seq(kind, &prefix)?;
     let key = format!("{}-{}-{}", kind.key_prefix(), prefix, seq);
@@ -196,8 +207,8 @@ fn add(
     emit_item(&item, format)
 }
 
-fn spec_prefix(spec: &Spec) -> String {
-    spec.name.to_uppercase().replace([' ', '-', '_'], "")
+fn slug_to_prefix(name: &str) -> String {
+    name.to_uppercase().replace([' ', '-', '_'], "")
 }
 
 fn list(

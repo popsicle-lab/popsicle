@@ -40,8 +40,8 @@ export function SearchView({ setPage }: Props) {
       });
       setResults(r);
       setSearched(true);
-    } catch (e: any) {
-      setError(e?.toString());
+    } catch (e: unknown) {
+      setError(e?.toString() ?? "Unknown error");
     } finally {
       setLoading(false);
     }

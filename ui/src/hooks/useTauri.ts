@@ -42,7 +42,8 @@ export interface PipelineRunInfo {
   created_at: string;
   updated_at: string;
   spec_id: string;
-  issue_id: string | null;
+  /** Owning issue ID, when the run was created from one; absent otherwise. */
+  issue_id?: string;
   run_type: string;
 }
 
@@ -51,13 +52,14 @@ export interface SpecInfo {
   name: string;
   slug: string;
   description: string;
-  namespace_id: string | null;
+  namespace_id: string;
   tags: string[];
   created_at: string;
   run_count: number;
   doc_count: number;
-  locked_by_run_id: string | null;
-  locked_at: string | null;
+  /** Pipeline run currently holding the spec lock; absent when unlocked. */
+  locked_by_run_id?: string;
+  locked_at?: string;
 }
 
 export interface SpecDetailInfo {
@@ -65,11 +67,12 @@ export interface SpecDetailInfo {
   name: string;
   slug: string;
   description: string;
-  namespace_id: string | null;
+  namespace_id: string;
   tags: string[];
   created_at: string;
-  locked_by_run_id: string | null;
-  locked_at: string | null;
+  /** Pipeline run currently holding the spec lock; absent when unlocked. */
+  locked_by_run_id?: string;
+  locked_at?: string;
   runs: PipelineRunInfo[];
   documents: DocInfo[];
   issues: IssueInfo[];
@@ -136,6 +139,8 @@ export interface NextStepInfo {
   blocked_by: string[];
   requires_approval: boolean;
   context_command?: string;
+  /** Optional advisor-supplied hints surfaced alongside the next step. */
+  hints?: string[];
 }
 
 export function useRefresh(callback: () => void) {

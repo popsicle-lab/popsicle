@@ -15,7 +15,7 @@ import { SpecsView } from "./pages/SpecsView";
 import { SpecDetailView } from "./pages/SpecDetailView";
 import { NamespacesView } from "./pages/NamespacesView";
 import { NamespaceDetailView } from "./pages/NamespaceDetailView";
-import { NamespacePicker } from "./components/NamespacePicker";
+import { ProjectPicker } from "./components/ProjectPicker";
 
 export type Page =
   | { kind: "dashboard" }
@@ -24,7 +24,7 @@ export type Page =
   | { kind: "skills" }
   | { kind: "git" }
   | { kind: "issues" }
-  | { kind: "issue"; issueKey: string; tab?: string }
+  | { kind: "issue"; issueKey: string; tab?: "overview" | "stories" | "tests" | "bugs" }
   | { kind: "workitem"; itemKey: string; fromIssue?: string }
   | { kind: "memories" }
   | { kind: "search" }
@@ -47,8 +47,9 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const projectPath = params.get("project");
     if (projectPath) {
-      setProjectDir(projectPath).catch(console.error);
-      setAutoOpenAttempted(true);
+      setProjectDir(projectPath)
+        .catch(console.error)
+        .finally(() => setAutoOpenAttempted(true));
       return;
     }
 
@@ -69,7 +70,7 @@ export default function App() {
   }
 
   if (!dir) {
-    return <NamespacePicker onSelect={setProjectDir} initialPath={initialDir ?? undefined} />;
+    return <ProjectPicker onSelect={setProjectDir} initialPath={initialDir ?? undefined} />;
   }
 
   return (
@@ -105,7 +106,7 @@ export default function App() {
             key={`${page.issueKey}-${refreshKey}`}
             issueKey={page.issueKey}
             setPage={setPage}
-            initialTab={page.tab as any}
+            initialTab={page.tab}
           />
         )}
         {page.kind === "workitem" && (

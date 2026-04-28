@@ -1636,6 +1636,32 @@ impl IndexDb {
         Ok(())
     }
 
+    /// Remove an issue row by id (or key) and mark it deleted in sync state.
+    pub fn delete_issue(&self, id: &str) -> Result<()> {
+        self.mark_deleted("issue", id)?;
+        self.conn.execute(
+            "DELETE FROM issues WHERE id = ?1 OR key = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    /// Remove a pipeline-run row and mark it deleted in sync state.
+    pub fn delete_pipeline_run(&self, id: &str) -> Result<()> {
+        self.mark_deleted("pipeline_run", id)?;
+        self.conn
+            .execute("DELETE FROM pipeline_runs WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Remove a document row and mark it deleted in sync state.
+    pub fn delete_document(&self, id: &str) -> Result<()> {
+        self.mark_deleted("document", id)?;
+        self.conn
+            .execute("DELETE FROM documents WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     /// Export all table data as a JSON object with schema metadata.
     ///
     /// Output: `{ "_schema": { table: [{name, type, pk, nullable}] }, "table_name": [...], ... }`

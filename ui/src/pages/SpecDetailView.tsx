@@ -90,7 +90,7 @@ export function SpecDetailView({ specName, setPage }: Props) {
           <span>{new Date(spec.created_at).toLocaleDateString()}</span>
           {spec.namespace_id && (
             <button
-              onClick={() => setPage({ kind: "namespace", namespaceId: spec.namespace_id! })}
+              onClick={() => setPage({ kind: "namespace", namespaceId: spec.namespace_id })}
               className="flex items-center gap-1 text-[var(--accent)] hover:underline"
             >
               <FolderOpen size={11} />
