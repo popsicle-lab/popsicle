@@ -1,0 +1,198 @@
+name: arch-debate
+description: 多角色技术架构辩论模拟器——在写 RFC 之前用 4-6 个技术角色（ARCH / SEC / PERF / OPS / DATA / DEV）就一个技术问题或架构选型充分辩论方案空间，暴露盲点。消费 prd-overview 里标了 `contracts.intent` / `[ADR 候选]` 的条目 + fact-extractor 的事实基（dependency-graph / api-contracts / risk hotspots），产出 RFC 草稿 + 技术决策矩阵 + 辩论纪要，喂给下游 rfc-writer。是产品侧 `product-debate` 的技术侧对称体。
+version: "0.1.0"
+
+# arch-debate 是「技术契约位」的第一个 skill（Phase 3 内置）。它接 product-debate /
+# prd-writer 在产品侧标注的「[ADR 候选：技术方案待定]」条目，把它们翻译成具体的
+# 架构方案空间，但**不直接写 ARCHITECTURE.md**——内容产出由 rfc-writer 接手。
+inputs:
+  - from_skill: prd-writer
+    artifact_type: prd-overview
+    required: false
+    relevance: high
+    # 取 § Intent Mapping 里标了 contracts.intent / [ADR 候选] 的行——这就是本场
+    # 架构辩论要解决的技术问题清单。
+
+  - from_skill: fact-extractor
+    artifact_type: api-contracts
+    required: false
+    relevance: high
+    # 评估「方案是否改既有 public API / 模块边界」——ARCH 与 DEV 的关键论据。
+
+  - from_skill: fact-extractor
+    artifact_type: fact-extraction-report
+    required: false
+    relevance: high
+    # dependency-graph / risk hotspots / tech-debt：约束方案的可达边界与代价。
+
+  - from_skill: product-debate
+    artifact_type: product-debate-record
+    required: false
+    relevance: medium
+    # 产品辩论里悬而未决、标了「需要 ADR」的技术分歧。
+
+artifacts:
+  - type: arch-debate-record
+    template: templates/arch-debate-record.md
+    file_pattern: "{slug}.arch-debate.md"
+    description: "辩论全程结构化纪要：参与技术角色、各 Phase 发言摘要、关键分歧、用户决策、覆盖事项。"
+
+  - type: rfc-draft
+    template: templates/rfc-draft.md
+    file_pattern: "{slug}.rfc-draft.md"
+    description: "辩论收敛产出的 RFC 草稿——尚未通过 rfc-writer 的质量评分，仅作下游输入。含 contracts.intent 候选 + ADR 候选清单。"
+
+  - type: tech-decision-matrix
+    template: templates/tech-decision-matrix.md
+    file_pattern: "{slug}.tech-decision-matrix.md"
+    description: "候选架构方案 × 质量属性维度（NFR）的打分矩阵；候选方案 ≥ 2 时生成。"
+
+workflow:
+  initial: setup
+  states:
+    setup:
+      description: "确认技术议题、绑定目标 product/模块、加载技术角色阵容与事实基、设置用户置信度。**必须人类显式确认后才能开始辩论**。"
+      transitions:
+        - to: debating
+          action: start
+          guard: "checklist_complete:Setup Checklist"
+          requires_approval: true
+
+    debating:
+      description: "按 Phase 1-4 推进辩论，每个 Phase 结束**强制暂停**等用户输入。"
+      transitions:
+        - to: concluding
+          action: conclude
+          guard: "checklist_complete:Phase Coverage"
+        - to: setup
+          action: restart
+
+    concluding:
+      description: "写三份 artifact（arch-debate-record / rfc-draft / tech-decision-matrix），请用户最终批准。"
+      transitions:
+        - to: completed
+          action: approve
+          guard: "has_sections:Topic,Participants,Phase 1,Phase 2,Phase 3,Phase 4,Decision;checklist_complete:Output Checklist"
+          requires_approval: true
+        - to: debating
+          action: reopen
+
+    completed:
+      final: true
+
+prompts:
+  setup: |
+    你正在为一个技术问题启动架构辩论。本状态**配置辩论**，不要进入辩论本身。
+
+    ## 按顺序收集
+
+    1. **技术议题**（一句话）：要解决的架构问题——「同步 RPC vs 异步队列」「单库
+       vs 分库」「这个跨模块契约怎么定」。讲不清就请用户先收敛。
+       - **优先从 prd-overview § Intent Mapping 取**标了 `contracts.intent` /
+         `[ADR 候选]` 的行——那是产品侧留给本场辩论的待决技术问题。
+
+    2. **边界绑定**：目标 product / 模块。跨模块议题通常拆成多场；确需跨则显式记录。
+
+    3. **加载事实基**（如可用）：
+       - api-contracts —— 现有 public API / 模块边界，判断方案是否破坏契约
+       - fact-extraction-report § dependency-graph / risk hotspots / tech-debt ——
+         方案的可达边界与代价。**禁止凭印象说「这块代码很重」**，要 cite 行号。
+       - 不可用时警告「辩论基于自然语言推断，结论可信度下降」，允许继续。
+
+    4. **技术角色阵容**（4-6 人，见 `references/tech-roles.md`）：
+       - **默认 5 人**：ARCH、SEC、PERF、OPS、DEV（DATA 按数据/存储议题加入）
+       - **核心三角必备**：ARCH（主持）+ 约束代言（SEC 或 OPS）+ 实现专家（DEV）
+       - 项目自定义角色：若 `docs/arch-debate/roles.md` 存在则叠加。
+
+    5. **用户置信度**（1-5）：见 product-debate 的 `confidence-modes`（同机制）。
+
+    ## Setup Checklist
+    - [ ] 技术议题已用一句话表达（优先来自 prd § Intent Mapping 的 [ADR 候选] 行）
+    - [ ] 边界已绑定（product / 模块）
+    - [ ] 事实基状态已记录（可用→已读 api-contracts + risk；不可用→已警告）
+    - [ ] 技术角色阵容确定（4-6 人，含 ARCH + 约束代言 + 实现专家）
+    - [ ] 用户置信度已设置
+    - [ ] **已展示 setup 摘要并取得 `start` 确认**
+
+  debating: |
+    辩论已启动。严格按 4 个 Phase 推进，**每个 Phase 结束强制暂停等用户回复**。
+    禁止一条消息跨多个 Phase、禁止替用户答「继续」、禁止跳过暂停点。
+
+    ## Phase 流程
+
+    - **Phase 1 — 技术问题定义 + 质量属性（NFR）**：ARCH 主持，明确要解决什么、
+      硬约束（兼容性 / 合规 / charter Layer Map）、关键质量属性（性能 / 可用性 /
+      安全 / 可演进性）及其优先级。
+    - **Phase 2 — 架构方案发散**：2-3 位角色各提一个**实质差异化**的方案
+      （如：同步 RPC / 异步队列 / 本地内嵌）。每个方案画出模块边界与数据流。
+    - **Phase 3 — 多角色评审**：全员从各自视角评每个方案——SEC 出威胁模型、
+      PERF 估容量与延迟、OPS 看可观测性/部署/回滚、DATA 看一致性/迁移、DEV 估
+      实现成本与技术债（cite risk hotspots）。记录关键分歧。
+    - **Phase 4 — 收敛与决策**：ARCH 综合 + 角色投票 + 用户最终决策。
+
+    ## IDD 辩论纪律（比常规架构评审更严）
+
+    1. **数字/LoC/模块名陈述必须 cite fact-extraction-report**，否则标 `[未经事实基验证]`。
+    2. **每个核心技术声明必须能落进某个 intent 层**，ARCH 在 Phase 4 显式标注：
+       - 「模块 A 对模块 B 暴露接口 X / 保证 Y」→ `intents/contracts.intent`（本链主产物）
+       - 「永远 X / 绝不 Y」式跨切面不变量 → `intents/invariants.intent`
+       - 用户可见行为不在这里（那是 acceptance，product-debate 已处理）
+    3. **触及 charter「四条铁律」/「Layer Map」的方案 → 标「需要 CADR」**；
+       普通架构决策走 **ADR**。Phase 4 必须把每个决策标成 ADR 候选或 CADR 候选。
+    4. **能力边界（D2）**：性能/时延/容量等**不进 `.intent`**（intent-lang 不验时间）。
+       它们写进 RFC 的「质量属性目标」，由 benchmark / 压测守护，不要硬塞 contracts。
+    5. **用「现在时」收敛**，语句应能直接粘进 ARCHITECTURE.md。
+
+    ## 角色发言格式
+    ```
+    **[角色ID - 角色名称]**:
+    > 发言内容...
+    ```
+    每个 Phase 结束输出小结（共识 / 用户决定 / 悬而未决）+ 面向用户的具体问题。
+
+    ## Phase Coverage（进入 concluding 的 guard）
+    - [ ] Phase 1：技术问题 + NFR 优先级 + 硬约束已明确
+    - [ ] Phase 2：2-3 个差异化架构方案，各含模块边界/数据流
+    - [ ] Phase 3：全部角色（含 SEC / PERF / OPS）已评审
+    - [ ] Phase 4：收敛到推荐方案 + 用户决策 + 每个声明标了 intent 层/ADR-CADR
+    - [ ] 至少 4 个用户交互暂停点
+
+  concluding: |
+    辩论结束。写三份 artifact，再请用户最终批准。
+
+    1. **arch-debate-record**（必出，`templates/arch-debate-record.md`）：4 个 Phase
+       发言摘要、关键分歧及各方立场、用户决策点（含「用户覆盖多数角色」情况）、
+       末尾「下游 skill 接驳建议」（通常 rfc-writer）。
+    2. **rfc-draft**（必出，`templates/rfc-draft.md`）：**rfc-writer 的输入，非终态**。
+       现在时书写；每个核心技术声明标目标 intent 层（侧重 contracts）；列出 ADR 候选
+       与 CADR 候选；引用 fact-extraction-report / api-contracts 作论据。
+    3. **tech-decision-matrix**（候选 ≥ 2 时必出，`templates/tech-decision-matrix.md`）：
+       维度 = 角色提出的质量属性（NFR），权重 ARCH 在 Phase 4 定，每格一句话理由。
+
+    ## 不准做
+    - ❌ 在 rfc-draft 凭空补辩论没讨论过的方案——草稿是辩论的忠实摘要。
+    - ❌ 把 ARCH 推荐默认当用户决策——必须显式记录批准/覆盖。
+    - ❌ 把性能/时延数值塞进 contracts 候选——那是质量属性目标（D2）。
+
+    ## Output Checklist
+    - [ ] arch-debate-record 含 Phase 1-4 全部小结
+    - [ ] 标注了「用户决策覆盖」（如有）
+    - [ ] rfc-draft 每个核心技术声明标了 intent 层（侧重 contracts）
+    - [ ] rfc-draft 列出 ADR 候选 / CADR 候选清单
+    - [ ] 每个数字/LoC/模块名引用可追溯到 fact-extraction-report / api-contracts
+    - [ ] tech-decision-matrix 维度由角色提出且权重明示（如适用）
+    - [ ] 三份 artifact 的 Topic 一致
+    - [ ] **已展示三份产出并取得 `approve` 确认**
+
+hooks:
+  post_complete:
+    - description: "建议下游 skill"
+      message: |
+        ✅ 架构辩论结束，三份 artifact 已产出。建议下一步：
+
+        1. 把 `{slug}.rfc-draft.md` 交给 **rfc-writer**，打磨成正式 RFC +
+           ARCHITECTURE.md 增量 + contracts.intent 种子 + ADR 骨架。
+        2. 若标了「需要 CADR」（触及 charter 铁律 / Layer Map），先走 charter 修订
+           流程（CADR），再继续 rfc-writer。
+        3. 收敛产出的 ADR 候选会在 rfc-writer 产出骨架、由 **adr-writer** 固化为
+           Accepted 后，才解锁 contracts.intent 种子的收紧。

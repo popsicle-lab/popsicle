@@ -1,0 +1,154 @@
+name: fact-extractor
+description: 对一份遗留代码库做逆向工程，产出结构化的事实基——dependency graph、public-API contracts、unsafe/risk 清单、tech-debt 清单——下游所有 IDD skill 都把它当作 ground truth 来引用
+version: "0.1.0"
+
+# fact-extractor 没有上游——它是 IDD 适配旅程的入口点。它直接在遗留代码树
+# 上跑，产出下游每一个 PRD/RFC/spec writer（无论是谁出品的）都会引用的 artifact。
+inputs: []
+
+# 五个职责严格界定的 artifact。每一个回答一个单一问题。把它们分开是为了让
+# 下游 skill 能精准引用（例如 PRD 引用 api-contracts；RFC 引用 dependency-
+# graph；safety-spec 引用 unsafe-risk）。
+artifacts:
+  - type: fact-extraction-report
+    template: templates/fact-extraction-report.md
+    file_pattern: "{slug}.fact-extraction-report.md"
+    description: "顶层摘要 + 四份详细 artifact 的索引"
+
+  - type: dependency-graph
+    template: templates/dependency-graph.md
+    file_pattern: "{slug}.dependency-graph.md"
+    description: "模块/crate/包的 import 图、外部依赖、版本约束"
+
+  - type: api-contracts
+    template: templates/api-contracts.md
+    file_pattern: "{slug}.api-contracts.md"
+    description: "Public-API 表面：函数签名、REST/gRPC 端点、导出类型"
+
+  - type: unsafe-risk-report
+    template: templates/unsafe-risk-report.md
+    file_pattern: "{slug}.unsafe-risk-report.md"
+    description: "unsafe 块、FFI 调用、裸指针使用、panic、.unwrap() 热点、动态 eval"
+
+  - type: tech-debt-inventory
+    template: templates/tech-debt-inventory.md
+    file_pattern: "{slug}.tech-debt-inventory.md"
+    description: "TODO/FIXME/HACK/XXX 注释、deprecated API 使用、已知回归、死代码候选"
+
+workflow:
+  initial: scanning
+  states:
+    scanning:
+      # 本状态下 agent 跑真正的抽取命令（tokei、cargo-deps、ripgrep、
+      # ast-grep 等），汇集原始数据。
+      transitions:
+        - to: drafting
+          action: data-collected
+    drafting:
+      # 本状态下 agent 把原始数据写成 5 个 artifact。
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Summary,Bounded Contexts,Domain Glossary,Risk Hotspots;checklist_complete:Extraction Checklist"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: drafting
+          action: revise
+    completed:
+      final: true
+
+prompts:
+  scanning: |
+    你正在一份遗留代码库上跑 fact-extractor。本状态下你的任务是**收集原始
+    数据**，**还不要**写 artifact。
+
+    Step 1 —— 识别项目的主语言。看文件扩展名、lockfile（Cargo.lock、
+    package-lock.json、go.sum、poetry.lock）、build 配置（Cargo.toml、
+    package.json、go.mod、pyproject.toml）。
+
+    Step 2 —— 跑与语言匹配的分析工具，捕获 stdout。例：
+
+      Rust:
+        tokei --output json .
+        cargo metadata --format-version 1
+        cargo tree --prefix depth
+        rg -t rust 'unsafe\s*\{|unsafe\s+fn|unsafe\s+impl' --json
+        rg -t rust '\.unwrap\(\)|\.expect\(' -c
+        rg -tn rust 'pub\s+(fn|struct|enum|trait|type|const|static)' --json
+
+      TypeScript / JavaScript:
+        tokei --output json .
+        npm ls --all --json   （或 pnpm list --depth=Infinity --json）
+        rg -t ts 'export\s+(default\s+)?(function|class|interface|type|const)' --json
+        rg -t ts 'eval\(|new Function\(|@ts-ignore|@ts-nocheck' --json
+
+      Python:
+        tokei --output json .
+        pip list --format=json   （或 poetry show --tree）
+        rg -t py '^def\s+|^class\s+|^async def\s+' --json
+        rg -t py 'eval\(|exec\(|os\.system\(|subprocess\.shell=True' --json
+
+      Go:
+        tokei --output json .
+        go list -m -json all
+        rg -t go '^func\s+\([^)]+\)|^func\s+[A-Z]' --json
+        rg -t go 'unsafe\.|cgo|panic\(' --json
+
+    Step 3 —— 在所有源码文件里挖 **TODO / FIXME / HACK / XXX / NOTE**：
+
+        rg -i '\b(TODO|FIXME|HACK|XXX|NOTE):' --json --max-count 200
+
+    Step 4 —— 捕获 **commit 热点**（最常被改的文件 = 耦合最高 / 风险最高）：
+
+        git log --since="1 year ago" --pretty=format: --name-only \
+          | sort | uniq -c | sort -rn | head -50
+
+    Step 5 —— 捕获 **bounded-context 线索**：`src/`、`crates/`、`packages/`、
+    `services/`、`cmd/`、`internal/` 下的顶级目录。每个顶级目录通常是一个
+    bounded context 候选。
+
+    **还不要**写 artifact。原始数据收集完后，用 `data-collected` 切到
+    `drafting` 状态。
+
+    完整提示词：popsicle prompt fact-extractor --state scanning --run {run_id}
+
+  drafting: |
+    你现在有了原始抽取数据。按以下顺序写 5 个 artifact：
+
+      1. dependency-graph        —— 可视化 + 表格依赖
+      2. api-contracts           —— public 表面，按 bounded context 分组
+      3. unsafe-risk-report      —— 每个风险构造 + file:line + 原因
+      4. tech-debt-inventory     —— TODO/FIXME + file:line + 年龄（git blame）
+      5. fact-extraction-report  —— 顶层摘要，链接到上面 4 份
+
+    关键规则：
+
+    - **不要发表观点**。fact-extractor 是*记录员*，不是*评判者*。
+      不要写「这段代码很烂」——写「函数 `Foo::bar` 在空输入上 panic
+      (src/foo.rs:42)」。下游 skill（rfc-writer、adr-writer）会形成观点；
+      你只提供事实。
+
+    - **每个声明都要 cite file:line**。没引用的声明，删掉。
+
+    - **不要推断意图**。看到 `unsafe` 就记录它；除非上面注释明确这么说，
+      否则不要声称「这个该做成 safe 的」。推断意图是 LLM 最稳定的失败模式，
+      会毒化每一个下游阶段。
+
+    - **按 bounded context（来自 step 5 的顶级目录）分组**。这是下游
+      PRD/RFC writer 需要的结构。
+
+    - **保留原始数字**。`tokei` 说 12,431 LoC 就写 12,431——不要写「大约
+      12k」。数字承载着散文丢失的信号。
+
+    每个 artifact 底部都有 Checklist。提交前勾完所有框（workflow guard
+    要求顶层 report 满足 `checklist_complete:Extraction Checklist`）。
+
+    完整提示词：popsicle prompt fact-extractor --state drafting --run {run_id}
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

@@ -1,0 +1,134 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "intent-lang",
+  "scopeName": "source.intent",
+  "fileTypes": ["intent"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#annotations" },
+    { "include": "#declarations" },
+    { "include": "#keywords" },
+    { "include": "#operators" },
+    { "include": "#types" },
+    { "include": "#literals" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.intent",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.intent",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "annotations": {
+      "patterns": [
+        {
+          "name": "storage.modifier.annotation.intent",
+          "match": "@(asis|tobe|deprecated)\\b"
+        },
+        {
+          "name": "storage.modifier.annotation.intent",
+          "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(intent|safety|theorem|axiom|function|type|enum|goal|coverage|import)\\s+([A-Za-z_][A-Za-z0-9_]*|\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.declaration.intent" },
+            "2": { "name": "entity.name.type.intent" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.intent",
+          "match": "\\b(require|ensure|invariant|forall|exists|if|then|else|after|as)\\b"
+        },
+        {
+          "name": "keyword.other.intent",
+          "match": "\\b(rationale|stakeholder|measure|realized_by|dimensions)\\b"
+        },
+        {
+          "name": "constant.language.intent",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.implication.intent",
+          "match": "==>|<=>"
+        },
+        {
+          "name": "keyword.operator.logical.intent",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.comparison.intent",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.intent",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.primed.intent",
+          "match": "(?<=[A-Za-z_0-9])'"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.intent",
+          "match": "\\b(Int|Bool|String|Real|Seq|Set|Map)\\b"
+        },
+        {
+          "name": "entity.name.type.intent",
+          "match": "(?<=:\\s)[A-Z][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.intent",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "name": "constant.character.escape.intent", "match": "\\\\." }
+          ]
+        },
+        {
+          "name": "constant.numeric.intent",
+          "match": "\\b-?[0-9]+(\\.[0-9]+)?\\b"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.parameter.intent",
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+          "name": "entity.name.function.intent",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

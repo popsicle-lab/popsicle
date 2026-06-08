@@ -1,0 +1,47 @@
+# intent-validate 使用指南
+
+把 intent-lang 的形式化验证（parse → typecheck → VC 生成 → Z3 求解）封装成一个
+popsicle tool，供 `intent-consistency-check` skill 和 CI 闸门调用。
+
+## 何时用
+
+- 写完/改完任意 `.intent` 文件后，验证「意图自身是否自洽」（require/ensure/invariant/safety 之间不打架）。
+- CI 中作为「意图一致性闸门」：任一 VC 失败则 `exit 1`，阻断合并。
+- 在写实现代码之前——先证明需求不自相矛盾，再动手。
+
+## 参数
+
+| 参数 | 必填 | 默认 | 说明 |
+|---|---|---|---|
+| `path` | 是 | — | `.intent` 文件路径（相对仓库根或绝对路径） |
+| `format` | 否 | `json` | `json` 给 skill/CI 解析；`text` 给人读 |
+| `include_asis` | 否 | 空 | 传 `--include-asis` 时一并验证 `@asis` 遗留意图 |
+
+## 退出码
+
+| exit | 含义 |
+|---|---|
+| `0` | 全部 VC `verified` 或合理 `skipped`（如 struct-typed theorem 尚未实现、`@asis` 默认跳过） |
+| `1` | 解析错误、类型错误，或任一 VC `failed` / `unknown` / `error` |
+| `127` | 环境缺失：找不到 `intent` 可执行文件或 `z3` |
+
+## JSON 输出结构
+
+```json
+{
+  "file": "auth.intent",
+  "diagnostics": [{ "level": "error|warning|info", "code": "", "message": "", "line": 0, "col": 0 }],
+  "results": [{ "name": "", "kind": "intent|theorem", "status": "verified|failed|unknown|skipped|error", "detail": null, "track": "primary|asis-skipped" }],
+  "ok": true
+}
+```
+
+- `ok` 为顶层结论：true = 可放行。
+- `results[].status == "failed"` 时，`detail` 含 Z3 反例文本——这就是「最短反例」，直接喂给人或 LLM 修 spec。
+- `status == "skipped"` 不计入失败（当前 intent-lang 不支持 struct-typed `forall` theorem，会标 skipped；`@asis` 也默认 skip）。
+
+## 与 intent-lang 能力边界
+
+intent-lang 是 Hoare 逻辑 + SMT，**只验证逻辑一致性**，不处理时间/时序/性能。
+形如「P95 ≤ 90s」「5 秒内响应」这类约束**不要**写进 `.intent`——它们属于
+task 文件的「可观察的成功标志」，由 benchmark / e2e 测试守护。详见仓库 `ROADMAP.md` 决策 D2。

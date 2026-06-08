@@ -1,6 +1,6 @@
 # RFC: Popsicle 支持 IDD 大型项目迁移所需的能力补全
 
-Status: Draft
+Status: 丢弃
 Created: 2026-05-06
 Context: 来自一系列关于"用 popsicle + intent-lang 落地 IDD 并迁移大型遗留项目"的方法论讨论
 Related: docs/rfc-entity-redesign.md, docs/rfc-multi-agent-discussion-patterns.md

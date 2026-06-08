@@ -1,0 +1,18 @@
+# Build artifacts
+/target/
+**/target/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Rust
+**/*.rs.bk
+
+# Debug
+*.dSYM/
+*.pdb

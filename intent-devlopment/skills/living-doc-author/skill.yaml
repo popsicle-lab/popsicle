@@ -1,0 +1,148 @@
+name: living-doc-author
+description: 活文档保活 / 对账 skill。扫描 doc-code drift 信号（过期、断链、孤儿、未验证），刷新 tasks/README.md 健康度统计、task 文件反向引用、frontmatter last_verified，并填充 project-init 留下的 PROJECT_CONTEXT 骨架。**不创作新内容**（那是 prd-writer 的活）——只做对账与刷新，让活文档永远代表「现在」。多处模板已挂钩 `popsicle skill start living-doc-author --target <target>`。
+version: "0.1.0"
+
+# 主要消费**文件系统现状**（现有 tasks/*.md、intents/*.intent、PRODUCT.md、PDR），
+# 以下 skill artifact 作为对账参照，全部可选。
+inputs:
+  - from_skill: intent-consistency-check
+    artifact_type: intent-consistency-report
+    required: false
+    relevance: high
+    # 用最近一次验证结果回填 task frontmatter 的 last_verified。
+
+  - from_skill: prd-writer
+    artifact_type: tasks-index
+    required: false
+    relevance: medium
+
+  - from_skill: prd-writer
+    artifact_type: task
+    required: false
+    relevance: medium
+
+artifacts:
+  - type: living-doc-sync-report
+    template: templates/living-doc-sync-report.md
+    file_pattern: "{slug}.living-doc-sync-report.md"
+    description: "drift 扫描结果 + 本次刷新动作 + 健康度快照 + 待人工处置项。刷新的活文档（tasks/README.md、task 反向引用、last_verified）作为副作用直接落到现有文件。"
+
+# --target 是 CLI 参数（tasks-index / task-backrefs / last-verified / product-context / all）。
+# skill 工作流不直接读参数，由 syncing 状态的 prompt 按 target 分流处理。
+
+workflow:
+  initial: scanning
+  states:
+    scanning:
+      description: "枚举活文档与上游源，检测四类 drift 信号。还不要改任何文件。"
+      transitions:
+        - to: syncing
+          action: scanned
+          guard: "checklist_complete:Scan Checklist"
+
+    syncing:
+      description: "按 --target 刷新活文档（直接编辑现有文件）。每处改动登记到 report。"
+      transitions:
+        - to: reporting
+          action: synced
+
+    reporting:
+      description: "写 sync-report：drift 信号 + 刷新动作 + 健康度快照 + 待人工处置。"
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Summary,Drift 信号,刷新动作,健康度快照,待人工处置;checklist_complete:检查清单"
+
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: syncing
+          action: revise
+
+    completed:
+      final: true
+
+prompts:
+  scanning: |
+    你在跑 living-doc-author。本状态**只扫描、不改文件**——把 doc-code drift 找全。
+
+    Step 1 —— 锁定 target（来自 `--target`，缺省 `all`）：
+      - tasks-index     → 刷新 products/{p}/tasks/README.md 索引 + 健康度
+      - task-backrefs   → 刷新各 task 文件「反向引用」节
+      - last-verified   → 用 intent-consistency-report 回填 task frontmatter last_verified
+      - product-context → 填 docs/PROJECT_CONTEXT.md（project-init 留的骨架）
+      - all             → 以上全部
+
+    Step 2 —— 枚举：products/*/tasks/**/T-*.md、products/*/intents/*.intent、
+      products/*/PRODUCT.md、decisions/pdr/PDR-*.md、最近的 *.intent-consistency-report.md。
+
+    Step 3 —— 检测四类 drift 信号（逐 task / 逐 intent 核对，记录证据）：
+
+      1. **过期 staleness**：task frontmatter `last_updated` 距今 > 阈值
+         （60 天告警 / 90 天进归档评审）；或 PRODUCT.md `Last-Updated` 早于它引用的
+         task/intent 的最新 `last_updated`。
+      2. **断链 broken-ref**：
+         - task `related_intents` 指向不存在的 `<file>.intent#<block>`
+         - task `decision_ref` 指向不存在的 PDR
+         - task `related_next_tasks` 指向不存在的 task_id
+         - tasks/README 链接指向不存在的文件
+      3. **孤儿 orphan**：
+         - acceptance.intent 有 block 但无对应 task（task_id 双射断裂，双向都查）
+         - task 无任何反向引用（> 90 天则标「归档评审」候选）
+      4. **未验证 unverified**：task `last_verified: ~` 但最近 intent-consistency-report
+         里对应 intent 已 `verified` → 可回填。
+
+    Step 4 —— 不臆造、不“顺手改业务内容”。living-doc-author 只对账活文档元数据，
+      task/PRODUCT 的**正文实质改动**必须走 prd-writer + PDR（charter 铁律）。
+
+    ## Scan Checklist
+    - [ ] target 已确认
+    - [ ] 所有 task / intent / PDR / PRODUCT.md 已枚举
+    - [ ] 四类 drift 信号已逐条核对，证据已记录
+    - [ ] 已区分「可自动刷新的元数据」与「需 PDR 的正文改动」
+
+  syncing: |
+    本状态按 target 刷新活文档，**直接编辑现有文件**。每处改动记进 report「刷新动作」。
+
+    ## 各 target 的刷新规则
+
+    - **tasks-index**：重建 products/{p}/tasks/README.md。
+      - 索引表按 5 个旅程阶段分段，每行：task 链接 / 问句锚点 / audience / last_updated
+        （字段全部从 task frontmatter 读，勿臆造）。
+      - 健康度统计表：每阶段的 task 数、平均行数、最久未更新 task（标天数）、
+        未引用 task（标 ⚠️）。这是「文档腐烂预警」核心信号。
+      - 顶部 `Last-Generated` 改为今天。
+
+    - **task-backrefs**：重写每个 task 的「反向引用」节，列出真实引用了它的资源
+      （PDR Consequences、其它 task 的 related_next_tasks、user-journey 的 Stages）。
+      无引用则写「暂无其它反向引用」并在健康度里标孤儿。
+
+    - **last-verified**：对每个能在 intent-consistency-report 找到 `verified` 结果的
+      task，把 frontmatter `last_verified: ~` 改为报告日期。**只回填 verified**；
+      failed/unknown/skipped 不回填（保持 ~），并在 report 里点名。
+
+    - **product-context**：填 docs/PROJECT_CONTEXT.md 的「现在状态」类章节
+      （product 清单、活跃 task 数、最近 PDR），骨架保留。
+
+    纪律：只动元数据 / 索引 / 反向引用 / last_verified。任何 task 正文、PRODUCT 实质
+    内容、intent 逻辑的改动都**不在本 skill 范围**——发现需要改的，记到「待人工处置」
+    建议走 prd-writer + 新 PDR。
+
+  reporting: |
+    按 `templates/living-doc-sync-report.md` 写报告。
+
+    - **Summary**：扫了几个文档、发现几类 drift、本次刷新了几处、几项待人工。
+    - **Drift 信号**：四类各列明细（文件 + 证据 + 严重度）。无则写「（无）」。
+    - **刷新动作**：本次实际改了哪些文件、改了什么（一行一处）。
+    - **健康度快照**：tasks/README 健康度表的当前值（按阶段）+ 孤儿 / 过期清单。
+    - **待人工处置**：需要 PDR 才能改的正文 drift、> 90 天归档评审候选、
+      验证失败需修 spec 的 task。每项指派跟进。
+
+    纪律：每条 drift、每个数字都能追溯到 scanning 阶段的真实证据，不臆造。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

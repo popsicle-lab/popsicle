@@ -1,0 +1,89 @@
+// ============================================================
+// 示例：银行转账的意图声明与形式化验证
+// ============================================================
+
+// ----- 1. 定义领域类型 -----
+
+type Account {
+  balance: Int
+  owner: String
+  active: Bool
+}
+
+// ----- 2. 业务目标（goal — RFC A1） -----
+//
+// 在写任何意图之前，先把"为什么需要这套规则"形式化下来。
+// goal 不是注释——它会被静态分析追踪，realized_by 列表中
+// 任何拼写错误的引用都会触发 W0010 警告。
+
+goal "转账绝不能凭空创造或销毁资金" {
+  rationale: "金融系统的最高承诺；任何破坏会直接转化为审计事故"
+  stakeholder: ["finance", "compliance", "audit"]
+  measure: "TransferPreservesTotal 定理在 CI 中常绿"
+  realized_by: [TransferSafe, TransferPreservesTotal]
+}
+
+// ----- 3. 声明意图：安全转账 -----
+//
+// "意图"是 intent-lang 的核心概念。
+// 你只需要声明"转账应该满足什么条件"，而不需要写具体实现。
+// 系统会自动验证这些条件是否逻辑自洽。
+
+@tobe
+intent TransferSafe(sender: Account, receiver: Account, amount: Int) {
+  // require = 前置条件（调用前必须满足）
+  require amount > 0
+  require sender.balance >= amount
+  require sender.active && receiver.active
+
+  // ensure = 后置条件（执行后必须满足）
+  // x' 表示 x 在操作后的新值
+  ensure sender.balance' == sender.balance - amount
+  ensure receiver.balance' == receiver.balance + amount
+
+  // invariant = 不变量（执行前后都必须满足）
+  invariant sender.balance' >= 0
+}
+
+// ----- 4. 声明定理：总额守恒 -----
+//
+// 定理用来证明更高层次的性质。
+// 这里我们证明：任何合法的转账都不会凭空创造或销毁资金。
+
+theorem TransferPreservesTotal {
+  forall s: Account, r: Account, a: Int,
+    TransferSafe(s, r, a) ==>
+      s.balance' + r.balance' == s.balance + r.balance
+}
+
+// ----- 5. 一个有 bug 的意图（@asis = 承认问题、不参与默认验证） -----
+//
+// 在迁移大型项目时常见：老代码先翻译成 @asis，让工具能追踪到
+// "这条逻辑还在用错误版本"。`intent check` 默认跳过；加
+// --include-asis 让 Z3 找出反例（这就是 bug 报告）。
+
+@asis
+intent TransferBuggy(sender: Account, receiver: Account, amount: Int) {
+  require amount > 0
+  require sender.balance >= amount
+
+  // Bug: 多扣了 1
+  ensure sender.balance' == sender.balance - amount - 1
+  ensure receiver.balance' == receiver.balance + amount
+
+  invariant sender.balance' >= 0
+}
+
+// ----- 6. 完备性维度（coverage — RFC A3） -----
+//
+// 提示评审者：转账场景至少应在 active × amount 范围 × overdraft 三个
+// 维度上被规则覆盖。`intent coverage` 工具会扫描每个组合是否在
+// 任意 safety/intent 子句的字面文本中出现，未覆盖则提示。
+
+coverage "transfer-domain" {
+  dimensions: {
+    sender_state: [active, frozen]
+    amount_class: [zero, positive, large]
+    receiver_state: [active, frozen]
+  }
+}

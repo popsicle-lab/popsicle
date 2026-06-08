@@ -1,0 +1,157 @@
+name: intent-spec-writer
+description: 把 prd-writer 产出的 acceptance-intent 种子收紧成可合并、可被 Z3 验证的正式 intent-lang。负责分层归位（acceptance / invariants / contracts）、剥离时间/性能/运行时约束（D2）、应用四条 intent-lang 硬写法规则、与目标产品现有 .intent 去重查冲突，并在交付前用 intent check 自验。是「intent → 机器验证」闭环里「种子 → 正式 intent」这一棒（决策 D3，从外部契约位收回内置）。
+version: "0.1.0"
+
+# 上游：prd-writer 的种子。种子已是合法 intent-lang 骨架（prd-writer v0.2+），
+# 本 skill 把它规范化、分层、查冲突、跑通。
+inputs:
+  - from_skill: prd-writer
+    artifact_type: acceptance-intent-seed
+    required: true
+    relevance: high
+
+artifacts:
+  - type: formal-acceptance-intent
+    template: templates/formal-acceptance.intent
+    file_pattern: "{slug}.acceptance-formal.intent"
+    description: "收紧后的正式 acceptance intent 增量，可直接 intent check、待合并到 products/{target_product}/intents/acceptance.intent。"
+
+  - type: intent-spec-report
+    template: templates/intent-spec-report.md
+    file_pattern: "{slug}.intent-spec-report.md"
+    description: "收紧记录：分层归位、剥离清单、四规则审查、intent check 结果、冲突检查、合并计划。"
+
+workflow:
+  initial: ingesting
+  states:
+    ingesting:
+      description: "读种子 + 目标产品现有 acceptance/invariants/contracts.intent + PRD Intent Mapping。建立去重/冲突基线。"
+      transitions:
+        - to: tightening
+          action: ingested
+          guard: "checklist_complete:Ingest Checklist"
+
+    tightening:
+      description: "分层归位 + 剥离时间/性能 + 应用四规则，写出正式 .intent。"
+      transitions:
+        - to: verifying
+          action: ready-to-verify
+
+    verifying:
+      description: "跑 intent check（经 intent-validate tool）自验；做同名/矛盾冲突检查；结果写进 report。失败回 tightening。"
+      transitions:
+        - to: tightening
+          action: fix
+        - to: review
+          action: verified
+          guard: "has_sections:Summary,分层归位,剥离的约束,验证结果,合并计划;checklist_complete:检查清单"
+
+    review:
+      description: "把正式 .intent + 报告呈给用户审阅。"
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: tightening
+          action: revise
+
+    completed:
+      final: true
+
+prompts:
+  ingesting: |
+    本状态：把种子和现状读全，**还不要**改语法。
+
+    Step 1 —— 读种子 `{slug}.acceptance.intent`（prd-writer 产出，已是合法骨架）。
+
+    Step 2 —— 读目标产品现有三件套，建立基线：
+      - products/{target_product}/intents/acceptance.intent
+      - products/{target_product}/intents/invariants.intent
+      - products/{target_product}/intents/contracts.intent
+      记录已存在的 type / intent / safety / theorem 名字，供去重与冲突检查。
+
+    Step 3 —— 读 PRD `{slug}.prd.md` 的 § Intent Mapping：每条核心声明标了目标
+      intent 层（acceptance / invariants / contracts）。这是**分层归位**的依据。
+
+    Step 4 —— 对每条种子内容判定归属层：
+      - 「用户做 X 后必须看到 Y」的操作后态        → acceptance（require/ensure）
+      - 「永远 X / 绝不 Y」的跨操作保持型不变量    → invariants（safety + primed）
+      - 「模块 A 对 B 暴露接口」的契约            → contracts（goal + [Awaiting ADR]）
+      - 时间 / 性能 / 运行时事实 / 概率            → **不进任何 .intent**，记到对应 task 成功标志
+
+    ## Ingest Checklist
+    - [ ] 种子已读，列出其全部 intent / type
+    - [ ] 目标产品现有三件套已读，已列出现存符号名（去重基线）
+    - [ ] PRD § Intent Mapping 已读，每条声明的目标层已确认
+    - [ ] 已初步给每条种子内容标好归属层（含「降级到 task」的项）
+
+  tightening: |
+    本状态：把种子收紧成正式 intent-lang。逐条按下面规则改写，写进
+    `{slug}.acceptance-formal.intent`（acceptance 层）；invariants / contracts
+    层的增量分别在 report 的「分层归位」里给出落点与片段。
+
+    ## intent-lang 四条硬写法规则（违反必出错，逐条自查）
+
+    1. **后态用 primed**：要约束操作**之后**的状态，必须写 `x'`。
+       safety/invariant 写 unprimed 只验旧态 = 假通过。
+    2. **一个文件 = 一个验证作用域**：每条 `safety` 会被无条件合并进文件内所有
+       intent，且靠**参数名**绑定。所以 acceptance.intent **只放操作 intent**，
+       保持型不变量进 invariants.intent；不相关操作不要同文件。
+    3. **无 frame 假设**：intent-lang 不默认「未提及字段不变」。要声明某操作不改
+       某字段，必须显式 `ensure x' == x`（如「密码重置不重置 2FA」）。
+    4. **纯 require+ensure = trivial verified**：`ensure` 只是假设，只有
+       `invariant`/`safety` 产生验证目标。acceptance 的操作规约属 trivial verified
+       （合法、可跑，但不被证伪）；真正的不变量验证靠 invariants 的 safety。
+
+    ## 命名 + 剥离
+
+    - intent / safety / theorem 名用 **PascalCase 标识符**（不能有连字符）。
+    - task ↔ intent 的连接放在每个 intent 上方注释块（task / pdr / journey_stage /
+      source / query_anchors），并加 `@source("PDR-XXXX", section: "...")` `@tobe`。
+    - **剥离**所有时间/性能/运行时约束（within / p95 / latency / 「不入日志」/
+      「展示一次」），在 report「剥离的约束」里登记它该去哪个 task 的成功标志。
+    - 聚合（count/where）与双实体唯一性 → 写成 struct-forall `theorem`（注明当前
+      intent-lang 会 skip，仅声明意图）。
+
+    ## 去重
+
+    - 若种子的 type 已在目标 acceptance.intent 声明，**不要重复声明**（合并时复用）。
+    - 若 intent 名与现有冲突，改名或确认是同一条（同一条则不新增）。
+
+  verifying: |
+    本状态：自验 + 冲突检查，结果写进 report。
+
+    Step 1 —— 跑 intent check（优先经 tool）：
+        popsicle tool run intent-validate path=<formal 文件相对路径> format=text
+      或直接 `intent check <file>`。要求 **exit 0**：全 verified / 合理 skipped。
+      若 FAILED：把反例抄进 report「验证结果」，回 tightening 修。
+
+    Step 2 —— 冲突检查（与目标 acceptance.intent 合并后是否自洽）：
+      把 formal 增量与现有 acceptance.intent **拼在一起**跑一次 intent check，
+      确认没有：同名 intent/type 重复声明、类型字段冲突、安全规则互相否定。
+      （注意规则 2：若你的增量带 safety，拼文件后它会作用于所有 intent——
+       通常 acceptance 增量不应带 safety。）
+
+    Step 3 —— 填 report 各段；勾完「检查清单」。
+
+    纪律：report 里每个「verified / skipped / failed」都来自真实 tool 输出，不臆造。
+
+    ## 检查清单
+    - [ ] formal .intent 单独 intent check 通过（exit 0）
+    - [ ] 与现有 acceptance.intent 拼接后 intent check 仍通过
+    - [ ] 无时间/性能/运行时约束残留在 .intent（已全部登记到 task）
+    - [ ] 四条硬规则逐条自查通过
+    - [ ] 无重复声明 / 命名冲突
+    - [ ] 合并计划写明追加位置与类型复用方式
+
+  review: |
+    把 `{slug}.acceptance-formal.intent` + `{slug}.intent-spec-report.md` 呈给用户。
+    重点说明：
+    - 哪些声明被剥离/降级到 task（让用户确认测试侧会接住）；
+    - 哪些是 trivial verified（操作规约）vs 真正验证了不变量；
+    - 合并计划（追加到 products/{target_product}/intents/acceptance.intent 的位置）。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

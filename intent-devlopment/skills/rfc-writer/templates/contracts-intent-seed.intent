@@ -1,0 +1,44 @@
+// ============================================================
+// Contracts 种子 — {target_product}（rfc-writer 产出）
+// ============================================================
+//
+// 角色：**契约位种子**。跨产品 / 内部模块接口的意图声明，用 intent-lang 的
+// `goal` 块表达（一等语法，`intent check` 解析但**不产生 VC**）。
+//
+// ⚠️ 状态：每个 goal 标 `[Awaiting ADR-XXXX]`。在对应 ADR 由 adr-writer 固化为
+//    Accepted 前，**不收紧**成可验证的 intent/safety。解锁后交 intent-spec-writer
+//    收紧并合并到 products/{target_product}/intents/contracts.intent。
+//
+// ⚠️ 能力边界（D2）：性能契约（p95 / QPS / 时延）**不进** goal 字段——它们是 SLO，
+//    由压测/监控守护（见 RFC § Quality Attributes）。本文件只承载「意图 + 接口形状（注释）」。
+//
+// Last-Updated: {YYYY-MM-DD}
+// Source-RFC: {slug}.rfc.md
+// ============================================================
+
+// ------------------------------------------------------------
+// 跨 product 契约
+// ------------------------------------------------------------
+
+// 接口（语义层，技术形式 [Awaiting ADR-{id}: {决策名}]）：
+//   {fn_signature}  ->  {return_shape}
+// SLO（不进 Z3）：{p95 / QPS 等} —— 见 RFC § Quality Attributes
+goal "{一句话：本契约为什么存在}" {
+  rationale: "{谁消费这条契约 + 它解耦/保证了什么}"
+  stakeholder: ["{consumer-a}", "{consumer-b}", "security"]
+  measure: "{怎么衡量契约被遵守——无绕过路径 / 无非法记录等，非性能数字}"
+}
+
+// ------------------------------------------------------------
+// 内部模块契约（登记契约位，逻辑保证待 ADR 落地后进 acceptance/invariants）
+// ------------------------------------------------------------
+//
+//   {interface_name}   scope={module}   保证 {invariant 名}   [Awaiting ADR-{id}]
+//
+// ============================================================
+// 自检：
+//   - 每个跨产品契约都有 goal（rationale/stakeholder/measure）
+//   - 内部契约明确标 [Awaiting ADR-XXXX]，不偷偷写完
+//   - 无性能/时间数字进入 goal 字段（D2）
+//   - `intent check` 本文件 → 解析通过，0 VC，exit 0
+// ============================================================

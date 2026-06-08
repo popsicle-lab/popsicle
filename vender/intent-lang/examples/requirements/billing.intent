@@ -1,0 +1,141 @@
+// ============================================================
+// 示例：计费领域的需求建模（Requirements-Modeling Style）
+// 使用 RFC 新语法：goal / @tobe / coverage
+// ============================================================
+//
+// 这个文件演示 intent-lang 作为"需求建模 DSL"的完整能力链：
+//   1. 用 goal 声明业务目标和理由（RFC A1）
+//   2. 用 safety 把目标拆解为可验证的不变量
+//   3. 用 @tobe 标注新意图，区别于 @asis 的遗留意图（RFC A2）
+//   4. 用 coverage 声明业务场景维度（RFC A3）
+//   5. 用 theorem 验证多条规则之间无矛盾
+// ============================================================
+
+// ----- 1. 领域类型 -----
+
+type Account {
+  id: Int
+  balance: Int
+  owner: String
+  active: Bool
+  overdraftLimit: Int
+}
+
+type Receipt {
+  txId: Int
+  fromAccount: Int
+  toAccount: Int
+  amount: Int
+  committed: Bool
+}
+
+// ----- 2. 业务目标（goal — RFC A1） -----
+
+goal "用户余额永远满足透支底线" {
+  rationale: "金融监管硬要求：客户实际可动用资金不得低于协商透支额度"
+  stakeholder: ["compliance", "finance", "ops"]
+  measure: "线上 30 天滚动窗口内未发生 balance < -overdraftLimit 事件"
+  realized_by: [BalanceWithinOverdraft, Transfer, Refund]
+}
+
+goal "已提交凭证的账户必须有效" {
+  rationale: "封禁/注销账户不应再产生新的有效凭证；这是审计可追溯性的基础"
+  stakeholder: ["audit", "ops"]
+  measure: "审计日志中无 inactive 账户对应的 committed receipt"
+  realized_by: [InactiveAccountHasNoCommittedReceipts]
+}
+
+// ----- 3. 业务安全规则（safety） -----
+
+safety BalanceWithinOverdraft(a: Account) {
+  invariant a.balance >= -a.overdraftLimit
+}
+
+safety OverdraftLimitNonNegative(a: Account) {
+  invariant a.overdraftLimit >= 0
+}
+
+safety InactiveAccountHasNoCommittedReceipts(a: Account, r: Receipt) {
+  invariant (!a.active && r.committed) ==>
+    (r.fromAccount != a.id && r.toAccount != a.id)
+}
+
+// ----- 4. 业务定理（一致性 + 推论） -----
+
+theorem ZeroOverdraftMeansNonNegative {
+  forall a: Account,
+    (a.overdraftLimit == 0 && a.balance >= -a.overdraftLimit) ==>
+      a.balance >= 0
+}
+
+// ----- 5. 操作意图（@tobe = 我们要实现的目标状态） -----
+
+@tobe
+intent Transfer(sender: Account, receiver: Account, amount: Int) {
+  require amount > 0
+  require sender.active
+  require receiver.active
+  require sender.balance - amount >= -sender.overdraftLimit
+
+  ensure sender.balance' == sender.balance - amount
+  ensure receiver.balance' == receiver.balance + amount
+
+  invariant sender.balance' >= -sender.overdraftLimit
+  invariant receiver.balance' >= -receiver.overdraftLimit
+}
+
+@tobe
+intent Refund(receipt: Receipt, sender: Account, receiver: Account) {
+  require receipt.committed
+  require receipt.fromAccount == sender.id
+  require receipt.toAccount == receiver.id
+  require sender.active
+  require receiver.active
+  require receiver.balance - receipt.amount >= -receiver.overdraftLimit
+
+  ensure sender.balance' == sender.balance + receipt.amount
+  ensure receiver.balance' == receiver.balance - receipt.amount
+
+  invariant receiver.balance' >= -receiver.overdraftLimit
+}
+
+// ----- 6. 跨意图守恒（验证规则集合的健康度） -----
+
+theorem MoneyConservation {
+  forall s: Account, r: Account, a: Int,
+    Transfer(s, r, a) ==>
+      s.balance' + r.balance' == s.balance + r.balance
+}
+
+// ----- 7. 完备性维度（coverage — RFC A3） -----
+//
+// 声明这个领域应该覆盖的"关键场景维度"，由 `intent coverage` 工具
+// 检查每个组合是否被某条 safety/intent 提及。这是需求侧"是否覆盖完整"
+// 的第一道筛子（语法层面，不是 SMT 级别的完备性证明）。
+
+coverage "transfer-domain" {
+  dimensions: {
+    amount: [0, 1, 100]
+    account_state: [active, frozen, closed]
+  }
+}
+
+coverage "overdraft-policy" {
+  dimensions: {
+    overdraft: [0, 100, 1000]
+  }
+}
+
+// ============================================================
+// 工具链使用：
+//
+//   $ intent check     billing.intent          # 一致性验证（Z3）
+//   $ intent coverage  billing.intent          # 完备性提示
+//   $ intent testspec  billing.intent          # 派生测试场景
+//   $ intent explain   billing.intent Transfer # 自然语言解释
+//
+//   $ intent diff   billing.intent.v1 billing.intent.v2  # 变更分类
+//   $ intent impact billing.intent.v1 billing.intent.v2  # 影响分析
+//
+// 任意命令加 --format json 可输出结构化结果，给 popsicle Skill 消费。
+// ============================================================

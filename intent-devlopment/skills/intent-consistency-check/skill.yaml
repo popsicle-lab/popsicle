@@ -1,0 +1,121 @@
+name: intent-consistency-check
+description: 对项目内所有 .intent 文件跑 intent-lang 形式化验证（经 intent-validate tool / Z3），汇总 verified/failed/skipped 并产出一致性报告。skill 始终是「observe」——报告问题但不阻断 pipeline；「gate」（任一失败即拦合并）由 CI 直接用 intent-validate tool 的 exit code 实现，skill 负责给出量化的「何时开闸」退出判据（连续 N 次零失败才升级）。只验证逻辑一致性，不覆盖时间/性能/运行时约束。
+version: "0.1.0"
+
+# 上游可选：prd-writer 产出 acceptance-intent-seed（种子），经 intent-spec-writer
+# 正式化为合法 .intent 后由本 skill 验证。Phase 0 也可直接对仓库现有 .intent 跑。
+inputs:
+  - type: acceptance-intent-seed
+    required: false
+
+artifacts:
+  - type: intent-consistency-report
+    template: templates/intent-consistency-report.md
+    file_pattern: "{slug}.intent-consistency-report.md"
+    description: "每个 .intent 文件的验证结果汇总 + 失败反例原文 + 处置建议"
+
+workflow:
+  initial: checking
+  states:
+    checking:
+      # 本状态下 agent 枚举 .intent 文件、逐个调用 intent-validate（--format json），
+      # 收集每个文件的 results[] 与 exit code。还不要写报告。
+      transitions:
+        - to: reporting
+          action: results-collected
+    reporting:
+      # 本状态下 agent 把收集到的真实结果写成报告。
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Summary,Per-File Results,Failures,Skipped,Disposition,Gate Readiness;checklist_complete:检查清单"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: reporting
+          action: revise
+    completed:
+      final: true
+
+prompts:
+  checking: |
+    你在跑 intent-consistency-check。本状态的任务是**收集真实验证结果**，
+    **还不要**写报告。
+
+    Step 1 —— 枚举所有 `.intent` 文件。常见位置：
+      - products/*/intents/*.intent  （acceptance / invariants / contracts）
+      - docs/invariants/*.intent      （升格为全局的不变量）
+
+    Step 2 —— 对**每个**文件跑验证，拿 JSON。优先用 tool（本 phase 引入它的意义）：
+
+        popsicle tool run intent-validate path=<相对仓库根的文件路径> format=json
+
+      ⚠️ 两个坑：
+        (a) tool 首次使用需安装一次：`popsicle tool install ./tools/intent-validate`
+            （装到 .popsicle/tools/）。若环境未装 popsicle，可回退直接调用：
+              intent --format json check <file>
+            （或仓库内构建产物 intent-lang/target/release/intent-cli）。
+        (b) `popsicle tool run --format json` 会把 tool 的 stdout **再包一层**
+            `{exit_code, stdout, stderr}`。真正的 intent-lang JSON 在内层 stdout 里，
+            需要二次解析。用 `format=text` 调 tool 则直接是人读输出。
+
+    Step 3 —— 解析每个文件的 intent-lang JSON：
+        {
+          "file": "...",
+          "diagnostics": [...],          // 解析/类型错误（level=error 即文件不合法）
+          "results": [ { "name", "kind", "status", "detail", "track" } ],
+          "ok": true|false
+        }
+      统计：status ∈ {verified, failed, unknown, skipped}。记下：
+        - 每个 failed / unknown 的 name、kind、detail（detail 含 Z3 反例，**逐字保留**）
+        - 每个 skipped 的 name 与原因（detail）
+        - 该文件的 exit code（0 = ok）
+
+    Step 4 —— 不要对结果发表猜测，不要臆造反例。只记录 tool 实际输出。
+
+    收集完所有文件后，用 `results-collected` 切到 reporting。
+
+  reporting: |
+    你已有所有文件的真实验证结果。按模板 `templates/intent-consistency-report.md`
+    写报告。
+
+    规则：
+
+    - **Summary**：填准 frontmatter 与表格的计数（文件数、VC 总数、verified/failed/
+      skipped）。`overall` = has-failures 当且仅当存在 status==failed/unknown，
+      否则 pass。`mode` 固定 observe（skill 永远只观察，不阻断）。
+
+    - **Per-File Results**：每个文件一行，含各状态计数与 exit code。
+
+    - **Failures**：每个 failed/unknown 的 VC 单独成块，**逐字粘贴** Z3 反例，并按模板
+      写一句「哪个字段=什么值违反了哪条约束」（帮人快速定位根因，常见是漏 frame
+      `ensure x'==x` / safety 用了 unprimed / require 太弱）。再给四选一处置建议
+      （修 spec / 预期收紧需 PDR / 降级测试 / 待 intent-lang 支持）。无失败写「（无）」。
+
+    - **Skipped**：列出每个 skipped 及原因。强调 skipped **不计失败**
+      （当前 intent-lang 不支持 struct-typed forall theorem；@asis 默认跳过）。
+
+    - **Disposition**：说清 observe（本 skill 不阻断）与 gate（CI 用 tool exit code 阻断）
+      的分工；每个 failed 指派跟进负责人。
+
+    - **Gate Readiness**：这是 observe→gate 的**退出判据**。
+      1. 读取上一次 `*.intent-consistency-report.md` 的 `consecutive_clean_runs`
+         （没有上次就从 0 起）。本次 overall=pass → `+1`；has-failures → 置 `0`。
+      2. 判据：`consecutive_clean_runs >= 3` 且本次 pass → `gate_ready = true`。
+      3. 把 frontmatter 的 `consecutive_clean_runs` / `gate_ready` 与表格填一致。
+      4. 若 gate_ready=true，给出 CI 开闸建议（跑 intent-validate tool、靠 exit code 拦）。
+      **不要**仅凭一次全绿就喊「可以上闸」——必须连续 3 次零失败。
+
+    纪律：
+    - 报告里每个数字、每条反例都必须能追溯到 Step 3 收集的真实输出。
+    - **不验证时间/性能**：若看到有人把「P95 ≤ Xs」「N 秒内响应」写进 `.intent`，
+      在报告里标记为「违反 D2 能力边界，应降级为测试断言」。
+
+    提交前勾完模板底部「检查清单」（guard 要求 checklist_complete）。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

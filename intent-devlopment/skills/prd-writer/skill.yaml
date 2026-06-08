@@ -1,0 +1,337 @@
+name: prd-writer
+description: 把辩论产出（或用户直接需求）打磨成可落地的 IDD 任务图产物——PRD overview（PRODUCT.md 顶层增量）+ N 份 task 文件（按 5 个用户旅程阶段归类）+ acceptance.intent 种子（单文件多 block）+ PDR 骨架。强制贯彻「以任务和意图为中心、告别功能罗列」的 AI 时代文档范式，质量评分 ≥ 90 才放行。
+version: "0.2.0"
+
+# prd-writer 是「内容契约位」的第二个 skill：在 product-debate 把方案空间收敛
+# 之后，把 prd-draft 升级为可落地的活文档内容。
+#
+# **范式升级（v0.2）**：产出物从「单一 PRD 文件」改为「任务图三联体 + N 份 task
+# 文件」——每个 task 是一个独立的 chunk，含 YAML frontmatter，可被 AI 单独召
+# 回回答用户问题。详细规则见 `references/task-organization.md`。
+inputs:
+  - from_skill: product-debate
+    artifact_type: prd-draft
+    required: false
+    relevance: high
+    # 强烈推荐——v0.2 起 prd-draft 也已经是 task-centric 形态。
+
+  - from_skill: product-debate
+    artifact_type: product-debate-record
+    required: false
+    relevance: high
+
+  - from_skill: fact-extractor
+    artifact_type: fact-extraction-report
+    required: false
+    relevance: medium
+
+  - from_skill: project-init
+    artifact_type: project-init-plan
+    required: false
+    relevance: medium
+
+artifacts:
+  - type: prd-overview
+    template: templates/prd.md
+    file_pattern: "{slug}.prd.md"
+    description: "本次 PRD 变更的清单 + 概览。**不是**整份 PRD——它列出本次变更涉及的所有 task 文件 + 准备合并到 PRODUCT.md 顶层的内容片段。落地时按 §4 文件清单分别合并到对应位置。"
+
+  - type: task
+    template: templates/task.md
+    file_pattern: "tasks/{journey_stage}/T-{task_id_nnnn}-{task_slug}.md"
+    multiple: true
+    description: "每个 task 一份独立文件，含 YAML frontmatter。落地到 `products/{target_product}/tasks/{journey_stage}/`。本次变更涉及多少 task 就产多少份。"
+
+  - type: tasks-index
+    template: templates/tasks-readme.md
+    file_pattern: "tasks/README.md"
+    description: "tasks/ 目录索引。prd-writer 在 review 状态首次生成；后续由 living-doc-author 维护。"
+
+  - type: acceptance-intent-seed
+    template: templates/acceptance-intent-seed.intent
+    file_pattern: "{slug}.acceptance.intent"
+    description: "单文件多 block。每个 block 名格式 `T-XXXX-<short-desc>`，与 task_id 双射。最终合并到 `products/{target_product}/intents/acceptance.intent`。"
+
+  - type: pdr-skeleton
+    template: templates/pdr-skeleton.md
+    file_pattern: "PDR-{id}-{slug}.md"
+    description: "配套的 Product Decision Record 骨架，Status: Proposed。Consequences 章节列出本次涉及的所有 task 文件路径（精确到文件级，不是 PRODUCT.md § 章节）。"
+
+workflow:
+  initial: ingesting
+  states:
+    ingesting:
+      description: "读 prd-draft（如有）+ debate-record + fact-extraction-report；如无 prd-draft，与用户做需求访谈。**额外校验**：用户辩论草稿是否已经 task-centric（含 User Intents Catalog 和 Tasks 段）"
+      transitions:
+        - to: drafting
+          action: ingested
+          guard: "checklist_complete:Ingest Checklist"
+
+    drafting:
+      description: "起草五份 artifact（prd-overview + N 份 task + tasks-index + acceptance.intent 种子 + PDR 骨架）。它们是同生共死的一组——任何修改要同步。"
+      transitions:
+        - to: scoring
+          action: ready-to-score
+
+    scoring:
+      description: "对 prd-overview 主稿做质量评分（4 维度共 100 分，目标 ≥ 90）。本版评分新增「AI 可消化度」维度（20 分）。低于阈值 → 退回 drafting。"
+      transitions:
+        - to: drafting
+          action: refine
+        - to: review
+          action: pass
+          guard: "has_sections:Core Intent,Problem Statement,File Manifest,User Intents Catalog,Intent Mapping;checklist_complete:Quality Checklist"
+
+    review:
+      description: "五类 artifact 一起呈给用户审阅"
+      transitions:
+        - to: completed
+          action: approve
+          guard: "checklist_complete:Review Checklist"
+          requires_approval: true
+        - to: drafting
+          action: revise
+
+    completed:
+      final: true
+
+prompts:
+  ingesting: |
+    本状态下你的任务是**把所有输入读完**，并补齐缺失信息——之后才能起草。
+
+    ## 输入检查清单
+
+    1. **prd-draft**（强烈推荐有，且必须是 task-centric 形态）
+       - 来自 `product-debate` skill，文件名 `{slug}.prd-draft.md`
+       - **校验 task-centric 形态**：
+         - [ ] 含有 `Tasks` 段（不是 `Functional Requirements`）
+         - [ ] 每个 task 标了 `journey_stage`（5 选 1：onboarding / daily-ops /
+               troubleshooting / admin / lifecycle）
+         - [ ] 含有 `User Intents Catalog` 表
+         - [ ] 含有 `Intent Mapping` 表（标了每个核心声明的目标 intent 层）
+       - **如果上述任一项缺失**：草稿是旧范式（feature-centric），必须先回头补
+         这一步——要么让 PM 在 product-debate 重跑 Phase 4，要么本 skill 在
+         访谈中补齐
+
+    2. **product-debate-record**（用于 PDR 的 Decision Context 章节）
+
+    3. **fact-extraction-report**（数字 / 模块名引用源）
+
+    4. **project-init-plan**（锁定 target_product；检查 `tasks/` 子目录是否已铺）
+
+    ## 缺 prd-draft 时的兜底流程
+
+    用户绕过 product-debate 直接调 prd-writer 时：
+
+    1. **强烈建议先跑 product-debate**——告知用户「跳过辩论 + 跳过 task 识别」
+       会让本 skill 不得不替 PM 做 task 判定，质量风险高
+    2. 用户坚持继续 → 启动**任务图访谈**：
+       - 这个 PRD 解决什么用户痛点？（一句话）
+       - **用户问 AI 助手时会怎么问？**（要 3-5 个原话问句作为 query 锚点）
+       - 这些问句对应几个独立 task？每个 task 属于哪个旅程阶段？
+       - 每个 task 的 happy path 是什么步骤？
+       - 哪些声明是「永远 X」「绝不 Y」式硬约束？（→ invariants 候选）
+       - 哪些声明是「用户做 X 后必须看到 Y」式行为？（→ acceptance 候选）
+       - 哪些声明是「模块 A 对模块 B 暴露接口 X」式契约？（→ contracts 候选，
+         等 ADR 落地后再回填）
+
+    ## Ingest Checklist
+
+    - [ ] prd-draft 已读取，已通过 task-centric 形态校验（或访谈补齐）
+    - [ ] debate-record 已读取（或显式记录「未经辩论」）
+    - [ ] fact-extraction-report 引用关系已建立（或显式记录「无事实基」）
+    - [ ] target_product 已锁定且在 Product Inventory 中
+    - [ ] target_product 的 `products/{name}/tasks/{5 个旅程}/` 目录已存在
+          （由 project-init 铺出；不存在则警告用户重跑 project-init）
+    - [ ] PDR ID 已分配（看 `products/{target_product}/decisions/pdr/` 现有最大号 +1）
+    - [ ] Task ID 范围已分配（看 `products/{target_product}/tasks/**/T-*.md`
+          现有最大号 +1，本次连续 N 个）
+
+  drafting: |
+    本状态下你起草五类 artifact。**它们是同生共死的一组——任何修改要同步**。
+
+    ## 五类 artifact 的边界
+
+    | Artifact | 内容 | 不准写什么 |
+    |---|---|---|
+    | **prd-overview** | 文件清单 + PRODUCT.md 顶层增量 + Intent Mapping | 任何 task 正文（task 单独成文）|
+    | **task 文件**（N 份）| 单个用户意图的完整可独立召回 chunk | 决策理由（进 PDR）/ 跨 task 内容（进 PRODUCT.md 顶层）/ 实现细节 |
+    | **tasks/README.md** | task 列表索引 + 健康度统计 | task 正文（仅链接）|
+    | **acceptance.intent 种子** | task 中可形式化的硬约束 | 自然语言 / 商业策略 |
+    | **PDR 骨架** | 为什么做这个决策 + Consequences（精确到文件级）| 「现在状态」描述（进 PRD overview 或 task）|
+
+    ## 任务图起草纪律（v0.2 核心）
+
+    起草任何 task 文件前，先回答 3 个问题：
+
+    1. **这个 task 的用户原话标题是什么？**
+       - ✅ 「我第一次跑 intent check 直到拿到 PASS」
+       - ❌ 「验证功能」「.intent 文件处理」
+       - 写不出用户原话 → 这不是 task，是 feature——退回到 product-debate
+         重新做 task 识别
+
+    2. **这个 task 属于 5 个旅程阶段哪一个？**
+       - 按 `references/task-organization.md` § 判定准则 走优先级判断
+       - 命中任一前序条件就归该阶段，不再往后看
+
+    3. **这个 task 有多大？**
+       - 完成路径能用 3-7 个 happy-path 步骤讲完？→ OK
+       - 步骤里大量 if-else？→ 拆分支到 `troubleshooting/` task
+       - 完整文件预计 > 250 行？→ 它是 epic 不是 task，拆成多个
+
+    ## 起草顺序
+
+    1. **先列 Tasks**（用 prd-draft 的「Tasks」段为蓝本）
+       - 分配 task_id（在 target_product 内连续递增）
+       - 决定每个 task 的 journey_stage
+       - 决定每个 task 的 slug（kebab-case，3-6 词）
+       - 写每个 task 的 h1 标题（完整人话句子）
+
+    2. **写每个 task 文件**（用 `templates/task.md`）
+       - frontmatter 必填 8 项齐全
+       - 「本 task 可解答」3-5 个用户原话问句
+       - 完成路径走 happy path，分支拆出去
+       - Related Next Tasks ≥ 1 个
+       - 文件末尾 `Decision-Ref: PDR-{id}`
+
+    3. **写 prd-overview**（用 `templates/prd.md`）
+       - 列文件清单（与 PDR Consequences 镜像一致）
+       - 写 User Intents Catalog（每个 task 至少 3 个问句锚点）
+       - 写 Intent Mapping 表（驱动 acceptance.intent 种子生成）
+
+    4. **写 PDR 骨架**（用 `templates/pdr-skeleton.md`）
+       - 分配 PDR ID
+       - Decision Context 引用 debate-record
+       - Consequences 列出所有 task 文件路径（精确到文件）
+       - Intent Impact 列每个 intent 层的影响
+
+    5. **写 acceptance.intent 种子**（用 `templates/acceptance-intent-seed.intent`）
+       - 每个 block 名遵循 `T-XXXX-<short-desc>` 双射规则
+       - 每个 block 含 `task:` / `pdr:` / `journey_stage:` / `query_anchors:` 必填字段
+
+    6. **写 tasks/README.md**（用 `templates/tasks-readme.md`）
+       - 列出本次新增 task（按 5 个旅程阶段分段）
+       - 健康度统计可以先留空，由 living-doc-author 后续填
+
+    ## 三联体一致性自检（每次修改后跑）
+
+    - [ ] PDR Consequences § Task File Updates 列出的每个文件，都在 prd-overview
+          § File Manifest 中出现，且实际产出对应 .md 文件
+    - [ ] PRD § Intent Mapping 中每个标 `acceptance.intent` 的条目，
+          acceptance.intent 种子里都有对应 block
+    - [ ] 每个 acceptance block 的 `task:` 字段对应一个实际产出的 task 文件
+    - [ ] 每个 task 文件 frontmatter 的 `related_intents` 反向引用了对应 block
+    - [ ] PRD § User Intents Catalog 的问句锚点，至少覆盖所有 task frontmatter
+          中提到的 query_anchors
+
+    ## Task 文件级硬约束（每个 task 文件单独检查）
+
+    - [ ] frontmatter 8 个必填字段齐全
+    - [ ] h1 标题与 frontmatter title 一致
+    - [ ] h1 是完整人话句子（grep 不出 `^# .{1,8}功能$` / `^# 实现` / `^# xxx 模块`）
+    - [ ] 文件 ≤ 250 行（硬上限）
+    - [ ] 「本 task 可解答」≥ 3 个问句
+    - [ ] 完成路径无大量 if-else 分支
+    - [ ] Related Next Tasks ≥ 1 个（叶子 task 例外）
+    - [ ] 文件末尾 `Decision-Ref: PDR-{id}`
+
+  scoring: |
+    本状态下你给 prd-overview 主稿打质量分。目标 **≥ 90**。
+
+    ## 评分维度（v0.2：4 维度，权重调整）
+
+    详细评分细则见 `references/quality-rubric.md`。本版与 v0.1 的关键差异：
+
+    | 维度 | v0.1 权重 | v0.2 权重 | 变化 |
+    |---|---|---|---|
+    | 完整性 | 25 | 20 | 任务图化后内容更紧凑，扣权重 |
+    | 清晰度 | 25 | 20 | |
+    | 可测试性 | 25 | 15 | acceptance.intent 种子承担形式化验证 |
+    | **AI 可消化度** | —— | **20**（新增）| YAML frontmatter / chunk 独立性 / query 锚点 / next-query 链 |
+    | IDD 适配度 | 25 | 25 | 不动——Decision-Ref / Intent Mapping / Charter 仍是 0 分项 |
+
+    ## 评分输出格式
+
+    ```
+    📊 prd-overview 质量评分 — {slug}
+
+    | 维度 | 得分 | 备注 |
+    |---|---|---|
+    | 完整性 | 18/20 | 缺 Out of Tasks 段 |
+    | 清晰度 | 17/20 | 3 处「适当」类模糊词 |
+    | 可测试性 | 13/15 | Story 缺 1 个 acceptance |
+    | AI 可消化度 | 16/20 | 2 个 task 缺 query 锚点；1 个 task 标题是功能名 |
+    | IDD 适配度 | 22/25 | 2 处 Risk 未 cite |
+    | **总分** | **86 / 100** | **未达 90 阈值** |
+
+    📝 建议改进（按 ROI 排序）:
+    1. 给 T-0002 / T-0010 各补 3 个 query 锚点（+3 AI 可消化度）
+    2. 把 T-0003 标题「批量验证功能」改成用户原话（+1 AI 可消化度）
+    3. ...
+
+    预期修订后总分：92 / 100 ✅
+    ```
+
+    ## 转换规则
+
+    - 总分 ≥ 90 → `pass` 进入 review
+    - 总分 < 90 → `refine` 退回 drafting
+    - 用户可强制 pass 但 prd-overview 首部加水印 `Status: Draft (quality bypass: <reason>)`
+
+  review: |
+    五类 artifact 完成。本状态下你呈给用户做最终审阅。
+
+    ## 呈现顺序
+
+    1. **prd-overview**（顶层增量 + 文件清单）
+    2. **task 文件清单**（按 5 个旅程阶段分组展示）
+    3. **PDR 骨架**（Status: Proposed）
+    4. **acceptance.intent 种子**
+    5. **tasks/README.md**（自动生成的索引）
+
+    ## Review Checklist
+
+    - [ ] prd-overview 的 §4 File Manifest 与 PDR Consequences § Task File Updates 完全一致
+    - [ ] 每个 task 文件路径符合 `products/{target_product}/tasks/{journey_stage}/T-{id}-{slug}.md`
+    - [ ] 每个 task 文件单独检查：frontmatter / 长度 / Related Next Tasks 都过关
+    - [ ] acceptance.intent 种子的 block 名与 task_id 双射
+    - [ ] tasks/README.md 列出所有新增 task
+    - [ ] PRD 质量评分 ≥ 90（或 bypass 理由已记录）
+    - [ ] 5 类 artifact 的 `target_product` 一致
+    - [ ] **已向用户展示五类完整产出**
+
+hooks:
+  on_complete: "popsicle extract task-index --from-doc $POPSICLE_DOC_ID 2>/dev/null || true"
+
+  post_complete:
+    - description: "落盘指引"
+      message: |
+        ✅ 五类 artifact 已交付（共 1 + N + 1 + 1 + 1 份文件，N = 本次涉及 task 数）。
+
+        建议下一步：
+
+        1. **PDR 审批**：用户把 `PDR-{id}-{slug}.md` 移到
+           `products/{target_product}/decisions/pdr/`，PR 评审通过后把 Status 改为
+           `Accepted`——此后**永不修改**（charter 第 2 条铁律）。
+
+        2. **Task 文件落地**：把 N 份 task 文件按 journey_stage 分别放进
+           `products/{target_product}/tasks/{stage}/`。
+
+        3. **PRODUCT.md 顶层合并**：把 prd-overview 的 §2 / §3 / §5 / §6 内容
+           合并到 `products/{target_product}/PRODUCT.md` 对应段落。PR 必须 cite
+           `PDR-{id}`（charter 第 3 条铁律）。
+
+        4. **Tasks 索引刷新**：跑 `popsicle skill start living-doc-author --target tasks-index`
+           更新 `products/{target_product}/tasks/README.md` 的健康度统计。
+
+        5. **Intent 种子收紧**：把 `{slug}.acceptance.intent` 种子交给项目自带
+           intent spec writer 收紧，合并到 `products/{target_product}/intents/acceptance.intent`
+           **单文件**末尾（block 名遵循 `T-XXXX-<desc>` 命名以与 task 双射）。
+
+        6. **跑 intent-consistency-check**（一旦上线）：Z3 闸放行。
+
+        7. **如有 contracts.intent 候选**：先跑 `arch-debate` / `rfc-writer` 落地
+           ADR，再回来填本 PDR Intent Impact 表的 contracts 行。
+
+        8. **如属于跨 product 旅程**：检查 `docs/user-journeys/J-XXXX-*.md` 是否
+           需要把本次新 task 加进 Stages 表。

@@ -1,0 +1,64 @@
+// ============================================================
+// 示例：排序算法的规范（不写实现，只声明"排序应该是什么"）
+// ============================================================
+
+type Array {
+  length: Int
+  elements: Seq<Int>
+}
+
+// ----- 业务目标 -----
+
+goal "排序不丢失也不伪造数据" {
+  rationale: "排序作为基础原语，丢/加元素会污染所有上层调用方"
+  stakeholder: ["platform"]
+  measure: "isPermutation 在所有合法输入上为 true"
+  realized_by: [Sort, SortIdempotent]
+}
+
+// ----- 辅助函数 -----
+
+function isSorted(arr: Seq<Int>, len: Int) -> Bool {
+  forall i: Int, 0 <= i && i < len - 1 ==> arr[i] <= arr[i + 1]
+}
+
+function isPermutation(a: Seq<Int>, b: Seq<Int>, len: Int) -> Bool {
+  forall v: Int,
+    count(a, v, len) == count(b, v, len)
+}
+
+// ----- 排序意图 -----
+//
+// 注意：我们不写排序算法，只声明排序的"意图"是什么。
+// 任何满足这个意图的实现都是正确的排序。
+
+@tobe
+intent Sort(arr: Array) {
+  require arr.length >= 0
+
+  // 结果必须有序
+  ensure isSorted(arr.elements', arr.length)
+
+  // 结果必须是原数组的排列（不能丢/加元素）
+  ensure isPermutation(arr.elements, arr.elements', arr.length)
+
+  // 长度不变
+  invariant arr.length' == arr.length
+}
+
+// ----- 定理：排序幂等性（排两次 = 排一次） -----
+
+theorem SortIdempotent {
+  forall a: Array,
+    Sort(a) && Sort(a') ==>
+      a'.elements' == a.elements'
+}
+
+// ----- 完备性维度 -----
+
+coverage "input-shape" {
+  dimensions: {
+    length_class: [empty, single, many]
+    order_state:  [sorted, reverse, random, duplicates]
+  }
+}

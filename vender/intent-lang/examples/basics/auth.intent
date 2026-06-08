@@ -1,0 +1,80 @@
+// ============================================================
+// 示例：用户认证与权限控制
+// ============================================================
+
+enum Role { Admin, Editor, Viewer }
+
+type User {
+  id: Int
+  role: Role
+  authenticated: Bool
+  loginAttempts: Int
+  locked: Bool
+}
+
+type Resource {
+  ownerId: Int
+  public: Bool
+}
+
+// ----- 业务目标 -----
+
+goal "防止暴力破解" {
+  rationale: "限制连续失败次数后锁定账户，是 OWASP 与监管的基本要求"
+  stakeholder: ["security", "compliance"]
+  measure: "审计日志中无连续 5 次以上失败后仍允许登录的记录"
+  realized_by: [Login, LockedUserCannotLogin]
+}
+
+goal "私有资源仅授权用户访问" {
+  rationale: "数据机密性是产品基础承诺；越权访问 = 安全事故"
+  stakeholder: ["security", "product"]
+  measure: "渗透测试无越权读漏"
+  realized_by: [AccessResource]
+}
+
+// ----- 登录意图 -----
+
+@tobe
+intent Login(user: User, passwordCorrect: Bool) {
+  require !user.locked
+
+  // 密码正确 → 认证成功，重置尝试次数
+  ensure passwordCorrect ==> (user.authenticated' == true && user.loginAttempts' == 0)
+
+  // 密码错误 → 认证失败，尝试次数 +1
+  ensure !passwordCorrect ==> (user.authenticated' == false && user.loginAttempts' == user.loginAttempts + 1)
+
+  // 连续失败 5 次 → 锁定
+  ensure user.loginAttempts' >= 5 ==> user.locked' == true
+  ensure user.loginAttempts' < 5 ==> user.locked' == false
+}
+
+// ----- 访问控制意图 -----
+
+@tobe
+intent AccessResource(user: User, resource: Resource) {
+  // 必须已认证
+  require user.authenticated
+
+  // 公开资源：所有人可访问
+  // 私有资源：仅 owner 或 Admin 可访问
+  require resource.public || user.id == resource.ownerId || user.role == Admin
+}
+
+// ----- 定理：锁定后无法登录 -----
+
+theorem LockedUserCannotLogin {
+  forall u: User, p: Bool,
+    u.locked ==> !Login(u, p)
+}
+
+// ----- 完备性维度 -----
+
+coverage "auth-matrix" {
+  dimensions: {
+    role: [Admin, Editor, Viewer]
+    resource_visibility: [public, private]
+    auth_state: [authenticated, anonymous]
+  }
+}

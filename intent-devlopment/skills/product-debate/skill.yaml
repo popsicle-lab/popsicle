@@ -1,0 +1,256 @@
+name: product-debate
+description: 多角色产品讨论模拟器——在写 PRD 之前用 4-6 个角色（PM / UXR / ENGLD / BIZ / ...）就一个 product slice 充分辩论方案空间，暴露盲点。**消费 fact-extractor 的事实基**作为辩论的 ground truth，**消费 project-init 的 product inventory** 作为讨论边界，产出 PRD 草稿 + 决策矩阵 + 辩论纪要，喂给下游的 prd-writer。
+version: "0.1.0"
+
+# product-debate 是「内容契约位」的第一个 skill：它把 fact-extractor 抽出来
+# 的「这份代码今天在做什么」翻译成「这份产品应该做什么」的方案空间，但**不
+# 直接写 PRODUCT.md**——内容产出由 prd-writer 接手。这种切分让辩论的过程
+# 可被审计（debate-record），而不是埋在 PRD 的某段论证里。
+inputs:
+  - from_skill: fact-extractor
+    artifact_type: fact-extraction-report
+    required: false
+    relevance: high
+    # 强烈推荐——它的 Bounded Contexts / Risk Hotspots / Domain Glossary 是
+    # 辩论中三大支柱：边界、风险、术语。没有它，辩论会沦为「凭印象」。
+
+  - from_skill: fact-extractor
+    artifact_type: api-contracts
+    required: false
+    relevance: medium
+    # 用于辩论 P2 阶段评估「方案是否会改既有 public API」——这是 ENGLD 角色的
+    # 关键论据。
+
+  - from_skill: project-init
+    artifact_type: project-init-plan
+    required: false
+    relevance: high
+    # product inventory 限定辩论的边界——一次只讨论一个 product。
+
+artifacts:
+  - type: product-debate-record
+    template: templates/debate-record.md
+    file_pattern: "{slug}.product-debate.md"
+    description: "辩论全程的结构化纪要：参与角色、各 Phase 发言摘要、关键分歧、用户决策、覆盖事项"
+
+  - type: prd-draft
+    template: templates/prd-draft.md
+    file_pattern: "{slug}.prd-draft.md"
+    description: "辩论收敛产出的 PRD 草稿——尚未通过 prd-writer 的质量评分，仅作为下游 skill 的输入"
+
+  - type: decision-matrix
+    template: templates/decision-matrix.md
+    file_pattern: "{slug}.decision-matrix.md"
+    description: "候选方案 × 评估维度的打分矩阵；候选方案 ≥ 2 时生成"
+
+workflow:
+  initial: setup
+  states:
+    setup:
+      description: "确认讨论主题、绑定目标 product、加载角色阵容、设置用户置信度。**不要直接进入 debating**——必须人类显式确认后才能开始辩论。"
+      transitions:
+        - to: debating
+          action: start
+          guard: "checklist_complete:Setup Checklist"
+          requires_approval: true
+
+    debating:
+      description: "按 Phase 1-4 推进辩论，每个 Phase 结束**强制暂停**等待用户输入。"
+      transitions:
+        - to: concluding
+          action: conclude
+          guard: "checklist_complete:Phase Coverage"
+        - to: setup
+          action: restart
+
+    concluding:
+      description: "写三份 artifact（debate-record / prd-draft / decision-matrix），请用户最终批准"
+      transitions:
+        - to: completed
+          action: approve
+          guard: "has_sections:Topic,Participants,Phase 1,Phase 2,Phase 3,Phase 4,Decision;checklist_complete:Output Checklist"
+          requires_approval: true
+        - to: debating
+          action: reopen
+
+    completed:
+      final: true
+
+prompts:
+  setup: |
+    你正在为一个 product slice 启动产品辩论。本状态下你的任务是**配置辩论**，
+    **不要**进入辩论本身。
+
+    ## 按顺序收集
+
+    1. **讨论主题**
+       - 具体要解决的产品问题：「要不要做 X 功能」/「Y 和 Z 哪个方案更合适」
+         / 「如何重新设计 W 的用户旅程」
+       - 一句话能讲清——讲不清就请用户先收敛
+
+    2. **目标 product 绑定**
+       - 如果 `project-init-plan.md` 存在，从它的 Product Inventory 中**挑一个**
+         product 作为讨论边界
+       - 跨 product 的话题视情况而定：通常应**拆**成多场辩论；如果确实要跨，
+         显式记录涉及哪些 product 并请用户确认
+       - 没有 project-init-plan 时：问人类「这个讨论限定在哪个 product 范围」
+
+    3. **加载事实基**（如果 fact-extraction-report 可用）
+       - 读取 Bounded Contexts —— 限定方案的可达边界
+       - 读取 Risk Hotspots —— 辩论的 ENGLD 角色用这个论证「方案 X 会撞上
+         模块 Y 的高 churn」
+       - 读取 Domain Glossary —— 辩论中使用的术语必须出自这里，**禁止凭空造词**
+       - 如果 fact-extraction-report 不存在：警告用户「辩论将基于自然语言推断；
+         结论可信度下降」——但允许继续
+
+    4. **角色阵容**（4-6 人）
+       - **默认 5 人**：PM、UXR、GROWTH、ENGLD、BIZ —— 见 `references/default-roles.md`
+       - **领域定制**（若 `docs/product-debate/roles.md` 存在）：读取并叠加项目自定义角色
+       - **核心三角必备**：PM（主持）+ 用户代言人（UXR）+ 约束专家（ENGLD）
+       - 向用户展示推荐阵容，允许增减；少于 4 视角不足，多于 6 对话冗长
+
+    5. **用户置信度**（1-5）
+       - 详细规则见 `references/confidence-modes.md`
+       - 置信度决定角色对用户的回应风格（顺从 / 平等 / 挑战）
+       - 用户可随时通过 `置信度 N` 指令动态调整
+
+    ## Setup Checklist
+
+    - [ ] 讨论主题已用一句话表达完毕
+    - [ ] 目标 product 已绑定（来自 project-init-plan 或人类显式指定）
+    - [ ] fact-extraction-report 存在状态已记录（存在 → 已读取关键章节；不存在 → 已警告用户）
+    - [ ] 角色阵容确定（4-6 人，含 PM + 用户代言人 + 约束专家）
+    - [ ] 用户置信度已设置（1-5）
+    - [ ] **已向用户展示完整 setup 摘要并取得 `start` 确认**
+
+  debating: |
+    辩论已启动。本状态下你严格按 4 个 Phase 推进，**每个 Phase 结束强制暂停**。
+
+    ## ⚠️ 强制暂停规则（不可违背）
+
+    **每个 Phase 结束后立即停止生成，等用户回复。绝不允许一条消息跨越多个 Phase。**
+
+    每个暂停点格式：
+
+    ```
+    ---
+    🎤 **Phase N 暂停 — 等待你的输入**
+    [阶段小结]
+    ❓ [面向用户的具体问题，按置信度调整风格]
+    ```
+
+    禁止：
+    - ❌ 一条消息输出多个 Phase
+    - ❌ 自己替用户回答「继续」然后推进
+    - ❌ 跳过暂停点
+
+    ## Phase 流程
+
+    详细参见 `references/debate-phases.md`：
+
+    - **Phase 1: 用户需求与问题定义** —— PM 主持，UXR + BIZ 补充背景。
+      产出：用户痛点、目标用户、约束清单、成功指标
+    - **Phase 2: 方案发散与初评** —— 2-3 位角色各提一个**实质性差异化**的方案
+    - **Phase 3: 多角色辩论** —— 全员从各自视角评审每个方案，记录关键分歧
+    - **Phase 4: 收敛与决策** —— PM 综合 + 角色投票 + 用户最终决策
+
+    ## IDD 适配的辩论纪律
+
+    本 skill 跑在 IDD 工作流里，所以辩论纪律比常规产品讨论更严：
+
+    1. **任何「这个数字」「这个 LoC」「这个模块」类陈述，必须 cite fact-extraction-report**
+       - 错：「这一部分代码量很大」
+       - 对：「`crates/verifier` 12,431 LoC（见 fact-extraction-report §
+         Bounded Contexts row 2）」
+       - 没事实可引用就写「[未经事实基验证]」标记
+
+    2. **方案不得改 charter 锁定的内容**
+       - 任何会触及「四条铁律」「Layer Map」的方案，必须升级为 CADR（Charter
+         Amendment Decision Record）—— 在本辩论中标注为「需要 CADR」
+       - 普通产品决策走 PDR；架构决策走 ADR
+
+    3. **方案的每个核心声明必须能落进某个 intent 层**
+       - 形如「永远 X」「绝不 Y」的不变式 → 落进 `intents/invariants.intent`
+       - 形如「用户做 X 后必须看到 Y」的用户可见行为 → 落进 `intents/acceptance.intent`
+       - 形如「模块 A 必须对模块 B 提供接口 X」的契约 → 落进 `intents/contracts.intent`
+       - PM 在 Phase 4 收敛时**必须**显式标注每个核心声明的目标 intent 层
+
+    4. **用「现在时」收敛，不用「将来时」**
+       - 错：「这个功能完成后，用户将能 X」
+       - 对：「用户能 X」
+       - 这是 charter 禁止活文档写历史 / 将来叙事的延伸——PRD 草稿里的语句应该
+         直接能粘到 `PRODUCT.md` 不用改
+
+    ## 角色发言格式
+
+    ```
+    **[角色ID - 角色名称]**:
+    > 发言内容...
+    ```
+
+    每个 Phase 结束时输出阶段小结（共识 / 用户决定 / 悬而未决），见
+    `references/debate-phases.md`。
+
+    ## Phase Coverage（进入 concluding 的 guard）
+
+    - [ ] Phase 1 已完成，有用户痛点 + 目标用户 + 约束清单
+    - [ ] Phase 2 已产出 2-3 个差异化候选方案
+    - [ ] Phase 3 全部角色已发表评审意见
+    - [ ] Phase 4 已收敛到推荐方案 + 用户最终决策
+    - [ ] 至少 4 个用户交互点（每个 Phase 1-2 个暂停）
+
+  concluding: |
+    辩论结束。本状态下你写三份 artifact，然后请用户最终批准。
+
+    ## 写入顺序
+
+    1. **product-debate-record**（必出）—— 模板：`templates/debate-record.md`
+       - 完整记录 4 个 Phase 的发言摘要
+       - 列出关键分歧及各方立场
+       - 显式记录用户的决策点（包含「用户决策覆盖多数角色意见」的情况）
+       - 末尾给出「下游 skill 接驳建议」（通常是 prd-writer）
+
+    2. **prd-draft**（必出）—— 模板：`templates/prd-draft.md`
+       - **这是 prd-writer 的输入，不是终态 PRD**——质量门槛由 prd-writer 把
+       - 草稿用「现在时」写，能直接粘进 PRODUCT.md
+       - **必须**对每个核心需求声明标注目标 intent 层（invariants / acceptance / contracts）
+       - **必须**引用 fact-extraction-report 的具体章节作为论据来源
+
+    3. **decision-matrix**（候选方案 ≥ 2 时必出）—— 模板：`templates/decision-matrix.md`
+       - 评估维度由参与辩论的角色提出（不是预设的）
+       - 维度权重由 PM 在 Phase 4 决定
+       - 每个候选方案在每个维度上的评分要有一句话理由
+
+    ## 不准做的事
+
+    - ❌ 在 prd-draft 里凭空补充辩论中没讨论过的内容——草稿是辩论的**忠实摘要**，
+      不是「在辩论基础上发挥」
+    - ❌ 把 PM 推荐方案默认当成用户最终决策——必须显式记录用户的批准/覆盖
+    - ❌ 把架构决策写进 prd-draft——架构内容标注为「[ADR 候选：技术方案待定]」
+      留给 arch-debate / rfc-writer 处理
+
+    ## Output Checklist
+
+    - [ ] debate-record 含 Phase 1-4 全部小结
+    - [ ] debate-record 标注了「用户决策覆盖」（如有）
+    - [ ] prd-draft 的每个核心声明都标注了 intent 层
+    - [ ] prd-draft 的每个数字 / LoC / 模块名引用都能追溯到 fact-extraction-report
+    - [ ] decision-matrix 的维度由角色提出且权重明示（如适用）
+    - [ ] 三份 artifact 的 `Topic` 字段一致
+    - [ ] **已向用户展示三份产出并取得 `approve` 确认**
+
+hooks:
+  post_complete:
+    - description: "建议下游 skill"
+      message: |
+        ✅ 辩论结束，三份 artifact 已产出。建议下一步：
+
+        1. 把 `{slug}.prd-draft.md` 交给 **prd-writer** skill，做质量评分迭代到
+           可发布水准，并产出配套的 `acceptance.intent` 种子和 PDR 骨架。
+
+        2. 如果辩论涉及重大技术选型或架构变更（debate-record 中已标注「需要 ADR」
+           或「需要 CADR」），先跑你自带的 **arch-debate** / **rfc-writer**，
+           再回头让 prd-writer 引用最终的 ADR ID。
+
+        3. 如果用户在 Phase 4 推翻了多数角色意见且未给充分理由，建议在
+           **24 小时冷静期**后重读 debate-record 再决定是否进入 prd-writer。

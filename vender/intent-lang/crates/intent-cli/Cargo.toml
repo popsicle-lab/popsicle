@@ -1,0 +1,12 @@
+[package]
+name = "intent-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+intent-syntax = { path = "../intent-syntax" }
+intent-core = { path = "../intent-core" }
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

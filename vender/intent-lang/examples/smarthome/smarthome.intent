@@ -1,0 +1,121 @@
+// ============================================================
+// 示例：智能家居语音控制
+// ============================================================
+
+import smarthome
+
+// ===== 家庭环境 =====
+
+type Home {
+  occupied: Bool
+  time: Int              // 24h format, e.g. 2230
+  lights: Seq<Light>
+  thermostat: Thermostat
+  frontDoor: Door
+  smokeDetected: Bool
+}
+
+type Door {
+  locked: Bool
+  open: Bool
+}
+
+// ===== 业务目标 =====
+
+goal "无人在家时房屋始终安全" {
+  rationale: "防盗、防火与基本物理安全是智能家居的最低承诺"
+  stakeholder: ["homeowner", "insurance"]
+  measure: "HomeSafety 不变量在所有自动场景的终态都成立"
+  realized_by: [HomeSafety, LeaveHome, LeaveIsSafe]
+}
+
+goal "夜间能耗最优" {
+  rationale: "深夜空房间设备全开 = 能源浪费 + 安全隐患"
+  stakeholder: ["homeowner", "sustainability"]
+  measure: "深夜无人时所有灯具的 on 状态为 false"
+  realized_by: [GoodNight, HomeSafety]
+}
+
+// ===== 语音指令意图 =====
+
+// "我回家了"
+@tobe
+intent ArriveHome(home: Home) {
+  require !home.occupied
+
+  ensure home.occupied' == true
+  ensure home.frontDoor.locked' == false
+  ensure home.thermostat.on' == true
+  ensure exists l: Light, l.room == "living" && l.on' == true
+}
+
+// "我要睡觉了"
+@tobe
+intent GoodNight(home: Home) {
+  require home.occupied
+
+  ensure forall l: Light, l.on' == false
+  ensure home.frontDoor.locked' == true
+  ensure home.thermostat.temperature' >= 18
+  ensure home.thermostat.temperature' <= 24
+}
+
+// "把客厅灯调到50%"
+@tobe
+intent SetBrightness(light: Light, level: Int) {
+  require level >= 0 && level <= 100
+  ensure light.brightness' == level
+  ensure level > 0 ==> light.on' == true
+  ensure level == 0 ==> light.on' == false
+}
+
+// "出门了"
+@tobe
+intent LeaveHome(home: Home) {
+  require home.occupied
+
+  ensure home.occupied' == false
+  ensure home.frontDoor.locked' == true
+  ensure forall l: Light, l.on' == false
+  ensure home.thermostat.mode' == Off
+}
+
+// ===== 安全规则 =====
+
+safety HomeSafety(home: Home) {
+  // 没人在家时必须锁门
+  invariant !home.occupied ==> home.frontDoor.locked
+
+  // 门开着不能锁门（物理约束）
+  invariant home.frontDoor.open ==> !home.frontDoor.locked
+
+  // 深夜无人关闭所有设备
+  invariant (!home.occupied && home.time > 2300) ==>
+    forall l: Light, !l.on
+}
+
+// ===== 定理 =====
+
+// 回家再睡觉，最终状态安全吗？
+theorem ArriveAndSleepSafe {
+  forall h: Home,
+    ArriveHome(h) && GoodNight(h') ==>
+      HomeSafety(h'')
+}
+
+// 出门操作满足安全规则
+theorem LeaveIsSafe {
+  forall h: Home,
+    LeaveHome(h) ==> HomeSafety(h')
+}
+
+// ===== 完备性维度 =====
+
+coverage "scene-matrix" {
+  dimensions: {
+    occupancy: [home, away]
+    time_of_day: [morning, day, evening, night]
+    door_state: [locked, unlocked]
+    smoke: [clear, detected]
+  }
+}

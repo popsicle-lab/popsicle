@@ -1,0 +1,171 @@
+// ============================================================
+// 示例：访问控制的需求建模（Requirements-Modeling Style）
+// 使用 RFC 新语法：goal / @asis / @tobe / coverage
+// ============================================================
+//
+// 对比 examples/basics/auth.intent —— 那里描述的是"登录这个
+// 动作如何修改状态"；这里我们描述"什么样的访问关系是合法的"，
+// 把权限模型当作业务世界的恒久规则。
+//
+// 这是写完 PRD 后、动手实现前最该做的一步：
+// 把"谁能访问什么"形式化，让 Z3 帮你找权限规则之间的矛盾。
+// ============================================================
+
+// ----- 1. 领域类型 -----
+
+enum Role { Admin, Editor, Viewer, Guest }
+
+enum Sensitivity { Public, Internal, Confidential, Secret }
+
+type User {
+  id: Int
+  role: Role
+  authenticated: Bool
+  banned: Bool
+}
+
+type Resource {
+  id: Int
+  ownerId: Int
+  sensitivity: Sensitivity
+  archived: Bool
+}
+
+type Access {
+  userId: Int
+  resourceId: Int
+  granted: Bool
+}
+
+// ----- 1.5 业务目标（goal — RFC A1） -----
+
+goal "敏感资源访问严格受控" {
+  rationale: "Secret 级别数据泄漏对监管/品牌都是 1 级事故；最小权限原则不可妥协"
+  stakeholder: ["security", "compliance", "legal"]
+  measure: "审计日志中无 Guest/Viewer 访问 Secret 资源的记录；Secret 访问全部由 Admin 完成"
+  realized_by: [SecretRequiresAdmin, GrantAccess]
+}
+
+goal "封禁立即生效" {
+  rationale: "用户/账号被封禁后必须无法继续访问任何资源，无论其历史授权"
+  stakeholder: ["security", "ops"]
+  measure: "封禁后 1 分钟内所有相关 granted 访问失效"
+  realized_by: [BannedUserHasNoAccess]
+}
+
+goal "归档资源只读" {
+  rationale: "归档资源不应被普通用户继续访问，避免历史数据被误用或泄漏"
+  stakeholder: ["data-governance"]
+  measure: "归档资源访问审计中仅 Admin/Owner 出现"
+  realized_by: [ArchivedNonOwnerNoAccess]
+}
+
+// ----- 2. 安全规则（业务对外承诺的硬约束） -----
+
+safety BannedUserHasNoAccess(u: User, a: Access) {
+  // 被封禁的用户不应有任何 granted 访问
+  invariant (u.banned && a.userId == u.id) ==> !a.granted
+}
+
+safety UnauthenticatedNoConfidential(u: User, r: Resource, a: Access) {
+  // 未认证用户只能访问 Public 资源
+  invariant (a.userId == u.id && a.resourceId == r.id && a.granted && !u.authenticated)
+    ==> r.sensitivity == Public
+}
+
+safety SecretRequiresAdmin(u: User, r: Resource, a: Access) {
+  // Secret 资源仅 Admin 可访问
+  invariant (a.userId == u.id && a.resourceId == r.id && a.granted &&
+             r.sensitivity == Secret) ==> u.role == Admin
+}
+
+safety ArchivedNonOwnerNoAccess(u: User, r: Resource, a: Access) {
+  // 归档资源只允许 owner 或 Admin 访问
+  invariant (r.archived && a.userId == u.id && a.resourceId == r.id && a.granted)
+    ==> (u.id == r.ownerId || u.role == Admin)
+}
+
+// ----- 3. 业务定理（验证规则集合的健康度） -----
+
+theorem BannedAdminHasNoAccessEither {
+  forall u: User, a: Access,
+    (u.role == Admin && u.banned && a.userId == u.id) ==> !a.granted
+}
+
+theorem GuestNeverAccessesSecret {
+  forall u: User, r: Resource, a: Access,
+    (u.role == Guest && r.sensitivity == Secret &&
+     a.userId == u.id && a.resourceId == r.id) ==>
+      !a.granted
+}
+
+theorem ArchivedNonOwnerNonAdminNoAccess {
+  forall u: User, r: Resource, a: Access,
+    (r.archived && u.id != r.ownerId && u.role != Admin &&
+     a.userId == u.id && a.resourceId == r.id) ==>
+      !a.granted
+}
+
+// ----- 4. 完备性维度（coverage — RFC A3） -----
+//
+// 显式声明权限领域应覆盖的场景维度。`intent coverage` 工具
+// 计算笛卡尔积，并检查每个组合是否被某条 safety/intent 提及。
+
+coverage "permission-matrix" {
+  dimensions: {
+    role: [Admin, Editor, Viewer, Guest]
+    sensitivity: [Public, Internal, Confidential, Secret]
+    user_state: [authenticated, banned]
+    resource_state: [normal, archived]
+  }
+}
+
+// ----- 5. 操作意图（@tobe = 目标态） -----
+
+@tobe
+intent GrantAccess(u: User, r: Resource, a: Access) {
+  require u.authenticated
+  require !u.banned
+  require !r.archived || u.id == r.ownerId || u.role == Admin
+  require r.sensitivity != Secret || u.role == Admin
+  require a.userId == u.id
+  require a.resourceId == r.id
+
+  // 操作语义：把这条 Access 标记为 granted
+  ensure a.granted' == true
+}
+
+@tobe
+intent RevokeAccess(a: Access) {
+  // 撤销永远允许
+  ensure a.granted' == false
+}
+
+// ----- 6. 遗留意图（@asis = 老代码实际行为） -----
+//
+// 这是迁移场景下的常见模式：先把"老代码现在到底是什么样"翻译成
+// @asis intent，与 @tobe 区分开。`intent check` 默认跳过 @asis；
+// 加 --include-asis 才会一起验证（用来发现"老代码到底有没有违反新承诺"）。
+
+@asis
+intent LegacyGrantAccessV1(u: User, r: Resource, a: Access) {
+  // 老代码只检查认证，不检查 banned 状态——这是一条已知漏洞，
+  // 写在这里是为了让影响分析工具能追踪到"哪些地方还在用老逻辑"。
+  require u.authenticated
+  require a.userId == u.id
+  require a.resourceId == r.id
+
+  ensure a.granted' == true
+}
+
+// ============================================================
+// 工具链使用：
+//
+//   $ intent check     access-control.intent           # 一致性（仅 @tobe）
+//   $ intent check     access-control.intent --include-asis  # 含遗留
+//   $ intent coverage  access-control.intent           # 4×4×2×2 = 64 维
+//   $ intent testspec  access-control.intent           # 派生测试场景
+//   $ intent explain   access-control.intent SecretRequiresAdmin
+//
+// ★ 在写一行代码前，先证明你的需求自身不打架。★
+// ============================================================

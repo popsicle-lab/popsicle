@@ -1,0 +1,102 @@
+name: migration-bootstrap
+description: >-
+  把一份遗留代码库迁进 IDD（意图驱动开发）的端到端编排：从铺骨架、抽事实、产品辩论、
+  任务图 PRD，到 intent 收紧、Z3 一致性验证、活文档保活。串起 intent-coder 全部 7 个
+  自带 skill，结束手动逐个 `skill start`。架构 ADR / contracts.intent 的最终形式是
+  外部契约位（见 ROADMAP Phase 3），刻意不在本 pipeline 内——它编排的是产品侧主链。
+scale: full
+keywords:
+  - migration
+  - legacy
+  - idd
+  - bootstrap
+  - reverse-engineering
+  - prd
+  - task-graph
+  - intent
+  - verify
+  - living-docs
+
+stages:
+  - name: init
+    skill: project-init
+    description: >-
+      一次性、交互式：决定 product 命名、挑首个迁移切片、把 legacy pin 成 git
+      submodule、铺出每个 product 的 4 件套目录、落地 doc-architecture charter。
+      后续所有 skill 都写进这一步铺好的目录。
+    requires_approval: true
+
+  - name: facts
+    skill: fact-extractor
+    description: >-
+      在 pinned 的 legacy submodule 上抽事实：dependency-graph、public-API
+      contracts、unsafe/risk 清单、tech-debt 清单。是所有下游 writer 的事实基。
+    depends_on: [init]
+
+  - name: debate
+    skill: product-debate
+    description: >-
+      多角色产品辩论，消费 fact-extraction-report 的 Bounded Contexts / Risk
+      Hotspots，产出 task-centric 的 prd-draft + 辩论纪要 + 决策矩阵。
+      决策需 PM 拍板。
+    depends_on: [facts]
+    requires_approval: true
+
+  - name: prd
+    skill: prd-writer
+    description: >-
+      把辩论草稿打磨成任务图五件套：PRD overview + N 份 task（按 5 个旅程阶段归类）
+      + tasks/README + acceptance.intent 种子 + PDR 骨架。质量评分（含 AI 可消化度）
+      ≥ 90 才放行。
+    depends_on: [debate]
+    requires_approval: true
+
+  - name: arch-debate
+    skill: arch-debate
+    description: >-
+      技术侧支线（无跨模块契约 / [ADR 候选] 时可 skip 本 stage 及 rfc/adr）。
+      多角色架构辩论（ARCH/SEC/PERF/OPS/DATA/DEV），消费 PRD 里标了 contracts /
+      [ADR 候选] 的条目 + 事实基，产出 RFC 草稿 + 技术决策矩阵 + 辩论纪要。
+    depends_on: [prd]
+    requires_approval: true
+
+  - name: rfc
+    skill: rfc-writer
+    description: >-
+      把 RFC 草稿打磨成正式 RFC + ARCHITECTURE.md 增量 + contracts.intent 种子
+      （Awaiting ADR）+ ADR 骨架（Proposed）。质量评分 ≥ 90 才放行。
+    depends_on: [arch-debate]
+    requires_approval: true
+
+  - name: adr
+    skill: adr-writer
+    description: >-
+      把 ADR 骨架固化为 Accepted（此后不可变），解锁 contracts 种子的 Awaiting
+      状态，列出收紧工单交 intent-spec-writer。是技术决策的审批闸。
+    depends_on: [rfc]
+    requires_approval: true
+
+  - name: intent-spec
+    skill: intent-spec-writer
+    description: >-
+      把 prd-writer 的 acceptance 种子 + adr-writer 解锁的 contracts 收紧成合法
+      intent-lang（分层归位 / 剥离时间性能 D2 / 四规则审查 / 去重查冲突），
+      intent check 自验后合并到 products/*/intents/*.intent。
+    depends_on: [prd, adr]
+
+  - name: intent-check
+    skill: intent-consistency-check
+    description: >-
+      对全量 .intent 跑 intent-lang + Z3 一致性验证，汇总 verified/failed/skipped
+      并出报告。observe 模式：报告但不阻断（硬闸由 CI 用 intent-validate tool 的
+      exit code 实现，见 skill 的 Gate Readiness 判据）。
+    depends_on: [intent-spec]
+
+  - name: living-docs
+    skill: living-doc-author
+    description: >-
+      首切片落地后保活：扫描 doc-code drift（过期/断链/孤儿/未验证），刷新
+      tasks/README 健康度、task 反向引用、frontmatter last_verified。刷新需人审，
+      避免误改正文。
+    depends_on: [intent-check]
+    requires_approval: true

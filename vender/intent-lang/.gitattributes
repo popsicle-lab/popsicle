@@ -1,0 +1,22 @@
+# ---------------------------------------------------------------------------
+# GitHub Linguist directives for intent-lang
+# ---------------------------------------------------------------------------
+# intent-lang has not yet been upstreamed to github-linguist/linguist, so
+# `.intent` files would default to plain text on github.com. We borrow Scala's
+# highlighter as the closest visual match (curly-brace blocks, `name: Type`
+# parameter ascriptions, infix operators, `forall`/`exists`-style keywords).
+#
+# When intent-lang is added to Linguist (see tools/grammar/README.md),
+# remove the linguist-language line below.
+# ---------------------------------------------------------------------------
+
+*.intent linguist-language=Scala
+*.intent linguist-detectable=true
+
+# Treat the comparison Lean/TLA+ files as documentation, not source.
+examples/comparison/*.lean linguist-documentation=true
+examples/comparison/*.tla  linguist-documentation=true
+
+# Generated/vendor paths (defensive — none today, but future-proof).
+target/      linguist-generated=true
+ui/dist/     linguist-generated=true
