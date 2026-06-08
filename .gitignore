@@ -23,3 +23,9 @@ target
 #.idea/
 
 .DS_Store
+
+# popsicle-new is a nested independent git repository being bootstrapped
+# via IDD migration; the parent repo must ignore it so its working tree
+# does not leak into legacy popsicle history.
+/popsicle-new/
+

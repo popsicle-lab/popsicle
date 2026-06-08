@@ -5,8 +5,10 @@ version: "0.1.0"
 # 上游可选：prd-writer 产出 acceptance-intent-seed（种子），经 intent-spec-writer
 # 正式化为合法 .intent 后由本 skill 验证。Phase 0 也可直接对仓库现有 .intent 跑。
 inputs:
-  - type: acceptance-intent-seed
+  - from_skill: intent-spec-writer
+    artifact_type: formal-acceptance-intent
     required: false
+    relevance: high
 
 artifacts:
   - type: intent-consistency-report
