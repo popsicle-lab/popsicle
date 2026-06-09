@@ -23,7 +23,13 @@
 | `task-backrefs` | 各 task 文件「反向引用」节 |
 | `last-verified` | task frontmatter `last_verified`（用 intent-consistency-report 回填）|
 | `product-context` | `docs/PROJECT_CONTEXT.md` 的「现在状态」类章节 |
+| `implementation-status` | `tasks/README.md`「已实施」列（用 implementation-coverage 回填）|
+| `architecture-manifest` | `ARCHITECTURE.md` § File Manifest（合并 ADR Consequences）|
+| `product-header` | `PRODUCT.md` 双行头（PDR-001 模板）|
 | `all`（缺省）| 以上全部 |
+
+`slice-delivery` 末尾建议：
+`living-doc-author --target implementation-status,architecture-manifest,product-header`
 
 ## 四类 doc-code drift 信号
 

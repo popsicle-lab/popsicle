@@ -1,0 +1,110 @@
+name: cutover-author
+description: >-
+  slice 切流审批闸：核验 intent gate_ready、equivalence 门禁、cargo test；
+  起草并固化切流 ADR(Accepted)；更新 migration/progress.md 为 cutover-done。
+  slice-delivery 第三棒，需用户 --confirm。
+version: "0.1.0"
+
+inputs:
+  - from_skill: equivalence-baseline
+    artifact_type: equivalence-report
+    required: true
+    relevance: high
+
+  - from_skill: intent-consistency-check
+    artifact_type: intent-consistency-report
+    required: false
+    relevance: high
+
+  - from_skill: shadow-implementer
+    artifact_type: implementation-coverage
+    required: false
+    relevance: medium
+
+artifacts:
+  - type: cutover-adr
+    template: templates/cutover-adr-skeleton.md
+    file_pattern: "ADR-{id}-{slice}-cutover.md"
+    description: "切流 ADR：Context/Decision/Consequences；Status 经 review 升为 Accepted。"
+
+workflow:
+  initial: gating
+  states:
+    gating:
+      description: "核对 intent gate、equivalence、cargo test 三门禁。"
+      transitions:
+        - to: drafting
+          action: gates-pass
+          guard: "checklist_complete:Cutover Gate Checklist"
+        - to: drafting
+          action: gates-waived
+          guard: "checklist_complete:Waiver Checklist"
+
+    drafting:
+      description: "写切流 ADR 骨架 + progress.md 增量 + 正式 traceability 行。"
+      transitions:
+        - to: review
+          action: drafted
+          guard: "has_sections:Context,Decision,Consequences,Compliance;checklist_complete:检查清单"
+
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: drafting
+          action: revise
+
+    completed:
+      final: true
+
+prompts:
+  gating: |
+    你在跑 cutover-author。本状态**只核对门禁，不写 ADR**。
+
+    三门禁（CONTRIBUTING §4 + equivalence-report）：
+
+    1. **Intent**：最近 `intent-consistency-report` 的 `gate_ready=true`
+       或 `consecutive_clean_runs >= 3` 且 overall=pass。
+    2. **Equivalence**：上游 `equivalence-report` 的 `equivalence_gate_pass=true`
+       （≥5 golden pass，或 fail 项均有 Accepted divergence ADR）。
+    3. **Build**：`cargo test -p <slice>` exit 0（引用 implementation-coverage）。
+
+    任一门禁未过 → 在报告中列明，**不要**进入 drafting（除非用户明确 waiver）。
+
+    ## Cutover Gate Checklist
+    - [ ] intent gate 已核对（附 report 日期 / consecutive_clean_runs）
+    - [ ] equivalence gate 已核对（附 golden_pass 数）
+    - [ ] cargo test 已核对（附 exit code）
+    - [ ] 未通过项已列明 blocker
+
+    ## Waiver Checklist（仅用户明确要求豁免时用 gates-waived）
+    - [ ] 用户书面确认豁免哪一门禁
+    - [ ] 豁免理由写入后续 ADR § Compliance
+    - [ ] 补偿措施已列出（如「仅 in-shadow，不切 CLI」）
+
+  drafting: |
+    Step 1 —— 按 `templates/cutover-adr-skeleton.md` 写切流 ADR，落
+      `products/<slice>/decisions/adr/ADR-XXX-<slice>-cutover.md`。
+      - Decision：本 slice 从 in-shadow 升为 cutover-done 的日期与范围
+      - Consequences：更新 migration/progress.md、traceability、已知 divergence
+      - Compliance：三门禁证据引用
+
+    Step 2 —— 更新 `migration/progress.md` 对应 slice 行：状态 → `cutover-done`。
+
+    Step 3 —— 把 equivalence-report 的 Traceability 草稿**正式写入**
+      `migration/traceability.md`（cutover ADR ID 填实）。
+
+    Step 4 —— 若有 Divergence，在 ADR 中逐条 Accept。
+
+    `drafted` → review（需用户 --confirm）。
+
+  review: |
+    呈报切流 ADR + progress/traceability 变更。用户批准后：
+    - ADR Status → Accepted
+    - 本 skill completed
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

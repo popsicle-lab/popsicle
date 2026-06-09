@@ -1,9 +1,9 @@
 name: migration-bootstrap
 description: >-
   把一份遗留代码库迁进 IDD（意图驱动开发）的端到端编排：从铺骨架、抽事实、产品辩论、
-  任务图 PRD，到 intent 收紧、Z3 一致性验证、活文档保活。串起 intent-coder 全部 7 个
-  自带 skill，结束手动逐个 `skill start`。架构 ADR / contracts.intent 的最终形式是
-  外部契约位（见 ROADMAP Phase 3），刻意不在本 pipeline 内——它编排的是产品侧主链。
+  任务图 PRD，到 intent 收紧、Z3 一致性验证、活文档保活。**仓库级 Day-1 只跑一次**。
+  后续 slice 的 spec 用 slice-spec；实现/对账/切流用 slice-delivery（不与本 pipeline
+  合并，避免 14 stage 过重）。串起 intent-coder spec 侧 10 个 skill。
 scale: full
 keywords:
   - migration

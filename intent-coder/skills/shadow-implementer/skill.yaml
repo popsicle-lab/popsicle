@@ -1,0 +1,125 @@
+name: shadow-implementer
+description: >-
+  按 products/<slice>/intents/* 与 ADR § File Manifest，实现或补齐
+  crates/<slice>/ 的 in-shadow 代码；产出 implementation-coverage 映射表
+  （每个 acceptance block → fn/test）。不发明 scope 外 API；可多轮迭代。
+  是 slice-delivery pipeline 的第一棒。
+version: "0.1.0"
+
+inputs:
+  - from_skill: adr-writer
+    artifact_type: adr-finalization-report
+    required: false
+    relevance: high
+
+  - from_skill: rfc-writer
+    artifact_type: rfc
+    required: false
+    relevance: medium
+
+  - from_skill: intent-consistency-check
+    artifact_type: intent-consistency-report
+    required: false
+    relevance: high
+
+artifacts:
+  - type: implementation-coverage
+    template: templates/implementation-coverage.md
+    file_pattern: "{slug}.implementation-coverage.md"
+    description: "intent block → Rust fn/test 1:1 覆盖表 + File Manifest 对账 + cargo test 结果 + 待办缺口。"
+
+workflow:
+  initial: scoping
+  states:
+    scoping:
+      description: "读 intents + ADR File Manifest + 现有 crates/，列实现清单。还不要写代码。"
+      transitions:
+        - to: implementing
+          action: scoped
+          guard: "checklist_complete:Scope Checklist"
+
+    implementing:
+      description: "写/改 crates/<slice>/ 与 tests/intent_properties.rs。"
+      transitions:
+        - to: verifying
+          action: implemented
+
+    verifying:
+      description: "cargo test -p <slice>；更新 coverage 表。"
+      transitions:
+        - to: implementing
+          action: fix
+        - to: review
+          action: verified
+          guard: "has_sections:Summary,Intent 覆盖表,File Manifest 对账,cargo test,待办;checklist_complete:检查清单"
+
+    review:
+      transitions:
+        - to: completed
+          action: approve
+        - to: implementing
+          action: revise
+
+    completed:
+      final: true
+
+prompts:
+  scoping: |
+    你在跑 shadow-implementer。本状态**只读、列清单，不写代码**。
+
+    Step 1 —— 锁定 target slice（来自 issue 标题 / project context / 用户输入）：
+      - products/<slice>/intents/{acceptance,invariants,contracts}.intent
+      - products/<slice>/decisions/adr/*.md（Accepted）
+      - products/<slice>/ARCHITECTURE.md § File Manifest
+      - crates/<slice>/（若已存在）
+
+    Step 2 —— 从 acceptance.intent 枚举每个 `intent` block（含 task / query_anchors 注释），
+      对照现有 crates/ 标状态：✅ 已实现 / ⚠️ 部分 / ❌ 缺失。
+
+    Step 3 —— 从 ADR § Consequences / RFC § File Manifest 列出允许创建/修改的路径。
+      **清单之外禁止新建**；清单上的路径不允许跳过。
+
+    Step 4 —— 跨界接缝（若 ADR 有）：端口 trait 定义在 artifact-system、实现在
+      skill-runtime；依赖方向 skill-runtime → artifact-system → storage，禁止成环。
+
+    ## Scope Checklist
+    - [ ] target slice 已确认
+    - [ ] 全部 intent block 已枚举
+    - [ ] File Manifest 路径清单已列出
+    - [ ] 每个 block 已标 已实现/部分/缺失
+    - [ ] 跨界端口归属已核对
+
+  implementing: |
+    按 scoping 清单实现 in-shadow 代码。
+
+    规则：
+    1. 每个 acceptance `intent` 至少一条 `tests/intent_properties.rs` test，test 名
+       或注释须能追溯到 intent 名（如 `DocumentRoundTrips`）。
+    2. invariants 的 safety 由对应操作函数 + property test 守护（Z3 已证的不重复发明语义）。
+    3. contracts 的 goal 块：trait/struct 签名与 ADR 一致；端口实现放正确 crate。
+    4. 不引入 File Manifest 外模块；不删 ADR 要求的文件。
+    5. 纯领域逻辑优先（lib crate）；storage/CLI 接线按 ADR 范围，不擅自扩 scope。
+
+    实现完成后用 `implemented` 进入 verifying。
+
+  verifying: |
+    Step 1 —— 跑测试（必须实跑，不要猜结果）：
+        cargo test -p <slice-crate-name>
+
+    Step 2 —— 按 `templates/implementation-coverage.md` 写报告：
+      - Summary：slice 名、cargo test exit code、覆盖率（intent block 数 / 已覆盖数）
+      - Intent 覆盖表：每个 block → `fn` 或 `#[test]` 行号
+      - File Manifest 对账：ADR 列的路径 vs 实际存在
+      - cargo test：粘贴摘要（pass/fail 数）
+      - 待办：未覆盖 block、待接线端口、需 storage/cli-ux 的项
+
+    失败 → `fix` 回 implementing；全绿且覆盖表完整 → `verified` 进 review。
+
+  review: |
+    把 implementation-coverage 报告与代码变更呈给用户审阅。
+    用户确认后 `approve` 完成本 skill。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

@@ -21,13 +21,30 @@ inputs:
     required: false
     relevance: medium
 
+  - from_skill: shadow-implementer
+    artifact_type: implementation-coverage
+    required: false
+    relevance: high
+    # 回填 tasks/README「已实施」列、核对 intent→代码覆盖。
+
+  - from_skill: equivalence-baseline
+    artifact_type: equivalence-report
+    required: false
+    relevance: medium
+
+  - from_skill: cutover-author
+    artifact_type: cutover-adr
+    required: false
+    relevance: medium
+
 artifacts:
   - type: living-doc-sync-report
     template: templates/living-doc-sync-report.md
     file_pattern: "{slug}.living-doc-sync-report.md"
     description: "drift 扫描结果 + 本次刷新动作 + 健康度快照 + 待人工处置项。刷新的活文档（tasks/README.md、task 反向引用、last_verified）作为副作用直接落到现有文件。"
 
-# --target 是 CLI 参数（tasks-index / task-backrefs / last-verified / product-context / all）。
+# --target 是 CLI 参数（tasks-index / task-backrefs / last-verified / product-context /
+# implementation-status / architecture-manifest / product-header / all）。
 # skill 工作流不直接读参数，由 syncing 状态的 prompt 按 target 分流处理。
 
 workflow:
@@ -69,11 +86,15 @@ prompts:
     你在跑 living-doc-author。本状态**只扫描、不改文件**——把 doc-code drift 找全。
 
     Step 1 —— 锁定 target（来自 `--target`，缺省 `all`）：
-      - tasks-index     → 刷新 products/{p}/tasks/README.md 索引 + 健康度
-      - task-backrefs   → 刷新各 task 文件「反向引用」节
-      - last-verified   → 用 intent-consistency-report 回填 task frontmatter last_verified
-      - product-context → 填 docs/PROJECT_CONTEXT.md（project-init 留的骨架）
-      - all             → 以上全部
+      - tasks-index            → 刷新 products/{p}/tasks/README.md 索引 + 健康度
+      - task-backrefs          → 刷新各 task 文件「反向引用」节
+      - last-verified          → 用 intent-consistency-report 回填 task frontmatter last_verified
+      - product-context        → 填 docs/PROJECT_CONTEXT.md（project-init 留的骨架）
+      - implementation-status  → 用 implementation-coverage 回填 tasks/README「已实施」列
+      - architecture-manifest  → 合并 RFC/ADR Consequences 到 ARCHITECTURE.md § File Manifest
+      - product-header         → 写 PRODUCT.md 双行头（一行用途 ≤25 字 + 用户场景 ≤35 字）
+      - all                    → 以上全部（slice-delivery 末尾建议：
+        implementation-status,architecture-manifest,product-header）
 
     Step 2 —— 枚举：products/*/tasks/**/T-*.md、products/*/intents/*.intent、
       products/*/PRODUCT.md、decisions/pdr/PDR-*.md、最近的 *.intent-consistency-report.md。
@@ -126,7 +147,19 @@ prompts:
     - **product-context**：填 docs/PROJECT_CONTEXT.md 的「现在状态」类章节
       （product 清单、活跃 task 数、最近 PDR），骨架保留。
 
-    纪律：只动元数据 / 索引 / 反向引用 / last_verified。任何 task 正文、PRODUCT 实质
+    - **implementation-status**：读最近 `*.implementation-coverage.md`，更新
+      products/{p}/tasks/README.md 的「已实施」列（及索引表若适用）。
+      ✅ = coverage 表该 task 对应 intent 已 ✅；0 实施但 crate 存在 → 标 ⚠️ 部分。
+
+    - **architecture-manifest**：读最近 Accepted ADR/RFC § Consequences 与 File Manifest，
+      合并到 products/{p}/ARCHITECTURE.md § File Manifest（须引用 Decision ID）。
+      只合并 ADR 已列路径，不发明新行。
+
+    - **product-header**：按 PDR-001 双行模板更新 PRODUCT.md 顶部（须已有 PDR/辩论来源）：
+      Line 1 一行用途 ≤25 字；Line 2「为 <用户> 解决 <痛点>」≤35 字。
+      无来源的 [TBD] 不编造。
+
+    纪律：只动元数据 / 索引 / 反向引用 / last_verified / 上三项结构化段落。任何 task 正文、PRODUCT 实质
     内容、intent 逻辑的改动都**不在本 skill 范围**——发现需要改的，记到「待人工处置」
     建议走 prd-writer + 新 PDR。
 

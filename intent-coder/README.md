@@ -27,9 +27,12 @@
 | **adr-writer** | ✅ 已交付 | 技术决策审批闸：把 ADR 骨架固化为 Accepted（此后不可变），并**解锁** `contracts.intent` 种子的 `[Awaiting ADR]`、列出收紧工单交 intent-spec-writer。保持薄——不发明 ADR 内容，只做固化门 + 解锁 |
 | **intent-spec-writer** | ✅ 已交付 | 把 `prd-writer` 的 acceptance 种子 + `adr-writer` 解锁的 contracts 收紧成合法 intent-lang：分层归位（acceptance/invariants/contracts）、剥离时间/性能约束（D2）、四规则审查、去重查冲突，`intent check` 自验后合并到 `intents/*.intent`。**Phase 1 起内置** |
 | **intent-consistency-check** | ✅ 已交付（observe） | intent-coder 自带的 Z3 闸：对全量 `.intent` 跑 `intent check`，汇总 verified/failed/skipped 出报告。skill 始终 observe（不阻断）；硬闸由 CI 用 `intent-validate` tool 的 exit code 实现，附量化的 observe→gate 退出判据 |
-| **living-doc-author** | ✅ 已交付 | 活文档保活/对账：扫 doc-code drift（过期/断链/孤儿/未验证），刷新 `tasks/README.md` 健康度、task 反向引用、frontmatter `last_verified`。只对账不创作正文（正文改动走 prd-writer + PDR）|
+| **living-doc-author** | ✅ 已交付 | 活文档保活/对账：扫 doc-code drift（过期/断链/孤儿/未验证），刷新 `tasks/README.md` 健康度、task 反向引用、frontmatter `last_verified`。v0.4 增 `implementation-status` / `architecture-manifest` / `product-header` target。只对账不创作正文（正文改动走 prd-writer + PDR）|
+| **shadow-implementer** | ✅ 已交付（v0.4） | 按 intents + ADR File Manifest 实现/补齐 `crates/<slice>/` in-shadow 代码；产出 intent→fn/test 覆盖表。`slice-delivery` 第一棒 |
+| **equivalence-baseline** | ✅ 已交付（v0.4） | legacy vs new golden 对账、`docs/baseline/`、traceability 草稿、divergence 登记。切流门禁 ≥5 golden pass |
+| **cutover-author** | ✅ 已交付（v0.4） | 核验 intent/equivalence/cargo 三门禁；切流 ADR(Accepted)；更新 `migration/progress.md` |
 
-这 10 个 skill 的依赖顺序是刻意安排的（产品侧 1-4 + 技术侧支线 5-7 + 收口 8-10）：
+**Spec 侧** 10 个 skill 的依赖顺序（产品侧 1-4 + 技术侧支线 5-7 + 收口 8-10）：
 
 1. `project-init` —— 仓库出生时跑一次，铺出后续所有 skill 写入的目录舞台。
 2. `fact-extractor` —— 在 pinned 的 legacy submodule 上跑，产出证据基。
@@ -40,13 +43,21 @@
 7. `adr-writer` —— 固化 ADR（Accepted）+ 解锁 contracts 种子。
 8. `intent-spec-writer` —— 把 acceptance 种子 + 解锁的 contracts 收紧成合法 `.intent`，合并。
 9. `intent-consistency-check` —— 在 intent 合并后跑 Z3 一致性验证（observe）。
-10. `living-doc-author` —— 在首个迁移切片完成后跑，保活下游文档。
+10. `living-doc-author` —— spec 完成后或 slice-delivery 末尾保活文档。
+
+**Delivery 侧**（v0.4，`slice-delivery` pipeline）：
+
+11. `shadow-implementer` —— 按 ADR 实现 `crates/<slice>/` + property tests。
+12. `equivalence-baseline` —— golden 对账 + traceability 草稿。
+13. `cutover-author` —— 切流 ADR + progress 看板。
 
 ## Pipelines
 
 | Pipeline | 用途 |
 |----------|------|
-| **migration-bootstrap** ✅ | 串起全部 **10 个**自带 skill 的 DAG：`init → facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`（带依赖 + 7 个审批点）。一键 `popsicle pipeline run migration-bootstrap`，每个 legacy 代码库跑一次。技术侧支线（arch-debate→rfc→adr）在 PRD 无跨模块契约时可整段 skip。定义见 [`pipelines/migration-bootstrap.pipeline.yaml`](pipelines/migration-bootstrap.pipeline.yaml)。 |
+| **migration-bootstrap** ✅ | **仓库级 Day-1 一次**：`init → facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`（10 stage，7 审批点）。定义见 [`pipelines/migration-bootstrap.pipeline.yaml`](pipelines/migration-bootstrap.pipeline.yaml)。 |
+| **slice-spec** ✅（v0.4） | **每 slice spec**（无 init）：`facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check`。仓库已 bootstrap 后跑，避免重复 10 stage。见 [`pipelines/slice-spec.pipeline.yaml`](pipelines/slice-spec.pipeline.yaml)。 |
+| **slice-delivery** ✅（v0.4） | **每 slice 交付**：`implement → equivalence → cutover → living-docs`。前置：spec 已完成。见 [`pipelines/slice-delivery.pipeline.yaml`](pipelines/slice-delivery.pipeline.yaml)。 |
 
 ## 使用
 
@@ -83,8 +94,16 @@ popsicle skill start intent-consistency-check
 # 10. 保活活文档（刷新 tasks 索引 / 健康度 / 反向引用）
 popsicle skill start living-doc-author --target all
 
-# —— 或一键跑完整 migration pipeline（10 stage DAG）——
+# —— 仓库级：一键 migration-bootstrap（10 stage，仅 Day-1 一次）——
 # popsicle pipeline run migration-bootstrap
+
+# —— 后续 slice：spec + delivery（同一 issue 可链式跑）——
+# popsicle pipeline run slice-spec        # 若 spec 已有可跳过
+# popsicle pipeline run slice-delivery    # implement → equivalence → cutover → living-docs
+
+# slice-delivery 末尾建议：
+# popsicle skill start living-doc-author \
+#   --target implementation-status,architecture-manifest,product-header
 ```
 
 ## 文档 / intent 各文件的归属

@@ -1,0 +1,117 @@
+name: equivalence-baseline
+description: >-
+  为当前迁移 slice 建立 legacy vs new golden 对账：脚本、baseline 快照、
+  migration/traceability.md 行、divergence 登记。CONTRIBUTING 切流门禁：
+  ≥5 条 golden diff 为空，或 divergence 有 Accepted ADR。slice-delivery 第二棒。
+version: "0.1.0"
+
+inputs:
+  - from_skill: shadow-implementer
+    artifact_type: implementation-coverage
+    required: true
+    relevance: high
+
+  - from_skill: fact-extractor
+    artifact_type: fact-extraction-report
+    required: false
+    relevance: medium
+
+artifacts:
+  - type: equivalence-report
+    template: templates/equivalence-report.md
+    file_pattern: "{slug}.equivalence-report.md"
+    description: "golden 清单、运行结果、traceability 增量、divergence 表、切流门禁判定。"
+
+workflow:
+  initial: inventory
+  states:
+    inventory:
+      description: "从 LEGACY_PIN + api-contracts + implementation-coverage 列 golden 清单。"
+      transitions:
+        - to: running
+          action: inventoried
+          guard: "checklist_complete:Golden Inventory"
+
+    running:
+      description: "编写/运行 golden 脚本，收集 legacy vs new diff。"
+      transitions:
+        - to: reporting
+          action: run-complete
+
+    reporting:
+      description: "写 equivalence-report，更新 traceability 草稿。"
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Summary,Golden 清单,运行结果,Traceability,Divergence,门禁;checklist_complete:检查清单"
+
+    review:
+      transitions:
+        - to: completed
+          action: approve
+        - to: running
+          action: revise
+
+    completed:
+      final: true
+
+prompts:
+  inventory: |
+    你在跑 equivalence-baseline。本状态**只列 golden 清单，不跑脚本**。
+
+    Step 1 —— 读：
+      - `LEGACY_PIN.md`（pinned SHA）
+      - `docs/baseline/*/api-contracts.md`（或最近 fact-extraction-report 伴生 baseline）
+      - 上游 `*.implementation-coverage.md`
+      - `products/<slice>/intents/acceptance.intent`（可对账的行为）
+
+    Step 2 —— 为当前 slice 列 ≥5 条候选 golden（每条须可自动化）：
+      - 输入：固定 fixture 或 CLI 命令 + 参数
+      - legacy 路径：`legacy/popsicle/...`
+      - new 路径：`crates/<slice>/...` 或未来 cli-ux 适配器
+      - 比较维度：stdout / JSON / 序列化字节 / GuardResult 文案
+
+    Step 3 —— 预判 divergence：若 intent 语义与 legacy 故意不同（如 body 不 trim），
+      标为「需 ADR 登记」，不能假装 golden 会通过。
+
+    ## Golden Inventory
+    - [ ] slice 已确认
+    - [ ] ≥5 条 golden 已列出（含输入/legacy/new/比较方式）
+    - [ ] 每条能追溯到 acceptance block 或 api-contracts 行
+    - [ ] 已知 divergence 已单独列出
+
+  running: |
+    Step 1 —— 在 `docs/baseline/<YYYY-MM-DD>/<slice>/` 下放置：
+      - golden 脚本（shell 或 rust test 均可）
+      - fixture 文件（若需要）
+      - `README.md` 说明如何复现
+
+    Step 2 —— **实跑**每条 golden，记录 legacy 输出 vs new 输出。
+      diff 非空 → 区分：
+        (a) 实现 bug → 回 shadow-implementer
+        (b) 已知 divergence → 记入 Divergence 表，需 cutover ADR 引用
+
+    Step 3 —— 起草 `migration/traceability.md` 增量行（还不 Accepted，等 cutover）：
+      | Legacy 路径 | 新位置 | Spec ID | 切流 ADR | baseline | 状态 |
+
+    完成后 `run-complete` → reporting。
+
+  reporting: |
+    按 `templates/equivalence-report.md` 写报告。
+
+    - **Summary**：golden 总数、pass 数、fail 数、divergence 数、是否满足切流门禁
+    - **Golden 清单**：每条一行（脚本路径、状态、diff 摘要）
+    - **运行结果**：实跑证据（命令 + exit code）
+    - **Traceability**：拟写入 migration/traceability.md 的 markdown 表行
+    - **Divergence**：语义/字节已知差异 + 所需 ADR 引用
+    - **门禁**：≥5 pass 或 divergence 已 ADR 化 → `equivalence_gate_pass: true/false`
+
+    纪律：每个 pass/fail 必须来自 running 阶段的真实输出。
+
+  review: |
+    呈报 equivalence-report。用户确认后 `approve` 完成。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

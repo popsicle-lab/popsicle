@@ -1,6 +1,6 @@
 name: intent-coder
-version: "0.3.0"
-description: "遗留代码库适配 IDD（意图驱动开发）的迁移工具箱——骨架铺设、事实抽取、产品辩论、PRD 任务图、intent 闸门、活文档维护。v0.3 引入「以任务和意图为中心」的 AI 时代 PRD 范式：PRD 拆解为按 5 个用户旅程阶段组织的 task chunk，每个 chunk 自带 YAML frontmatter，可被 AI 独立召回。自带 .intent DSL 与 Z3 验证；Phase 3 起技术侧（架构辩论 / RFC / ADR / contracts 收紧）也已全内置，10 个 skill 由 migration-bootstrap pipeline 串成 DAG。"
+version: "0.4.0"
+description: "遗留代码库适配 IDD（意图驱动开发）的迁移工具箱——骨架铺设、事实抽取、产品辩论、PRD 任务图、intent 闸门、in-shadow 实现、golden 对账、切流、活文档维护。v0.4 新增 slice-delivery 后半段（shadow-implementer / equivalence-baseline / cutover-author）与 slice-spec 轻量 spec 链；仓库级 migration-bootstrap 仍 10 stage，slice 交付单独 pipeline，避免过重。"
 author: "popsicle-lab"
 license: "MIT"
 repository: "https://github.com/popsicle-lab/intent-coder"
@@ -21,6 +21,9 @@ keywords:
   - rfc
   - adr
   - architecture
+  - cutover
+  - equivalence
+  - implementation
 categories:
   - migration
   - analysis

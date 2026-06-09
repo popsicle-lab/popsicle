@@ -3,7 +3,7 @@
 > 本文件是**活文档**（现状 + 计划），随进展更新；不写历史叙事，过期内容就地修正。
 > 方向性决策固化在 §2，后续如需更严格可抽成独立 ADR。
 >
-> Last-Updated: 2026-06-04
+> Last-Updated: 2026-06-09
 
 ---
 
@@ -151,6 +151,14 @@
 | 2.1 ✅ | 新建 `living-doc-author` skill（多处模板已挂钩 `--target tasks-index` 等，防 doc-code drift）|
 | 2.2 ✅ | 写 `migration-bootstrap` pipeline YAML，串联 4 + 新增 skill 成 DAG，结束手动逐个 `skill start` |
 
+### Phase 4 — slice 交付链（v0.4，2026-06-09）
+
+| # | 任务 | 产出 |
+|---|---|---|
+| 4.1 ✅ | `shadow-implementer` / `equivalence-baseline` / `cutover-author` 三 skill | `skills/{shadow-implementer,equivalence-baseline,cutover-author}/` |
+| 4.2 ✅ | `slice-spec` + `slice-delivery` pipeline | 与 migration-bootstrap 分离，避免 14 stage |
+| 4.3 ✅ | `living-doc-author` 扩展 delivery target | implementation-status / architecture-manifest / product-header |
+
 **✅ Phase 2 已完成（2026-05-13）**：
 
 - **2.1 `living-doc-author`**（skill.yaml + guide + sync-report 模板）：保活/对账 skill，
@@ -237,7 +245,8 @@ git 集成——泛化成本低且已在用，拆它才是过早优化。`markdo
 
 ## 6. 明确不做（范围边界）
 
-- ❌ **代码生成 / 测试生成**：按 `bootstrap.md` 明确在 module 边界外。
+- ❌ **无约束的代码/测试 codegen**：shadow-implementer 只按 ADR File Manifest + intent
+  范围编排 in-shadow 实现与 property test，不发明 scope 外 API，不替代人工架构判断。
 - ❌ **扩展 intent-lang 支持时序/时间逻辑**：见 D1/D2，那是 TLA+ 的领域。
 - ❌ **重写 / 大改 popsicle 既有可跑能力**：见 D4 / §5，降级 ≠ 重写；能跑的引擎能力保留，只裁通用遗产，且先核实再删。
 - ❌ **维护 popsicle 的通用平台定位 / RFC D2 拆分**：见 D4，已放弃。
@@ -259,14 +268,14 @@ git 集成——泛化成本低且已在用，拆它才是过早优化。`markdo
 
 ## 8. 一句话状态
 
-> Phase 0-3 全部闭环：intent-lang 封装为 `intent-validate` tool；**10 个自带 skill**
+> Phase 0-3 spec 链闭环 + **v0.4 delivery 链**：intent-lang 封装为 `intent-validate` tool；**13 个自带 skill**
 > （project-init / fact-extractor / product-debate / prd-writer / **arch-debate / rfc-writer /
-> adr-writer** / intent-spec-writer / intent-consistency-check / living-doc-author）产品侧 +
-> 技术侧全内置，并由 `migration-bootstrap` 10-stage pipeline 串成带依赖 + 7 审批点的 DAG
-> （一键 `popsicle pipeline run`，技术侧支线无契约时可整段 skip）；saas-demo 9 份 `.intent`
+> adr-writer** / intent-spec-writer / intent-consistency-check / living-doc-author /
+> **shadow-implementer / equivalence-baseline / cutover-author**）spec 10 + delivery 3 全内置；
+> `migration-bootstrap`（仓库级 10 stage）+ `slice-spec` + `slice-delivery` 三 pipeline；
+> saas-demo 9 份 `.intent`
 > 真实语法全绿（17 verified / 4 skipped / 0 failed），注入矛盾跑出 FAIL + Z3 反例。整条
 > 「需求 → PRD 任务图 → 架构辩论 → RFC/ADR → intent 收紧 → 机器验证 → CI 闸门 → 活文档保活」
 > 链全程走通。**路径调整（2026-06-04，D4）**：放弃通用平台定位，popsicle 降级为
 > intent-coder 私有引擎，RFC D2 拆分作废，新支线改为「通用遗产瘦身」（§5）。
-> **剩余仅边界外项**：代码/单测生成（明确不做）、popsicle 通用遗产瘦身（D4/§5，先核实再删）、
-> intent-lang 待补能力（struct-forall theorem / 聚合，记在 §7 风险）。
+> **剩余边界外项**：无约束 codegen、popsicle 通用遗产瘦身（D4/§5）、intent-lang 待补能力。
