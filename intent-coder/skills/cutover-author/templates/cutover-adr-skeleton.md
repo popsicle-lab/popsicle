@@ -41,9 +41,29 @@ legacy `popsicle` 在该范围内仍为并行主路径；本 ADR 授权将
 | Equivalence ≥5 golden | equivalence-report {date} | pass / fail |
 | cargo test | implementation-coverage {date} | exit  |
 
+## Cutover Gate Checklist
+
+- [ ] intent gate 已核对（附 report 日期 / consecutive_clean_runs）
+- [ ] equivalence gate 已核对（附 golden_pass 数）
+- [ ] cargo test 已核对（附 exit code）
+- [ ] 未通过项已列明 blocker
+
+## Waiver Checklist
+
+- [ ] 用户书面确认豁免哪一门禁（无豁免时写 N/A 并勾选）
+- [ ] 豁免理由写入 ADR § Compliance（无豁免时写 N/A 并勾选）
+- [ ] 补偿措施已列出（如「仅 in-shadow，不切 CLI」；无豁免时写 N/A 并勾选）
+
 ## Migration
 
 切流后 legacy 该范围进入 **Sunset 候选**（物理删除另开 ADR，不在本 ADR 范围）。
+
+## 检查清单
+
+- [ ] Context / Decision / Consequences / Compliance 已填写
+- [ ] 切流范围列出 legacy ↔ new 路径
+- [ ] 已知 divergence 已登记（无则写「无」）
+- [ ] Approval 状态与 pipeline `--confirm` 一致
 
 ## Approval
 

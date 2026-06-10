@@ -18,6 +18,14 @@ query_anchors:
 > 由 `shadow-implementer` 产出。把 `products/{slice}/intents/` 的每个
 > acceptance/invariants 块映射到 `crates/{slice}/` 的具体实现与测试。
 
+## Scope Checklist
+
+- [ ] target slice 已确认
+- [ ] 全部 intent block 已枚举
+- [ ] File Manifest 路径清单已列出
+- [ ] 每个 block 已标 已实现/部分/缺失
+- [ ] 跨界端口归属已核对
+
 ## Summary
 
 | 指标 | 值 |

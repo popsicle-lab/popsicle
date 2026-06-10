@@ -24,7 +24,7 @@ inputs:
 artifacts:
   - type: cutover-adr
     template: templates/cutover-adr-skeleton.md
-    file_pattern: "ADR-{id}-{slice}-cutover.md"
+    file_pattern: "{slug}.cutover-adr.md"
     description: "切流 ADR：Context/Decision/Consequences；Status 经 review 升为 Accepted。"
 
 workflow:

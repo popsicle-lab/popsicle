@@ -1,0 +1,28 @@
+slice: "{slice-name}"
+date: "{date}"
+legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+baseline_dir: "docs/baseline/{date}/{slice-name}/"
+summary:
+  golden_total: 0
+  golden_pass: 0
+  golden_fail: 0
+  divergence_count: 0
+  equivalence_gate_pass: false
+goldens:
+  - id: G-001
+    description: "fixed observable behavior"
+    script: "golden-001.sh"
+    legacy: "legacy/popsicle/..."
+    new: "crates/{slice-name}/..."
+    compares: "stdout|json|file|guard-result|semantic"
+    status: pending
+    diff_summary: ""
+    traces_to:
+      - "acceptance.intent#IntentName"
+divergences:
+  - id: D-001
+    behavior: ""
+    legacy: ""
+    new: ""
+    reason: ""
+    adr: "ADR-XXX"

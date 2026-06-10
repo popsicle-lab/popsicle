@@ -10,6 +10,7 @@ golden_fail: 0
 divergence_count: 0
 equivalence_gate_pass: false
 baseline_dir: docs/baseline/{date}/{slice-name}/
+baseline_manifest: docs/baseline/{date}/{slice-name}/baseline.yaml
 query_anchors:
   - "legacy 和 new 行为一致吗？"
   - "golden 对账过了几条？"
@@ -32,6 +33,22 @@ query_anchors:
 | **equivalence_gate_pass** | false |
 
 门禁：`golden_pass >= 5` **或** 全部 fail 项已 divergence+ADR → pass。
+
+## Golden Inventory
+
+- [ ] slice 已确认
+- [ ] ≥5 条 golden 已列出（含输入/legacy/new/比较方式）
+- [ ] 每条能追溯到 acceptance block 或 api-contracts 行
+- [ ] 已知 divergence 已单独列出
+
+## Baseline Manifest
+
+本报告的 golden/pass/fail/divergence 数字必须来自
+`docs/baseline/{date}/{slice-name}/baseline.yaml`，不要手写漂移。
+
+- [ ] `baseline.yaml` 已创建
+- [ ] Summary 计数与 `baseline.yaml` 一致
+- [ ] Golden 清单状态与 `baseline.yaml` 一致
 
 ## Golden 清单
 
@@ -69,6 +86,6 @@ query_anchors:
 ## 检查清单
 
 - [ ] 每条 golden 有实跑证据
-- [ ] pass/fail 数字与 Summary 一致
+- [ ] pass/fail 数字与 `baseline.yaml` / Summary 一致
 - [ ] divergence 未隐瞒
 - [ ] equivalence_gate_pass 可复算

@@ -93,9 +93,11 @@ query_anchors:
 
 > 超出 living-doc-author 自动刷新范围的 drift。每项指派跟进。
 
-- [ ] 需 PDR 的正文 drift：……（走 prd-writer + 新 PDR）
-- [ ] > 90 天无引用归档评审候选：……（PM 决定是否废止）
-- [ ] 验证失败需修 spec 的 task：……（见 intent-consistency-report）
+| 项 | 原因 | 跟进 |
+|---|---|---|
+| 需 PDR 的正文 drift | 超出 living-doc-author 自动刷新范围 | 走 prd-writer + 新 PDR |
+| >90 天无引用归档评审候选 | 需要 PM 判断是否废止 | PM 决定 |
+| 验证失败需修 spec 的 task | intent-consistency-report 未通过 | 回 intent-spec-writer |
 
 ---
 

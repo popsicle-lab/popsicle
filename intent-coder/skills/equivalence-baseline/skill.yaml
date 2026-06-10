@@ -82,6 +82,8 @@ prompts:
 
   running: |
     Step 1 —— 在 `docs/baseline/<YYYY-MM-DD>/<slice>/` 下放置：
+      - `baseline.yaml`（唯一事实源：golden_total/pass/fail/divergence_count
+        与每条 golden 状态都从这里派生）
       - golden 脚本（shell 或 rust test 均可）
       - fixture 文件（若需要）
       - `README.md` 说明如何复现
@@ -98,6 +100,9 @@ prompts:
 
   reporting: |
     按 `templates/equivalence-report.md` 写报告。
+
+    报告中的所有计数必须从 `baseline.yaml` 抄录；若脚本、README 与
+    baseline.yaml 不一致，先修 manifest，再写报告。
 
     - **Summary**：golden 总数、pass 数、fail 数、divergence 数、是否满足切流门禁
     - **Golden 清单**：每条一行（脚本路径、状态、diff 摘要）
