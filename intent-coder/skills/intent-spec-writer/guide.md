@@ -1,16 +1,20 @@
 # intent-spec-writer 使用指南
 
-把 prd-writer 的 **acceptance-intent 种子** 收紧成可合并、可被 Z3 验证的
-**正式 intent-lang**。这是「intent → 机器验证」闭环里承上启下的一棒：
+把 prd-writer 的 **acceptance / invariants 种子** 与 adr-writer 解锁后的
+**contracts handoff** 收紧成可合并、可被 Z3 验证的**正式 intent-lang**。这是
+「intent → 机器验证」闭环里承上启下的一棒：
 
 ```
-product-debate → prd-writer →（种子）→ intent-spec-writer →（正式 .intent）→ intent-consistency-check（Z3 闸）
+product-debate → prd-writer →（acceptance/invariants 种子）→ intent-spec-writer
+arch-debate → rfc-writer → adr-writer →（contracts unlocked）↗
+intent-spec-writer →（正式 .intent）→ intent-consistency-check（Z3 闸）
 ```
 
 ## 为什么内置（决策 D3）
 
-种子已经是合法 intent-lang 骨架（prd-writer v0.2+），但「能不能真喂给 Z3、合并进
-现有 `.intent` 不打架」这一步直接决定闭环能否成立——是 dogfood 必经环节，不外包。
+种子通常是合法 intent-lang 骨架（prd-writer v0.2+），contracts handoff 通常是
+goal/工单形态；「能不能真喂给 Z3、合并进现有 `.intent` 不打架」这一步直接决定闭环
+能否成立——是 dogfood 必经环节，不外包。
 本 skill 做的不是「发明语义」，而是**规范化 + 分层 + 查冲突 + 跑通**，保持薄。
 
 ## 五件事
@@ -18,7 +22,7 @@ product-debate → prd-writer →（种子）→ intent-spec-writer →（正式
 1. **分层归位**：把种子里每条内容按 PRD § Intent Mapping 归到正确的层——
    - 操作后态 → `acceptance.intent`（require/ensure）
    - 跨操作保持型不变量 → `invariants.intent`（safety + primed）
-   - 模块接口契约 → `contracts.intent`（goal + `[Awaiting ADR]`）
+   - 模块接口契约 → `contracts.intent`（goal；ADR Accepted 后可收紧）
 2. **剥离 D2 约束**：时间 / 性能 / 运行时事实 / 概率**不进** `.intent`，
    登记到对应 task 的「可观察的成功标志」，由测试守护。
 3. **四规则审查**：见下。
@@ -51,5 +55,6 @@ product-debate → prd-writer →（种子）→ intent-spec-writer →（正式
 - `{slug}.intent-spec-report.md`：分层归位 / 剥离清单 / 四规则审查 / 验证结果 /
   冲突检查 / 合并计划。
 
-合并：按报告「合并计划」追加到 `products/{target_product}/intents/acceptance.intent`，
-再跑 `intent-consistency-check` 做 Z3 闸。
+合并：按报告「合并计划」追加或就地更新
+`products/{target_product}/intents/{acceptance,invariants,contracts}.intent`，再跑
+`intent-consistency-check` 做 Z3 闸。

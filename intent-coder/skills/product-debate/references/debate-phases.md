@@ -23,7 +23,7 @@
 
 2. UXR 补充：
    - 已有的用户研究发现或行为数据（**cite 来源**：调研记录 / 数据报告 /
-     fact-extraction-report 中的某项观察）
+     fact-extraction-report 中的某项观察 / Product Brief）
    - 类似产品的用户反馈模式
    - 潜在的用户心智模型和期望
 
@@ -32,19 +32,26 @@
    - 竞品格局和差异化机会
    - 合规、法务等约束
 
-**IDD 专属步骤**：在 PM 发言前，**先朗读** fact-extraction-report 的 Bounded
-Contexts row（如果存在），让所有人共享同一份事实底图：
+**IDD 专属步骤**：在 PM 发言前，**先朗读**可追溯依据，让所有人共享同一份底图：
 
 ```
 **[PM]**:
 > 在我们开始之前，先把事实基对齐一下：
-> - 目标 product = `<name>`（来自 project-init-plan §Product Inventory）
+> - 目标 product = `<name>`（来自 project-init-plan §Product Inventory / Product Brief）
 > - 该 product 当前 LoC = N（fact-extraction-report § Bounded Contexts row K）
 > - 高 churn 模块 = M（fact-extraction-report § Risk Hotspots row K）
 > 大家辩论时请基于这些事实，不要凭印象。
 ```
 
-如果 fact-extraction-report 不存在，PM 应明确说：
+如果是 greenfield 模式，PM 应明确说：
+
+```
+**[PM]**:
+> 本次辩论使用 Product Brief 作为事实基；没有 legacy fact-extraction-report 是正常状态。
+> 超出 brief 的市场、成本、风险判断会标为 `[假设]` / `[待验证]`。
+```
+
+如果 legacy 模式下 fact-extraction-report 不存在，PM 应明确说：
 
 ```
 **[PM]**:
@@ -145,7 +152,7 @@ Contexts row（如果存在），让所有人共享同一份事实底图：
 
    方案 A:
    - ✅ [优势]
-   - ⚠️ [风险/不足]（**附 cite**：fact-extraction-report § X / 行业基准 / ……）
+   - ⚠️ [风险/不足]（**附 cite**：fact-extraction-report § X / Product Brief / 行业基准 / ……）
 
    方案 B:
    - ✅ [优势]
@@ -159,8 +166,9 @@ Contexts row（如果存在），让所有人共享同一份事实底图：
    - 利用角色间的内在张力推动深入讨论
    - 不回避分歧，明确记录分歧点及各方理由
 
-**IDD 专属环节**：ENGLD 角色在评审「实现成本」类条目时**必须**附带 cite。无 cite
-的成本估算被标记为「直觉估算，可信度低」。
+**IDD 专属环节**：ENGLD 角色在评审「实现成本」类条目时**必须**附带 cite。legacy
+模式 cite fact-extraction-report；greenfield 模式 cite Product Brief 或标 `[假设]`。
+无 cite 的成本估算被标记为「直觉估算，可信度低」。
 
 **暂停点**（1-2 次）：
 

@@ -4,6 +4,7 @@ slug: {slug}
 topic: "{一句话技术议题}"
 participants: [ARCH, SEC, PERF, OPS, DEV]
 confidence: 3
+input_mode: legacy-fact-baseline / greenfield-architecture-brief
 date: {YYYY-MM-DD}
 query_anchors:
   - "这个架构问题当时为什么这么定？"
@@ -37,7 +38,7 @@ query_anchors:
 - 要解决的问题：……
 - 硬约束：（兼容性 / 合规 / charter Layer Map）……
 - 质量属性优先级：性能 / 可用性 / 安全 / 可演进性 ……（排序）
-- 事实基引用：F-1 ……（fact-extraction-report § …）
+- 事实基引用：F-1 ……（fact-extraction-report § … / PRD Overview / Product Brief）
 
 ## Phase 2 — 方案发散
 
@@ -82,5 +83,5 @@ query_anchors:
 - [ ] Phase 1-4 小结齐全
 - [ ] 关键分歧与各方立场已记录
 - [ ] 用户决策点已显式记录（含覆盖情况）
-- [ ] 每个数字/模块名引用可追溯到事实基
+- [ ] 每个数字/模块名引用可追溯到事实基（legacy：fact report/api-contracts；greenfield：PRD/Product Brief）
 - [ ] Topic 与另两份 artifact 一致

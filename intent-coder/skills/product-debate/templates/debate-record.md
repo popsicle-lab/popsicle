@@ -2,10 +2,11 @@
 
 > **Status**: Draft (from product-debate skill)
 > **Date**: {YYYY-MM-DD}
-> **Target Product**: `{target_product}`（来自 project-init-plan §Product Inventory）
+> **Target Product**: `{target_product}`（来自 project-init-plan §Product Inventory / product brief）
+> **Input Mode**: `legacy-fact-baseline` / `greenfield-product-brief`
 > **User Confidence**: {N}/5
 > **Participants**: {role-list, e.g. PM, UXR, GROWTH, ENGLD, BIZ}
-> **Fact Basis**: `{slug}.fact-extraction-report.md` ✅ / `[未引用，警告已记录]`
+> **Fact Basis**: `{slug}.fact-extraction-report.md` ✅ / `Product Brief` / `[未引用，警告已记录]`
 
 ---
 
@@ -155,11 +156,11 @@ PM 在 Phase 4 末尾产出的「核心声明 → intent 层」表：
 
 ## 关键事实引用
 
-辩论中引用过的 fact-extraction-report 章节：
+辩论中引用过的 fact-extraction-report 章节或 product brief 条目：
 
 | Cite ID | 内容 | 来源 |
 |---|---|---|
-| F-1 | {LoC 数字 / 风险条目 / 依赖关系} | `{slug}.fact-extraction-report.md § X` |
+| F-1 | {LoC 数字 / 风险条目 / 产品简报约束 / 依赖关系} | `{slug}.fact-extraction-report.md § X` / `Product Brief` |
 | F-2 | ... | ... |
 
 ---

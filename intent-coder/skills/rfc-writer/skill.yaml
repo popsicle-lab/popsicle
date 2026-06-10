@@ -1,5 +1,5 @@
 name: rfc-writer
-description: 把 arch-debate 的 rfc-draft 打磨成可落地的技术设计三件套——正式 RFC（含 ARCHITECTURE.md 顶层增量清单）+ contracts.intent 种子（`[Awaiting ADR]` 状态）+ ADR 骨架（Status 为 Proposed）。是产品侧 `prd-writer` 的技术侧对称体。质量评分 ≥ 90 才放行。
+description: 把 arch-debate 的 rfc-draft 打磨成可落地的技术设计三件套——正式 RFC（含 ARCHITECTURE.md 顶层增量清单）+ contracts.intent 种子（`[Awaiting ADR]` 状态）+ ADR 骨架（Status 为 Proposed）。支持 legacy-fact-baseline（fact-extractor/api-contracts）和 greenfield-architecture-brief（PRD/Product Brief + 待验证假设）。是产品侧 `prd-writer` 的技术侧对称体。质量评分 ≥ 90 才放行。
 version: "0.1.0"
 
 # rfc-writer 是「技术契约位」的第二个 skill（Phase 3 内置）。在 arch-debate 把架构
@@ -47,7 +47,7 @@ workflow:
   initial: ingesting
   states:
     ingesting:
-      description: "读 rfc-draft（必需）+ decision-matrix + prd § Intent Mapping + api-contracts。校验 rfc-draft 是否含 § Intent & Decision Mapping。"
+      description: "读 rfc-draft（必需）+ decision-matrix + prd § Intent Mapping + api-contracts 或 PRD/Product Brief。校验 rfc-draft 是否含 § Intent & Decision Mapping。"
       transitions:
         - to: drafting
           action: ingested
@@ -91,12 +91,17 @@ prompts:
        合格产出——退回重跑 arch-debate，或在本 skill 访谈补齐。
     2. **tech-decision-matrix**：被否方案的量化依据，进 RFC § Alternatives。
     3. **prd-overview § Intent Mapping**：锁定本 RFC 要落地哪些 contracts 行。
-    4. **api-contracts**：现有 public API，判断本设计是否破坏既有契约。
+    4. **事实基 / 简报基**：
+       - legacy 模式：api-contracts / fact-extraction-report 用于判断是否破坏既有契约
+       - greenfield 模式：PRD/Product Brief 是依据；PSP、tax service、storage、SLA、
+         capacity 等超出 brief 的内容必须标 `[待验证]`
 
     ## Ingest Checklist
     - [ ] rfc-draft 已读，且通过 § Intent & Decision Mapping 校验（或访谈补齐）
     - [ ] decision-matrix 已读（或记录「单方案无矩阵」）
     - [ ] target_product 已锁定
+    - [ ] 输入模式已记录（legacy-fact-baseline / greenfield-architecture-brief）
+    - [ ] 事实基状态已记录（legacy→api-contracts/fact report；greenfield→PRD/Product Brief）
     - [ ] ADR ID 已分配（看 decisions/adr/ 现有最大号 +1）
     - [ ] CADR 候选已识别（如有，标记需先走 charter 修订）
 
@@ -111,7 +116,8 @@ prompts:
     | **ADR 骨架** | 一个核心技术决策 + Consequences（精确到文件）| 「将会」叙事；现状描述 |
 
     ## RFC 起草纪律
-    1. **Context** cite fact-extraction-report / api-contracts 的具体行。
+    1. **Context** legacy 模式 cite fact-extraction-report / api-contracts；greenfield 模式
+       cite PRD/Product Brief，超出 brief 的技术判断标 `[待验证]`。
     2. **Quality Attributes（NFR）**：性能/容量/可用性目标写这里 + 测试守护，
        **不进 contracts 种子**（D2）。
     3. **Proposed Design**：模块边界 + 数据流 + 关键接口签名。

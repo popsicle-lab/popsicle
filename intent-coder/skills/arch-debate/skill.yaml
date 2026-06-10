@@ -1,5 +1,5 @@
 name: arch-debate
-description: 多角色技术架构辩论模拟器——在写 RFC 之前用 4-6 个技术角色（ARCH / SEC / PERF / OPS / DATA / DEV）就一个技术问题或架构选型充分辩论方案空间，暴露盲点。消费 prd-overview 里标了 `contracts.intent` / `[ADR 候选]` 的条目 + fact-extractor 的事实基（dependency-graph / api-contracts / risk hotspots），产出 RFC 草稿 + 技术决策矩阵 + 辩论纪要，喂给下游 rfc-writer。是产品侧 `product-debate` 的技术侧对称体。
+description: 多角色技术架构辩论模拟器——在写 RFC 之前用 4-6 个技术角色（ARCH / SEC / PERF / OPS / DATA / DEV）就一个技术问题或架构选型充分辩论方案空间，暴露盲点。支持 legacy-fact-baseline（prd-overview + fact-extractor 的 api-contracts / risk hotspots）和 greenfield-architecture-brief（prd-overview / Product Brief + 明确待验证假设）。产出 RFC 草稿 + 技术决策矩阵 + 辩论纪要，喂给下游 rfc-writer。是产品侧 `product-debate` 的技术侧对称体。
 version: "0.1.0"
 
 # arch-debate 是「技术契约位」的第一个 skill（Phase 3 内置）。它接 product-debate /
@@ -93,11 +93,15 @@ prompts:
 
     2. **边界绑定**：目标 product / 模块。跨模块议题通常拆成多场；确需跨则显式记录。
 
-    3. **加载事实基**（如可用）：
+    3. **输入模式与事实基**：
+       - 如果有 fact-extraction-report / api-contracts，使用 `legacy-fact-baseline`
+       - 如果 PRD 来自 greenfield-product-brief，使用 `greenfield-architecture-brief`
+       - greenfield 模式下，以 prd-overview / Product Brief 为依据；所有存储、队列、
+         PSP、税务服务、容量、SLA 判断都标 `[待验证]`
        - api-contracts —— 现有 public API / 模块边界，判断方案是否破坏契约
        - fact-extraction-report § dependency-graph / risk hotspots / tech-debt ——
          方案的可达边界与代价。**禁止凭印象说「这块代码很重」**，要 cite 行号。
-       - 不可用时警告「辩论基于自然语言推断，结论可信度下降」，允许继续。
+       - legacy 模式缺事实基时警告「辩论基于自然语言推断，结论可信度下降」，允许继续。
 
     4. **技术角色阵容**（4-6 人，见 `references/tech-roles.md`）：
        - **默认 5 人**：ARCH、SEC、PERF、OPS、DEV（DATA 按数据/存储议题加入）
@@ -109,7 +113,8 @@ prompts:
     ## Setup Checklist
     - [ ] 技术议题已用一句话表达（优先来自 prd § Intent Mapping 的 [ADR 候选] 行）
     - [ ] 边界已绑定（product / 模块）
-    - [ ] 事实基状态已记录（可用→已读 api-contracts + risk；不可用→已警告）
+    - [ ] 输入模式已记录（legacy-fact-baseline / greenfield-architecture-brief）
+    - [ ] 事实基状态已记录（legacy→已读 api-contracts + risk 或已警告；greenfield→已读 PRD/Product Brief）
     - [ ] 技术角色阵容确定（4-6 人，含 ARCH + 约束代言 + 实现专家）
     - [ ] 用户置信度已设置
     - [ ] **已展示 setup 摘要并取得 `start` 确认**
@@ -132,7 +137,9 @@ prompts:
 
     ## IDD 辩论纪律（比常规架构评审更严）
 
-    1. **数字/LoC/模块名陈述必须 cite fact-extraction-report**，否则标 `[未经事实基验证]`。
+    1. **数字/LoC/模块名陈述必须可追溯**：legacy 模式 cite fact-extraction-report /
+       api-contracts；greenfield 模式 cite PRD/Product Brief，超出 brief 的判断标
+       `[待验证]`。
     2. **每个核心技术声明必须能落进某个 intent 层**，ARCH 在 Phase 4 显式标注：
        - 「模块 A 对模块 B 暴露接口 X / 保证 Y」→ `intents/contracts.intent`（本链主产物）
        - 「永远 X / 绝不 Y」式跨切面不变量 → `intents/invariants.intent`
@@ -165,7 +172,8 @@ prompts:
        末尾「下游 skill 接驳建议」（通常 rfc-writer）。
     2. **rfc-draft**（必出，`templates/rfc-draft.md`）：**rfc-writer 的输入，非终态**。
        现在时书写；每个核心技术声明标目标 intent 层（侧重 contracts）；列出 ADR 候选
-       与 CADR 候选；引用 fact-extraction-report / api-contracts 作论据。
+       与 CADR 候选；legacy 引用 fact-extraction-report / api-contracts，greenfield
+       引用 PRD/Product Brief 并标待验证假设。
     3. **tech-decision-matrix**（候选 ≥ 2 时必出，`templates/tech-decision-matrix.md`）：
        维度 = 角色提出的质量属性（NFR），权重 ARCH 在 Phase 4 定，每格一句话理由。
 
@@ -179,7 +187,7 @@ prompts:
     - [ ] 标注了「用户决策覆盖」（如有）
     - [ ] rfc-draft 每个核心技术声明标了 intent 层（侧重 contracts）
     - [ ] rfc-draft 列出 ADR 候选 / CADR 候选清单
-    - [ ] 每个数字/LoC/模块名引用可追溯到 fact-extraction-report / api-contracts
+    - [ ] 每个数字/LoC/模块名引用可追溯到 fact-extraction-report / api-contracts（legacy）或 PRD/Product Brief（greenfield）
     - [ ] tech-decision-matrix 维度由角色提出且权重明示（如适用）
     - [ ] 三份 artifact 的 Topic 一致
     - [ ] **已展示三份产出并取得 `approve` 确认**

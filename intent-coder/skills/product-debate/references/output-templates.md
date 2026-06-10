@@ -18,7 +18,8 @@
    辩论产出，不是用户直接写的
 2. 「核心声明 → intent 层」表必填——这是 IDD 工作流的硬约束，缺这张表的草稿在
    prd-writer 阶段会被退回
-3. 所有数字 / LoC / 模块名都要 cite fact-extraction-report 的具体章节
+3. legacy 模式下所有数字 / LoC / 模块名都要 cite fact-extraction-report 的具体章节；
+   greenfield 模式下引用 Product Brief，超出 brief 的判断标 `[假设]` / `[待验证]`
 4. 草稿用「现在时」写，能直接粘进 PRODUCT.md
 5. 末尾「辩论记录」段保留辩论元信息（参与角色、置信度、投票结果），让 PDR 起草
    时能引用辩论作为决策依据
@@ -75,8 +76,8 @@
 3. 所有产出**使用中文**（除非用户指定其他语言）
 4. 三份 artifact 的 `Topic` 字段**必须一致**——这是 prd-writer 用来找辩论上下文
    的索引键
-5. 三份 artifact 都引用同一个 `target_product`（来自 setup 时的绑定）—— 不允许
-   一份辩论横跨多个 product 的产出
+5. 三份 artifact 都引用同一个 `target_product`（来自 Product Inventory 或 Product
+   Brief 绑定）—— 不允许一份辩论横跨多个 product 的产出
 
 ---
 

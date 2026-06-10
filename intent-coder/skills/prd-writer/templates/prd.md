@@ -9,6 +9,8 @@
 > **Status**: Draft → Review → Approved
 > **Target Product**: `{target_product}`
 > **Source Debate**: `{slug}.product-debate.md` ✅ / `[未经辩论]`
+> **Input Mode**: `legacy-fact-baseline` / `greenfield-product-brief`
+> **Fact Basis**: `{slug}.fact-extraction-report.md` / `Product Brief`
 > **PDR**: `PDR-{id}-{slug}.md`
 > **Quality Score**: {N}/100（评分维度见 `references/quality-rubric.md`）
 > **Last-Updated**: {YYYY-MM-DD}
@@ -26,13 +28,13 @@
 
 ## 2. Problem Statement（合并到 PRODUCT.md › Problem Statement 段）
 
-**Current Situation**: {当前痛点 — cite fact-extraction-report § X}
+**Current Situation**: {当前痛点 — cite fact-extraction-report § X / Product Brief}
 
 **Proposed Solution**: {高层描述 — 现在时}
 
 **Business Impact**: {可量化产出}
 
-`Decision-Ref: PDR-{id}` | `Fact: <slug>.fact-extraction-report.md § X`
+`Decision-Ref: PDR-{id}` | `Fact: <slug>.fact-extraction-report.md § X / Product Brief`
 
 ---
 
@@ -40,8 +42,8 @@
 
 | Metric | Baseline | Target | Measurement | Cite |
 |---|---|---|---|---|
-| {首次验证成功率} | {当前值} | {目标值} | {方法} | `fact-ext §X` |
-| {P95 响应时间} | {当前值} | {目标值} | {方法} | `[未经事实基验证]` |
+| {首次验证成功率} | {当前值} | {目标值} | {方法} | `fact-ext §X` / `Product Brief` |
+| {P95 响应时间} | {当前值} | {目标值} | {方法} | `[未经事实基验证]` / `[假设]` |
 
 `Decision-Ref: PDR-{id}`
 

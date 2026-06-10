@@ -3,6 +3,7 @@ artifact: rfc-draft
 slug: {slug}
 topic: "{一句话技术议题}"
 target_product: {target_product}
+input_mode: legacy-fact-baseline / greenfield-architecture-brief
 status: draft                # draft → 经 rfc-writer 升级为正式 RFC
 generated_by: arch-debate
 date: {YYYY-MM-DD}
@@ -17,7 +18,7 @@ cadr_candidates: []          # 触及 charter 的 CADR 候选
 
 ## Context
 
-{要解决的技术问题 + 现状。数字/模块名 cite fact-extraction-report / api-contracts。}
+{要解决的技术问题 + 现状。legacy 数字/模块名 cite fact-extraction-report / api-contracts；greenfield cite PRD/Product Brief，超出 brief 的判断标 [待验证]。}
 
 ## Goals / Non-Goals
 
@@ -82,4 +83,4 @@ cadr_candidates: []          # 触及 charter 的 CADR 候选
 - **Source Debate**: `{slug}.arch-debate.md`
 - **Decision Matrix**: `{slug}.tech-decision-matrix.md`
 - **PRD Overview**: `{slug}.prd.md`（§ Intent Mapping 的 [ADR 候选] 行）
-- **Fact Basis**: `{slug}.fact-extraction-report.md` / api-contracts
+- **Fact Basis**: `{slug}.fact-extraction-report.md` / api-contracts / PRD Overview / Product Brief

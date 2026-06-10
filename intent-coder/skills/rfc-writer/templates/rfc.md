@@ -22,7 +22,7 @@ query_anchors:
 
 ## Context
 
-{要解决的技术问题 + 现状。数字/模块名 cite fact-extraction-report / api-contracts 行。}
+{要解决的技术问题 + 现状。legacy 模式 cite fact-extraction-report / api-contracts；greenfield 模式 cite PRD/Product Brief，超出 brief 的技术判断标 [待验证]。}
 
 ## Goals
 
@@ -104,4 +104,4 @@ query_anchors:
 - **Source Debate**: `{slug}.arch-debate.md`
 - **Decision Matrix**: `{slug}.tech-decision-matrix.md`
 - **PRD Overview**: `{slug}.prd.md`
-- **Fact Basis**: api-contracts / `{slug}.fact-extraction-report.md`
+- **Fact Basis**: api-contracts / `{slug}.fact-extraction-report.md` / PRD Overview / Product Brief

@@ -26,7 +26,7 @@ related_next_tasks:
   - T-0002
   - T-0010
 fact_cite:
-  - "fact-extraction-report § Bounded Contexts row 2"
+  - "fact-extraction-report § Bounded Contexts row 2 / Product Brief"
 last_verified: ~                      # 由 living-doc-author / CI 填；未验证时为 ~
 ---
 

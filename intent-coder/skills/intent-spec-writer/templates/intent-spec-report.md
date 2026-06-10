@@ -3,7 +3,7 @@ artifact: intent-spec-report
 slug: {slug}
 generated_by: intent-spec-writer
 target_product: {target_product}
-source_seed: {slug}.acceptance.intent
+source_seed: {slug}.acceptance.intent / {slug}.contracts-unlocked.intent
 pdr: PDR-{id}
 last_updated: {YYYY-MM-DD}
 intents_formalized: 0
@@ -17,14 +17,15 @@ query_anchors:
 
 # Intent Spec 收紧报告 — {slug}
 
-> intent-spec-writer 把 prd-writer 的种子收紧为可合并、可被 Z3 验证的正式 intent-lang。
+> intent-spec-writer 把 prd-writer 的种子 + adr-writer 的 contracts-unlocked handoff
+> 收紧为可合并、可被 Z3 验证的正式 intent-lang。
 
 ## Summary
 
 | 指标 | 值 |
 |---|---|
 | 目标产品 | {target_product} |
-| 来源种子 | {slug}.acceptance.intent |
+| 来源种子 | {slug}.acceptance.intent / {slug}.contracts-unlocked.intent |
 | 正式化 intent 数 | 0 |
 | 剥离约束数（降级到 task）| 0 |
 | `intent check` exit | 0 |
@@ -34,7 +35,7 @@ query_anchors:
 
 ## Ingest Checklist
 
-- [ ] 种子已读，列出其全部 intent / type
+- [ ] 种子已读，列出其全部 intent / safety / goal / type
 - [ ] 目标产品现有三件套已读，已列出现存符号名（去重基线）
 - [ ] PRD § Intent Mapping 已读，每条声明目标层已确认
 - [ ] 每条种子内容已初步标好归属层
@@ -47,7 +48,7 @@ query_anchors:
 |---|---|---|---|---|
 | ExampleOperation | acceptance | {target_product}/intents/acceptance.intent | intent require/ensure | trivial verified |
 | （保持型不变量示例）| invariants | {target_product}/intents/invariants.intent | safety + primed | 需完整 ensure |
-| （契约示例）| contracts | {target_product}/intents/contracts.intent | goal + [Awaiting ADR] | 0 VC |
+| （契约示例）| contracts | {target_product}/intents/contracts.intent | goal / contract intent | ADR Accepted 后可收紧 |
 
 ## 剥离的约束
 
@@ -86,7 +87,7 @@ query_anchors:
 ## 合并计划
 
 1. 复用现有类型：……（哪些 type 已在目标文件，勿重复声明）
-2. 追加位置：products/{target_product}/intents/acceptance.intent 末尾
+2. 追加位置：products/{target_product}/intents/{acceptance,invariants,contracts}.intent
 3. invariants / contracts 增量分别落到对应文件（见分层归位）
 4. 合并后跑 intent-consistency-check 做闸
 
@@ -94,6 +95,7 @@ query_anchors:
 
 - [ ] formal .intent 单独 intent check 通过（exit 0）
 - [ ] 与现有 acceptance.intent 拼接后仍通过
+- [ ] invariants.intent / contracts.intent 分别通过或合理 skipped
 - [ ] 无时间/性能/运行时约束残留在 .intent
 - [ ] 四规则审查全过
 - [ ] 无重复声明 / 命名冲突

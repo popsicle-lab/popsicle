@@ -26,7 +26,7 @@
 **关键分歧**:
 - {分歧 1}: {角色 A 立场 vs 角色 B 立场}
 
-**核心事实引用**（fact-extraction-report / api-contracts）:
+**核心事实引用**（fact-extraction-report / api-contracts / PRD Overview / Product Brief）:
 - F-1: {引用}
 
 ### 备选方案

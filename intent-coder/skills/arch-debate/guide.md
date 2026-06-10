@@ -15,6 +15,17 @@ adr-writer →（Accepted ADR + 解锁 contracts 种子）→ intent-spec-writer
 arch-debate 只解决「产品侧留下的技术待决问题」——即 PRD 里标了 `contracts.intent` /
 `[ADR 候选]` 的条目。它**不写 ARCHITECTURE.md**（那是 rfc-writer 的活），只产辩论摘要。
 
+## 输入模式
+
+| 模式 | 适用场景 | Ground truth |
+|---|---|---|
+| `legacy-fact-baseline` | 迁移 / slice spec | PRD + fact-extraction-report / api-contracts |
+| `greenfield-architecture-brief` | 新产品 / 新模块架构支线 | PRD overview + Product Brief |
+
+greenfield 模式没有 legacy API / risk hotspots 是正常状态。不要把它当成低质量输入；
+只需把 PSP、存储、队列、税务服务、SLA、容量等超出 PRD/Product Brief 的判断标成
+`[待验证]`，并在 RFC draft 的 Open Questions 或 ADR 候选里保留。
+
 ## 与 product-debate 的异同
 
 | 维度 | product-debate | arch-debate |
@@ -31,8 +42,9 @@ arch-debate 只解决「产品侧留下的技术待决问题」——即 PRD 里
 
 ## 三条 IDD 硬纪律
 
-1. **数字/LoC/模块名/churn 必须 cite** fact-extraction-report 或 api-contracts，
-   否则标 `[未经事实基验证]`。
+1. **数字/LoC/模块名/churn 必须可追溯**：legacy 模式 cite fact-extraction-report
+   或 api-contracts；greenfield 模式 cite PRD/Product Brief，超出 brief 的判断标
+   `[待验证]`。
 2. **每个核心技术声明在 Phase 4 由 ARCH 归类到 intent 层**——本链主产物是
    `contracts.intent`（模块间契约）；跨切面不变量进 `invariants.intent`。
 3. **性能/时延/容量不进 `.intent`**（intent-lang 不验时间，D2）——写进 RFC「质量

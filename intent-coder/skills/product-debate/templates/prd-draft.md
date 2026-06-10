@@ -2,8 +2,9 @@
 
 > **Status**: Draft (from product-debate skill — task-centric form)
 > **Target Product**: `{target_product}`
+> **Input Mode**: `legacy-fact-baseline` / `greenfield-product-brief`
 > **Source Debate**: `{slug}.product-debate.md`
-> **Fact Basis**: `{slug}.fact-extraction-report.md` ✅ / `[未引用]`
+> **Fact Basis**: `{slug}.fact-extraction-report.md` ✅ / `Product Brief` / `[未引用]`
 >
 > ⚠️ 本草稿尚未通过 `prd-writer` 的质量评分；草稿中的 task 是**候选**，task_id
 > 由 prd-writer 在分配阶段确定（看 product 内现有最大号 +1）。**不要**直接落地。
@@ -175,7 +176,8 @@
 | F-1 | {LoC = 12,431} | `{slug}.fact-extraction-report.md § Bounded Contexts row K` |
 | F-2 | {高 churn 模块 verifier/z3.rs} | `{slug}.fact-extraction-report.md § Risk Hotspots row K` |
 
-未引用条目用 `[未经事实基验证]` 标记。
+legacy 模式未引用条目用 `[未经事实基验证]` 标记；greenfield 模式超出 Product Brief
+的判断用 `[假设]` / `[待验证]` 标记。
 
 ---
 

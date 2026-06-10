@@ -61,7 +61,7 @@ workflow:
   initial: ingesting
   states:
     ingesting:
-      description: "读 prd-draft（如有）+ debate-record + fact-extraction-report；如无 prd-draft，与用户做需求访谈。**额外校验**：用户辩论草稿是否已经 task-centric（含 User Intents Catalog 和 Tasks 段）"
+      description: "读 prd-draft（如有）+ debate-record + fact-extraction-report 或 product brief；如无 prd-draft，与用户做需求访谈。**额外校验**：用户辩论草稿是否已经 task-centric（含 User Intents Catalog 和 Tasks 段）"
       transitions:
         - to: drafting
           action: ingested
@@ -99,6 +99,13 @@ prompts:
   ingesting: |
     本状态下你的任务是**把所有输入读完**，并补齐缺失信息——之后才能起草。
 
+    ## 输入模式
+
+    - `legacy-fact-baseline`：来自迁移 / slice-spec，优先消费 fact-extraction-report
+      与 project-init-plan。
+    - `greenfield-product-brief`：来自新产品 / 新模块，允许没有 fact-extraction-report
+      与 Product Inventory；必须有 product brief 或 prd-draft 明确声明 target_product。
+
     ## 输入检查清单
 
     1. **prd-draft**（强烈推荐有，且必须是 task-centric 形态）
@@ -117,7 +124,11 @@ prompts:
 
     3. **fact-extraction-report**（数字 / 模块名引用源）
 
-    4. **project-init-plan**（锁定 target_product；检查 `tasks/` 子目录是否已铺）
+    4. **project-init-plan / target_product 声明**
+       - legacy 模式：用 project-init-plan 锁定 target_product，并检查 `tasks/` 子目录是否已铺
+       - greenfield 模式：若无 project-init-plan，允许从 prd-draft / product brief
+         创建 target_product 声明；在 prd-overview File Manifest 中列出需要创建的
+         `products/{target_product}/...` 目录和文件
 
     ## 缺 prd-draft 时的兜底流程
 
@@ -139,10 +150,10 @@ prompts:
 
     - [ ] prd-draft 已读取，已通过 task-centric 形态校验（或访谈补齐）
     - [ ] debate-record 已读取（或显式记录「未经辩论」）
-    - [ ] fact-extraction-report 引用关系已建立（或显式记录「无事实基」）
-    - [ ] target_product 已锁定且在 Product Inventory 中
-    - [ ] target_product 的 `products/{name}/tasks/{5 个旅程}/` 目录已存在
-          （由 project-init 铺出；不存在则警告用户重跑 project-init）
+    - [ ] fact-extraction-report 引用关系已建立（legacy）或 Product Brief 已记录（greenfield）
+    - [ ] target_product 已锁定且在 Product Inventory 中（legacy）或已由 product brief 显式声明（greenfield）
+    - [ ] target_product 的 `products/{name}/tasks/{5 个旅程}/` 目录已存在；若不存在，
+          已在 File Manifest 中声明将创建这些目录（greenfield 可直接创建 / 声明，不要求重跑 project-init）
     - [ ] PDR ID 已分配（看 `products/{target_product}/decisions/pdr/` 现有最大号 +1）
     - [ ] Task ID 范围已分配（看 `products/{target_product}/tasks/**/T-*.md`
           现有最大号 +1，本次连续 N 个）

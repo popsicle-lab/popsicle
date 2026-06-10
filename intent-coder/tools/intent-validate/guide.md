@@ -13,7 +13,7 @@ popsicle tool，供 `intent-consistency-check` skill 和 CI 闸门调用。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `path` | 是 | — | `.intent` 文件路径（相对仓库根或绝对路径） |
+| `path` | 是 | — | `.intent` 文件或目录路径（相对仓库根或绝对路径；目录会递归枚举 `*.intent`） |
 | `format` | 否 | `json` | `json` 给 skill/CI 解析；`text` 给人读 |
 | `include_asis` | 否 | 空 | 传 `--include-asis` 时一并验证 `@asis` 遗留意图 |
 
@@ -39,6 +39,9 @@ popsicle tool，供 `intent-consistency-check` skill 和 CI 闸门调用。
 - `ok` 为顶层结论：true = 可放行。
 - `results[].status == "failed"` 时，`detail` 含 Z3 反例文本——这就是「最短反例」，直接喂给人或 LLM 修 spec。
 - `status == "skipped"` 不计入失败（当前 intent-lang 不支持 struct-typed `forall` theorem，会标 skipped；`@asis` 也默认 skip）。
+- 当 `path` 指向目录时，tool 会按路径排序逐个输出每个 `.intent` 文件的原生结果；
+  任一文件非 0 则整体非 0。`format=text` 适合人工报告，`format=json` 适合上层 skill
+  逐段解析。
 
 ## 与 intent-lang 能力边界
 

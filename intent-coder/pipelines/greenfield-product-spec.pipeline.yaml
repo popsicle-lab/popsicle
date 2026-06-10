@@ -1,0 +1,73 @@
+name: greenfield-product-spec
+description: >-
+  Greenfield product/module spec chain for projects that do not have a legacy
+  fact baseline yet: product debate from a product brief, PRD task graph,
+  optional architecture decision, intent tightening, Z3 consistency check, and
+  living-doc sync.
+scale: full
+keywords:
+  - greenfield
+  - new-project
+  - product
+  - prd
+  - intent
+  - spec
+
+stages:
+  - name: debate
+    skill: product-debate
+    description: >-
+      Establish product scope, personas, risks, and open decisions from a
+      product brief rather than a legacy fact baseline.
+    depends_on: []
+    requires_approval: true
+
+  - name: prd
+    skill: prd-writer
+    description: >-
+      Produce PRD overview, task graph, tasks/README, acceptance.intent seed,
+      and PDR skeleton for the new product/module.
+    depends_on: [debate]
+    requires_approval: true
+
+  - name: arch-debate
+    skill: arch-debate
+    description: >-
+      Optional technical branch for contracts, storage/API boundaries, or
+      architecture choices identified by the PRD.
+    depends_on: [prd]
+    requires_approval: true
+
+  - name: rfc
+    skill: rfc-writer
+    description: >-
+      Write RFC, ARCHITECTURE.md increment, contracts.intent seed, and ADR
+      skeleton when the architecture branch is needed.
+    depends_on: [arch-debate]
+    requires_approval: true
+
+  - name: adr
+    skill: adr-writer
+    description: >-
+      Finalize accepted ADR and unlock contracts.intent tightening work.
+    depends_on: [rfc]
+    requires_approval: true
+
+  - name: intent-spec
+    skill: intent-spec-writer
+    description: >-
+      Tighten acceptance and unlocked contracts into valid intent-lang files.
+    depends_on: [prd, adr]
+
+  - name: intent-check
+    skill: intent-consistency-check
+    description: >-
+      Run intent-lang/Z3 consistency checks in observe mode.
+    depends_on: [intent-spec]
+
+  - name: living-docs
+    skill: living-doc-author
+    description: >-
+      Sync product headers, task indexes, last verified metadata, and doc drift.
+    depends_on: [intent-check]
+    requires_approval: true

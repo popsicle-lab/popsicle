@@ -1,6 +1,6 @@
 # intent-coder
 
-一个 popsicle 模块，帮你把**遗留代码库迁移到 IDD（Intent-Driven Development，意图驱动开发）工作流**里：spec 驱动、intent 验证、活文档持续更新。
+一个 popsicle 模块，帮你把**遗留代码库迁移到 IDD（Intent-Driven Development，意图驱动开发）工作流**里，也能把全新的产品 / 模块从 product brief 推进到可验证 spec：PRD 任务图、intent 验证、活文档持续更新。
 
 本模块站在 IDD 工作流的最前端，连接「我有一坨老代码」和「我准备好按 spec-and-verify 工作了」之间的鸿沟——先**抽取事实**（这份代码今天到底在干什么）、再**用形式化 intent 把闸**（拦住不一致的下游 spec）、再**持续保活产品/技术文档**（让它们随代码演进而不腐烂）。
 
@@ -20,7 +20,7 @@
 |-------|------|------|
 | **project-init** | ✅ 已交付 | 给新仓库铺骨架：把 legacy pin 成 git submodule、为每个 product 铺 4 件套目录（`PRODUCT.md` / `ARCHITECTURE.md` / `intents/` / `decisions/` + `proposals/`）、把 doc-architecture charter 落地到 `docs/CHARTER.md` |
 | **fact-extractor** | ✅ 已交付 | 读遗留代码，输出结构化事实基（dependency graph、public-API contracts、unsafe/risk 清单、tech-debt 清单）——下游所有 writer 都消费这份事实 |
-| **product-debate** | ✅ 已交付 | 多角色产品辩论模拟器：用 4-6 个角色（PM / UXR / GROWTH / ENGLD / BIZ）就一个 product slice 充分辩论方案空间。**消费 fact-extractor 的事实基**作为辩论 ground truth。**v0.3：Phase 4 PM 强制做 task 识别 + intent 层归类 + User Intents Catalog 起草**。产出 task-centric PRD 草稿 + 决策矩阵 + 辩论纪要，喂给 prd-writer |
+| **product-debate** | ✅ 已交付 | 多角色产品辩论模拟器：用 4-6 个角色（PM / UXR / GROWTH / ENGLD / BIZ）就一个 product slice 充分辩论方案空间。支持 `legacy-fact-baseline`（fact-extractor + project-init）和 `greenfield-product-brief`（产品简报 + 显式 target_product）。**v0.3：Phase 4 PM 强制做 task 识别 + intent 层归类 + User Intents Catalog 起草**。产出 task-centric PRD 草稿 + 决策矩阵 + 辩论纪要，喂给 prd-writer |
 | **prd-writer** | ✅ 已交付（v0.2 任务图） | 把辩论产出（或直接需求）打磨成 IDD 任务图五件套：**PRD overview**（PRODUCT.md 顶层增量）+ **N 份 task 文件**（按 5 个旅程阶段归类）+ **tasks/README.md**（索引）+ **acceptance.intent 种子**（单文件多 block，与 task_id 双射）+ **PDR 骨架**（Consequences 精确到文件级）。强制贯彻 charter 四条铁律 + AI 时代任务图范式，质量评分（5 维度 100 分）≥ 90 才放行 |
 | **arch-debate** | ✅ 已交付 | 多角色**技术架构**辩论模拟器（ARCH / SEC / PERF / OPS / DATA / DEV），是 product-debate 的技术侧对称体。消费 PRD 里标了 `contracts.intent` / [ADR 候选] 的条目 + 事实基，产出 RFC 草稿 + 技术决策矩阵 + 辩论纪要。**Phase 3 起内置**。无跨模块契约的 PRD 可整段跳过技术侧支线 |
 | **rfc-writer** | ✅ 已交付 | prd-writer 的技术侧对称体：把 RFC 草稿打磨成正式 RFC + ARCHITECTURE.md 增量 + `contracts.intent` 种子（Awaiting ADR）+ ADR 骨架（Proposed），质量评分（4 维度 100 分）≥ 90 才放行 |
@@ -58,6 +58,7 @@
 | **migration-bootstrap** ✅ | **仓库级 Day-1 一次**：`init → facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`（10 stage，7 审批点）。定义见 [`pipelines/migration-bootstrap.pipeline.yaml`](pipelines/migration-bootstrap.pipeline.yaml)。 |
 | **slice-spec** ✅（v0.4） | **每 slice spec**（无 init）：`facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check`。仓库已 bootstrap 后跑，避免重复 10 stage。见 [`pipelines/slice-spec.pipeline.yaml`](pipelines/slice-spec.pipeline.yaml)。 |
 | **slice-delivery** ✅（v0.4） | **每 slice 交付**：`implement → equivalence → cutover → living-docs`。前置：spec 已完成。见 [`pipelines/slice-delivery.pipeline.yaml`](pipelines/slice-delivery.pipeline.yaml)。 |
+| **greenfield-product-spec** ✅（v0.4） | **新产品 / 新模块 spec**：`debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`。从 product brief 开始，不要求 legacy fact baseline。见 [`pipelines/greenfield-product-spec.pipeline.yaml`](pipelines/greenfield-product-spec.pipeline.yaml)。 |
 
 ## 使用
 
@@ -100,6 +101,10 @@ popsicle skill start living-doc-author --target all
 # —— 后续 slice：spec + delivery（同一 issue 可链式跑）——
 # popsicle pipeline run slice-spec        # 若 spec 已有可跳过
 # popsicle pipeline run slice-delivery    # implement → equivalence → cutover → living-docs
+
+# —— 新产品 / 新模块：从 product brief 直接进入 spec 链 ——
+# popsicle pipeline run greenfield-product-spec
+# popsicle doc create product-debate --title "My module product debate" --run <run-id>
 
 # slice-delivery 末尾建议：
 # popsicle skill start living-doc-author \

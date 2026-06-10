@@ -2,11 +2,12 @@
 
 > 读者：跑 product-debate skill 的 AI agent（也就是你）。开工前**先**读完本指南、
 > `references/debate-phases.md`、`references/confidence-modes.md`、`references/default-roles.md`，
-> **以及**（如果存在）`fact-extraction-report.md` 和 `project-init-plan.md`。
+> **以及**（如果存在）`fact-extraction-report.md`、`project-init-plan.md` 或用户给出的
+> product brief。
 
 ## 任务
 
-为一个 product slice 跑一场**有结构、有事实基、有审计轨迹**的多角色产品辩论，
+为一个 product slice 跑一场**有结构、有事实基或简报基、有审计轨迹**的多角色产品辩论，
 在 PRD 落地之前充分暴露盲点、探索方案空间。
 
 产出的 `prd-draft.md` 直接喂给 `prd-writer` skill 做质量评分和最终成稿；
@@ -26,10 +27,23 @@
 本 skill 大体复刻 popsicle-spec-development 的 `product-debate`，但在 intent-coder
 的 IDD 工作流里有 4 个关键差异：
 
-### 差异 1：辩论必须基于 fact-extractor 的证据基
+### 输入模式
 
-普通产品讨论里说「这块代码量很大」是允许的；IDD 工作流里**不允许**。每个数字、
-LoC、模块名、依赖关系都必须能 cite 回 `fact-extraction-report` 的某个章节。
+本 skill 支持两种模式，开场必须显式选择：
+
+| 模式 | 适用场景 | Ground truth | target_product 来源 |
+|---|---|---|---|
+| `legacy-fact-baseline` | 迁移 / slice spec | `fact-extraction-report` + `project-init-plan` | Product Inventory |
+| `greenfield-product-brief` | 新产品 / 新模块 / 外部项目从零起 spec | 用户 product brief | 人类显式声明 |
+
+greenfield 模式不是低配 fallback：它是正式入口。区别只是没有 legacy 数字可引用，所以
+所有超出 brief 的事实判断必须标 `[假设]` / `[待验证]`。
+
+### 差异 1：辩论必须基于可追溯依据
+
+普通产品讨论里说「这块代码量很大」是允许的；IDD 工作流里**不允许**。legacy 模式下，
+每个数字、LoC、模块名、依赖关系都必须能 cite 回 `fact-extraction-report` 的某个
+章节。greenfield 模式下，依据来自 product brief；超出 brief 的判断必须标记为假设。
 
 **为什么**：IDD 的核心承诺是「下游每一份产物都能追溯到一个 pinned fact」。如果
 辩论本身在凭印象，整条链的可信度就崩了。
@@ -40,13 +54,15 @@ LoC、模块名、依赖关系都必须能 cite 回 `fact-extraction-report` 的
 - **Risk Hotspots 表**：ENGLD 角色的论据库（「方案 X 会触及 hotspot Y」）
 - **Domain Glossary**：辩论中所有专有名词的唯一来源（不允许造新词）
 
-如果 fact-extraction-report 不存在：**警告用户**「辩论将基于自然语言推断，可信
-度下降」，但允许继续——这场辩论的产物在 prd-writer 阶段会被打低分。
+如果 legacy 模式下 fact-extraction-report 不存在：**警告用户**「辩论将基于自然语言
+推断，可信度下降」，但允许继续。greenfield 模式下没有 fact report 是正常状态，不
+因此扣分。
 
 ### 差异 2：辩论锁定到一个 product slice
 
 参考实现里讨论范围可以是「整个产品」。本 skill 强制**一次辩论一个 product**，
-对应 `project-init-plan.md` 的 Product Inventory 中的一项。
+legacy 模式对应 `project-init-plan.md` 的 Product Inventory 中的一项；greenfield
+模式对应用户显式声明的新产品 / 新模块名。
 
 **为什么**：
 - 文档体系按 product 分目录（`products/<name>/PRODUCT.md`），辩论产物的归属必须
@@ -59,6 +75,8 @@ LoC、模块名、依赖关系都必须能 cite 回 `fact-extraction-report` 的
 - 所有 Phase 中的「实现」「成本」「风险」估算限定在这个 product 内
 - 真要跨 product 时，显式标注「本辩论涉及 product A 和 B，产出的 PRD 草稿会拆
   成两份」
+- greenfield 模式下，如果目录骨架尚不存在，在 debate-record 中记录
+  `target_product: declared from product brief`，由 prd-writer 后续创建 / 声明。
 
 ### 差异 3：方案的每个核心声明必须能落进某个 intent 层
 
@@ -121,7 +139,7 @@ agent 只能瞎猜。
 |---|---|---|
 | **角色趋同** —— 所有角色说同样的话 | Phase 3 各角色的「偏好」都一样 | 强行让两个角色站在对立张力上（PM vs ENGLD 在「快速交付 vs 技术质量」）|
 | **方案不真差异化** —— 2 个方案只差细节 | Phase 2 用户说「这两个不就是一个东西吗」| 引导一个角色显式提一个**用户路径不同**的方案，不只是功能集不同 |
-| **不引用事实基** —— 全程没 cite fact-extraction-report | Phase 3 ENGLD 没有任何「文件:行号」式引用 | 在 ENGLD 发言前注入提示「请基于 fact-extraction-report § Risk Hotspots 评估」|
+| **不引用依据** —— 全程没 cite fact report / product brief | Phase 3 ENGLD 没有任何依据 | legacy：提示引用 fact-extraction-report；greenfield：提示引用 Product Brief 并标假设 |
 | **用户被 AI 牵着走** —— 用户每个暂停都回「继续」| 连续 3 个暂停无实质输入 | 主动降低置信度（「我把置信度临时调到 1，重新组织一下问题」），或暂停辩论问用户是否要继续 |
 | **Phase 4 没收敛** —— 用户说「再想想」但你继续推进 | 投票后没有明确决策 | 接受「未决」是合法状态——产出标 `Status: Deferred` 的 debate-record，用户日后回来继续 |
 
@@ -197,7 +215,8 @@ popsicle discussion message <discussion-id> \
 - **`docs/product-debate/roles.md`** —— 项目领域角色定义
 - **`docs/product-debate/product-mapping.md`** —— 产品-角色映射表
 
-### 上游 artifact（强烈推荐）
+### 上游 artifact / brief
 
 - **`<slug>.fact-extraction-report.md`** —— 辩论的事实基
 - **`<slug>.project-init-plan.md`** —— Product Inventory，限定辩论边界
+- **Product Brief** —— greenfield 模式的简报基，至少包含目标用户、范围、硬约束
