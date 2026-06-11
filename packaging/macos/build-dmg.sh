@@ -11,10 +11,6 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 TARGET="${CARGO_BUILD_TARGET:-}"
-TARGET_FLAG=()
-if [[ -n "$TARGET" ]]; then
-  TARGET_FLAG=(--target "$TARGET")
-fi
 
 bash packaging/macos/generate-icons.sh
 
@@ -22,7 +18,11 @@ echo "==> npm build (ui/)"
 (cd ui && npm ci && npm run build)
 
 echo "==> cargo build --release --features ui -p cli-ux"
-cargo build --release --features ui -p cli-ux "${TARGET_FLAG[@]}"
+if [[ -n "$TARGET" ]]; then
+  cargo build --release --features ui -p cli-ux --target "$TARGET"
+else
+  cargo build --release --features ui -p cli-ux
+fi
 
 if ! command -v cargo-tauri >/dev/null 2>&1; then
   echo "==> installing tauri-cli"
@@ -30,7 +30,11 @@ if ! command -v cargo-tauri >/dev/null 2>&1; then
 fi
 
 echo "==> tauri build (app bundle)"
-(cd crates/cli-ux && cargo tauri build --features ui --bundles app "${TARGET_FLAG[@]}")
+if [[ -n "$TARGET" ]]; then
+  (cd crates/cli-ux && cargo tauri build --features ui --bundles app --target "$TARGET")
+else
+  (cd crates/cli-ux && cargo tauri build --features ui --bundles app)
+fi
 
 if [[ -n "$TARGET" ]]; then
   APP="$ROOT/target/$TARGET/release/bundle/macos/Popsicle.app"
