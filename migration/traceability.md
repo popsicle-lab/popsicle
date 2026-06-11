@@ -32,6 +32,10 @@
 | `popsicle project *` CLI 注册表 | Tauri `open_project_cmd` / `list_registered_projects` | slice-4-ui | ADR-016 | `docs/baseline/2026-06-11/cli-ux-global/` | cutover-done |
 | `legacy/popsicle/ui/` 页面布局（整页导航）| `ui/` master-detail + collapsible sidebar + breadcrumbs | slice-4-ui | ADR-018 | `docs/baseline/2026-06-11/cli-ux-ui-modern/` | cutover-done |
 | legacy `.popsicle/config.toml` + context scan | `.popsicle/project.yaml` + AGENTS.md marker + Settings UI | slice-4-ui | ADR-019 | `docs/baseline/2026-06-11/cli-ux-project-config/` | cutover-done |
+| legacy `module add` + repo-only intent-coder | embedded bundle + `admin sync-intent-coder` | cli-ux | ADR-017 | `intent_coder_install` tests | cutover-done |
+| issue `spec_id` user-facing | `product_id` + `--product` CLI/UI | slice-4-ui | ADR-021 | `local_workspace` / `workspace_readers` | cutover-done |
+| hardcoded stage `--confirm` | `workflow.approval_mode` + i18n | cli-ux | ADR-020 | `project_config` / `local_workspace` | cutover-done |
+| PROJ-29/30/34 without retro spec | PDR-003 + T-CU-0009..0012 + acceptance blocks | cli-ux | PDR-003 | `make check` + intent-validate | cutover-done |
 
 ## 规则
 

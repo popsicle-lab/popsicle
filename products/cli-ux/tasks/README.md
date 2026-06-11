@@ -1,6 +1,6 @@
 # cli-ux — Tasks 索引
 
-> **Status**: 13/13 task 已实现（T-CU-0013 project config ✓ PROJ-37 / ADR-019）
+> **Status**: 13/13 task 已实现；retro T-CU-0009..0012 formalized（PROJ-35 / PDR-003）
 > **Last-Updated**: 2026-06-11
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。

@@ -55,7 +55,9 @@
 - ADR-016：UI 项目切换器 + MRU，桥接 `global.json`；`.app` 零参数启动 UI。
 - ADR-018：UI modern layout — collapsible sidebar、breadcrumb、Issues/Pipeline/Products master-detail split（≥1100px）；D-701 美学 divergence。
 - ADR-017：intent-coder 编译期嵌入，`init` 解压到 `.popsicle/modules/intent-coder/`（DMG 无独立 module 目录）。
-- PDR-003：多项目注册表、UI shell、嵌入模块、DMG 安装路径的 retro task/intent（PROJ-35）。
+- PDR-003：多项目注册表、UI shell、嵌入模块、DMG 安装路径的 retro task/intent（PROJ-35，pipeline closed）。
+- ADR-020：`workflow.approval_mode`、默认产品、`agent.language` 驱动 UI/CLI i18n（PROJ-39）。
+- ADR-021：Issue `product_id` 用户面字段，`--product` CLI/UI（PROJ-38）。
 
 ## Open Questions
 - `sync` 不进 IDD 主路径；是否 hibernate 或独立 product 另开 PDR。
