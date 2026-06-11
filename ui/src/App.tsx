@@ -11,16 +11,25 @@ import { IssuesView } from "./pages/IssuesView";
 import { IssueDetailView } from "./pages/IssueDetailView";
 import { PipelineView } from "./pages/PipelineView";
 import { DocumentView } from "./pages/DocumentView";
-import { TaskGraphView } from "./pages/TaskGraphView";
-import { IntentGraphView } from "./pages/IntentGraphView";
+import { ProductExplorerView } from "./pages/ProductExplorerView";
+import { TaskDetailPage } from "./pages/TaskDetailPage";
+import { IntentDetailPage } from "./pages/IntentDetailPage";
 
 export type Page =
   | { kind: "issues" }
   | { kind: "issue"; issueKey: string }
   | { kind: "pipeline"; runId: string }
   | { kind: "document"; docId: string }
-  | { kind: "tasks" }
-  | { kind: "intents" };
+  | {
+      kind: "products";
+      product?: string;
+      tab?: "tasks" | "intents" | "graph";
+      taskId?: string;
+      intentFile?: string;
+      intentBlock?: string;
+    }
+  | { kind: "task"; taskId: string; product: string }
+  | { kind: "intent"; product: string; file: string; block?: string };
 
 export default function App() {
   const { dir, setProjectDir } = useProjectDir();
@@ -112,8 +121,34 @@ export default function App() {
               setPage={setPage}
             />
           )}
-          {page.kind === "tasks" && <TaskGraphView key={refreshKey} />}
-          {page.kind === "intents" && <IntentGraphView key={refreshKey} />}
+          {page.kind === "products" && (
+            <ProductExplorerView
+              key={`${page.product ?? ""}-${refreshKey}`}
+              setPage={setPage}
+              product={page.product}
+              tab={page.tab}
+              taskId={page.taskId}
+              intentFile={page.intentFile}
+              intentBlock={page.intentBlock}
+            />
+          )}
+          {page.kind === "task" && (
+            <TaskDetailPage
+              key={`${page.taskId}-${refreshKey}`}
+              product={page.product}
+              taskId={page.taskId}
+              setPage={setPage}
+            />
+          )}
+          {page.kind === "intent" && (
+            <IntentDetailPage
+              key={`${page.file}-${page.block ?? ""}-${refreshKey}`}
+              product={page.product}
+              file={page.file}
+              block={page.block}
+              setPage={setPage}
+            />
+          )}
         </main>
       </div>
     </div>

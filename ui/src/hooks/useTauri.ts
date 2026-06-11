@@ -182,3 +182,77 @@ export async function scanIntentGraph(product: string): Promise<IntentGraph> {
 export async function intentGraphMermaid(product: string): Promise<string> {
   return invoke("intent_graph_mermaid", { product });
 }
+
+export interface TaskFull {
+  task_id: string;
+  title: string;
+  journey_stage: string;
+  product: string;
+  file_path: string;
+  frontmatter: Record<string, unknown>;
+  body: string;
+}
+
+export interface IntentBlockDetail {
+  name: string;
+  kind: string;
+  task_id: string | null;
+  start_line: number;
+  end_line: number;
+  snippet: string;
+}
+
+export interface IntentFileFull {
+  product: string;
+  file: string;
+  content: string;
+  blocks: IntentBlockDetail[];
+}
+
+export interface IntentRef {
+  reference: string;
+  file: string;
+  block: string;
+  product: string;
+}
+
+export interface IssueGuidance {
+  product: string | null;
+  pipeline_stage: string | null;
+  hint: string;
+  recommended_tasks: TaskNode[];
+  related_intents: IntentRef[];
+}
+
+export async function scanProductTaskGraph(
+  product: string
+): Promise<TaskGraph> {
+  return invoke("scan_product_task_graph", { product });
+}
+
+export async function readTaskContent(
+  taskId: string,
+  product?: string
+): Promise<TaskFull> {
+  return invoke("read_task_content", { taskId, product });
+}
+
+export async function readIntentFile(
+  product: string,
+  file: string
+): Promise<IntentFileFull> {
+  return invoke("read_intent_file_cmd", { product, file });
+}
+
+export async function resolveIntentRef(
+  reference: string,
+  product?: string
+): Promise<IntentBlockDetail> {
+  return invoke("resolve_intent_ref_cmd", { reference, product });
+}
+
+export async function getIssueGuidance(
+  issueKey: string
+): Promise<IssueGuidance> {
+  return invoke("get_issue_guidance", { issueKey });
+}

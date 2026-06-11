@@ -1,10 +1,4 @@
-import {
-  ClipboardList,
-  FileText,
-  GitBranch,
-  Network,
-  Target,
-} from "lucide-react";
+import { ClipboardList, Package } from "lucide-react";
 import type { Page } from "../App";
 
 interface Props {
@@ -18,8 +12,7 @@ const navItems: {
   icon: typeof ClipboardList;
 }[] = [
   { kind: "issues", label: "Issues", icon: ClipboardList },
-  { kind: "tasks", label: "Task Graph", icon: Network },
-  { kind: "intents", label: "Intent Graph", icon: Target },
+  { kind: "products", label: "Products", icon: Package },
 ];
 
 export function Sidebar({ page, setPage }: Props) {
@@ -30,6 +23,13 @@ export function Sidebar({ page, setPage }: Props) {
         page.kind === "issue" ||
         page.kind === "pipeline" ||
         page.kind === "document"
+      );
+    }
+    if (kind === "products") {
+      return (
+        page.kind === "products" ||
+        page.kind === "task" ||
+        page.kind === "intent"
       );
     }
     return page.kind === kind;
@@ -52,7 +52,13 @@ export function Sidebar({ page, setPage }: Props) {
           return (
             <button
               key={item.kind}
-              onClick={() => setPage({ kind: item.kind } as Page)}
+              onClick={() => {
+                if (item.kind === "products") {
+                  setPage({ kind: "products", tab: "tasks" });
+                } else {
+                  setPage({ kind: "issues" });
+                }
+              }}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                 active
                   ? "bg-[var(--accent)]/15 text-[var(--accent)]"
@@ -66,9 +72,7 @@ export function Sidebar({ page, setPage }: Props) {
         })}
       </nav>
 
-      <div className="p-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)] flex items-center gap-2">
-        <FileText size={12} />
-        <GitBranch size={12} />
+      <div className="p-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
         MVP+ UI
       </div>
     </aside>

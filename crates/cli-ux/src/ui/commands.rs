@@ -6,8 +6,9 @@ use tauri::State;
 
 use crate::self_host::{binary_provenance, load_pipeline_def};
 use crate::workspace_readers::{
-    intent_fallback_mermaid, list_products, scan_intents, scan_tasks, task_graph_mermaid,
-    IntentGraph, TaskGraph,
+    guidance_for_issue, intent_fallback_mermaid, list_products, read_intent_file, read_task,
+    resolve_intent_ref, scan_intents, scan_product_tasks, scan_tasks, task_graph_mermaid,
+    IntentBlockDetail, IntentFileFull, IntentGraph, IssueGuidance, TaskFull, TaskGraph,
 };
 use crate::LocalWorkspace;
 
@@ -297,4 +298,67 @@ pub fn intent_graph_mermaid(product: String, state: State<AppState>) -> Result<S
         return Ok(m);
     }
     Ok(intent_fallback_mermaid(&graph))
+}
+
+#[tauri::command]
+pub fn scan_product_task_graph(
+    product: String,
+    state: State<AppState>,
+) -> Result<TaskGraph, String> {
+    let dir = get_dir(&state)?;
+    scan_product_tasks(&dir, &product).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn read_task_content(
+    task_id: String,
+    product: Option<String>,
+    state: State<AppState>,
+) -> Result<TaskFull, String> {
+    let dir = get_dir(&state)?;
+    read_task(&dir, &task_id, product.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn read_intent_file_cmd(
+    product: String,
+    file: String,
+    state: State<AppState>,
+) -> Result<IntentFileFull, String> {
+    let dir = get_dir(&state)?;
+    read_intent_file(&dir, &product, &file).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn resolve_intent_ref_cmd(
+    reference: String,
+    product: Option<String>,
+    state: State<AppState>,
+) -> Result<IntentBlockDetail, String> {
+    let dir = get_dir(&state)?;
+    resolve_intent_ref(&dir, &reference, product.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_issue_guidance(
+    issue_key: String,
+    state: State<AppState>,
+) -> Result<IssueGuidance, String> {
+    state.with_store(|store| {
+        let issue = store.get_issue(&issue_key).map_err(|e| e.to_string())?;
+        let pipeline_stage = if let Some(run_id) = store.active_run_id(&issue.key).ok().flatten() {
+            store.pipeline_status(&run_id).ok().map(|s| s.current_stage)
+        } else {
+            None
+        };
+        let dir = store.workspace().root.clone();
+        guidance_for_issue(
+            &dir,
+            &issue.spec_id,
+            &issue.issue_type,
+            &issue.status,
+            pipeline_stage.as_deref(),
+        )
+        .map_err(|e| e.to_string())
+    })
 }

@@ -68,3 +68,7 @@ pub struct StageCompleteResult {
     pub current_stage: String,
     pub downstream_ready: bool,
 }
+
+pub use crate::workspace_readers::{
+    IntentBlockDetail, IntentFileFull, IntentRef, IssueGuidance, TaskFull,
+};

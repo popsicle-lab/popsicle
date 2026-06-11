@@ -40,6 +40,66 @@ pub struct IntentGraph {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskFull {
+    pub task_id: String,
+    pub title: String,
+    pub journey_stage: String,
+    pub product: String,
+    pub file_path: String,
+    pub frontmatter: BTreeMap<String, serde_json::Value>,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IntentBlockDetail {
+    pub name: String,
+    pub kind: String,
+    pub task_id: Option<String>,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub snippet: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IntentFileFull {
+    pub product: String,
+    pub file: String,
+    pub content: String,
+    pub blocks: Vec<IntentBlockDetail>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IntentRef {
+    pub reference: String,
+    pub file: String,
+    pub block: String,
+    pub product: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IssueGuidance {
+    pub product: Option<String>,
+    pub pipeline_stage: Option<String>,
+    pub hint: String,
+    pub recommended_tasks: Vec<TaskNode>,
+    pub related_intents: Vec<IntentRef>,
+}
+
+/// Scan `products/<product>/tasks/**/*.md` for one product.
+pub fn scan_product_tasks(
+    workspace_root: &Path,
+    product: &str,
+) -> Result<TaskGraph, WorkspaceError> {
+    let tasks_root = workspace_root.join("products").join(product).join("tasks");
+    let mut nodes = Vec::new();
+    if tasks_root.is_dir() {
+        walk_tasks(&tasks_root, product, &mut nodes)?;
+    }
+    nodes.sort_by(|a, b| a.task_id.cmp(&b.task_id));
+    Ok(TaskGraph { nodes })
+}
+
 /// Scan `products/*/tasks/**/*.md` for task frontmatter.
 pub fn scan_tasks(products_dir: &Path) -> Result<TaskGraph, WorkspaceError> {
     let mut nodes = Vec::new();
@@ -149,6 +209,278 @@ pub fn scan_intents(workspace_root: &Path, product: &str) -> Result<IntentGraph,
         mermaid,
         source,
     })
+}
+
+/// Map issue `spec_id` to a `products/<name>/` directory.
+pub fn product_for_spec(spec_id: &str, products: &[String]) -> Option<String> {
+    if products.iter().any(|p| p == spec_id) {
+        return Some(spec_id.to_string());
+    }
+    let mut best: Option<(usize, String)> = None;
+    for p in products {
+        if spec_id.ends_with(p) {
+            let score = p.len();
+            if best.as_ref().is_none_or(|(s, _)| score > *s) {
+                best = Some((score, p.clone()));
+            }
+        } else if spec_id.contains(&format!("-{p}")) {
+            let score = p.len();
+            if best.as_ref().is_none_or(|(s, _)| score > *s) {
+                best = Some((score, p.clone()));
+            }
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+pub fn read_task(
+    workspace_root: &Path,
+    task_id: &str,
+    product: Option<&str>,
+) -> Result<TaskFull, WorkspaceError> {
+    let products = list_products(workspace_root)?;
+    let candidates: Vec<String> = match product {
+        Some(p) => vec![p.to_string()],
+        None => products,
+    };
+    for p in candidates {
+        let graph = scan_product_tasks(workspace_root, &p)?;
+        if let Some(node) = graph.nodes.iter().find(|n| n.task_id == task_id) {
+            let path = PathBuf::from(&node.file_path);
+            let content = fs::read_to_string(&path).map_err(io_err)?;
+            let (frontmatter, body) = split_task_content(&content).ok_or_else(|| {
+                WorkspaceError::InvalidState(format!("task {task_id}: missing frontmatter"))
+            })?;
+            return Ok(TaskFull {
+                task_id: node.task_id.clone(),
+                title: node.title.clone(),
+                journey_stage: node.journey_stage.clone(),
+                product: node.product.clone(),
+                file_path: node.file_path.clone(),
+                frontmatter,
+                body,
+            });
+        }
+    }
+    Err(WorkspaceError::NotFound(format!("task {task_id}")))
+}
+
+pub fn read_intent_file(
+    workspace_root: &Path,
+    product: &str,
+    file: &str,
+) -> Result<IntentFileFull, WorkspaceError> {
+    let fname = if file.ends_with(".intent") {
+        file.to_string()
+    } else {
+        format!("{file}.intent")
+    };
+    let path = workspace_root
+        .join("products")
+        .join(product)
+        .join("intents")
+        .join(&fname);
+    let content = fs::read_to_string(&path)
+        .map_err(|_| WorkspaceError::NotFound(format!("intent file {file}")))?;
+    let fname = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let blocks = parse_intent_blocks_detailed(&content);
+    Ok(IntentFileFull {
+        product: product.to_string(),
+        file: fname,
+        content,
+        blocks,
+    })
+}
+
+pub fn resolve_intent_ref(
+    workspace_root: &Path,
+    reference: &str,
+    product: Option<&str>,
+) -> Result<IntentBlockDetail, WorkspaceError> {
+    let (file, block_name) = reference
+        .split_once('#')
+        .ok_or_else(|| WorkspaceError::InvalidState(format!("invalid intent ref: {reference}")))?;
+    let products = list_products(workspace_root)?;
+    let candidates: Vec<String> = match product {
+        Some(p) => vec![p.to_string()],
+        None => products,
+    };
+    for p in candidates {
+        if let Ok(intent_file) = read_intent_file(workspace_root, &p, file) {
+            if let Some(block) = intent_file.blocks.iter().find(|b| b.name == block_name) {
+                return Ok(block.clone());
+            }
+        }
+    }
+    Err(WorkspaceError::NotFound(format!(
+        "intent block {reference}"
+    )))
+}
+
+pub fn guidance_for_issue(
+    workspace_root: &Path,
+    spec_id: &str,
+    issue_type: &str,
+    status: &str,
+    pipeline_stage: Option<&str>,
+) -> Result<IssueGuidance, WorkspaceError> {
+    let products = list_products(workspace_root)?;
+    let product = product_for_spec(spec_id, &products);
+    let hint = pipeline_stage
+        .map(|s| format!("当前 pipeline 阶段「{s}」— 以下为推荐 task/intent"))
+        .unwrap_or_else(|| "按 issue spec 关联的产品推荐 task/intent".to_string());
+
+    let mut recommended_tasks = Vec::new();
+    let mut related_intents = Vec::new();
+
+    if let Some(ref prod) = product {
+        let graph = scan_product_tasks(workspace_root, prod)?;
+        let mut scored: Vec<(i32, TaskNode)> = graph
+            .nodes
+            .into_iter()
+            .map(|node| (score_task(&node, issue_type, status, pipeline_stage), node))
+            .collect();
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        recommended_tasks = scored.into_iter().take(5).map(|(_, n)| n).collect();
+
+        let mut seen = std::collections::BTreeSet::new();
+        for task in &recommended_tasks {
+            for ri in &task.related_intents {
+                if seen.insert(ri.clone()) {
+                    if let Some((file, block)) = ri.split_once('#') {
+                        related_intents.push(IntentRef {
+                            reference: ri.clone(),
+                            file: file.to_string(),
+                            block: block.to_string(),
+                            product: prod.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(IssueGuidance {
+        product,
+        pipeline_stage: pipeline_stage.map(str::to_string),
+        hint,
+        recommended_tasks,
+        related_intents,
+    })
+}
+
+fn score_task(
+    node: &TaskNode,
+    issue_type: &str,
+    status: &str,
+    pipeline_stage: Option<&str>,
+) -> i32 {
+    let mut score = 0;
+    if issue_type == "bug" && node.journey_stage == "troubleshooting" {
+        score += 10;
+    }
+    if status == "in_progress" && node.journey_stage == "daily-ops" {
+        score += 10;
+    }
+    if let Some(stage) = pipeline_stage {
+        match stage {
+            "implement" | "equivalence" => {
+                if node.journey_stage == "daily-ops" {
+                    score += 5;
+                }
+                if node.journey_stage == "lifecycle" {
+                    score += 3;
+                }
+            }
+            "cutover" | "living-docs" => {
+                if node.journey_stage == "lifecycle" {
+                    score += 8;
+                }
+            }
+            _ => {
+                if node.journey_stage == "daily-ops" {
+                    score += 5;
+                }
+            }
+        }
+    }
+    score
+}
+
+fn split_task_content(content: &str) -> Option<(BTreeMap<String, serde_json::Value>, String)> {
+    let fm = content.strip_prefix("---")?;
+    let rest = fm.strip_prefix('\n').or_else(|| fm.strip_prefix("\r\n"))?;
+    let end = rest.find("\n---")?;
+    let yaml = &rest[..end];
+    let body = rest[end + 4..].trim_start_matches('\n').to_string();
+    let map: BTreeMap<String, serde_yaml::Value> = serde_yaml::from_str(yaml).ok()?;
+    let frontmatter = map
+        .into_iter()
+        .map(|(k, v)| (k, yaml_value_to_json(v)))
+        .collect();
+    Some((frontmatter, body))
+}
+
+fn yaml_value_to_json(v: serde_yaml::Value) -> serde_json::Value {
+    serde_json::to_value(v).unwrap_or(serde_json::Value::Null)
+}
+
+fn parse_intent_blocks_detailed(content: &str) -> Vec<IntentBlockDetail> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut blocks = Vec::new();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        let (kind, name) = if let Some(rest) = trimmed.strip_prefix("intent ") {
+            ("intent", rest.split('(').next().unwrap_or("unknown").trim())
+        } else if let Some(rest) = trimmed.strip_prefix("safety ") {
+            ("safety", rest.split('(').next().unwrap_or("unknown").trim())
+        } else {
+            i += 1;
+            continue;
+        };
+        let start_line = i + 1;
+        let mut brace_depth = 0;
+        let mut saw_open = false;
+        let mut end_i = i;
+        for (j, line) in lines.iter().enumerate().skip(i) {
+            for ch in line.chars() {
+                if ch == '{' {
+                    brace_depth += 1;
+                    saw_open = true;
+                } else if ch == '}' {
+                    brace_depth -= 1;
+                }
+            }
+            end_i = j;
+            if saw_open && brace_depth == 0 {
+                break;
+            }
+        }
+        let end_line = end_i + 1;
+        let snippet = lines[i..=end_i].join("\n");
+        let mut task_id = None;
+        if end_i + 1 < lines.len() {
+            let next = lines[end_i + 1].trim();
+            if let Some(t) = next.strip_prefix("// task:") {
+                task_id = Some(t.trim().to_string());
+            }
+        }
+        blocks.push(IntentBlockDetail {
+            name: name.to_string(),
+            kind: kind.to_string(),
+            task_id,
+            start_line,
+            end_line,
+            snippet,
+        });
+        i = end_i + 1;
+    }
+    blocks
 }
 
 pub fn list_products(workspace_root: &Path) -> Result<Vec<String>, WorkspaceError> {

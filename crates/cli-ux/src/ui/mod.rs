@@ -41,6 +41,11 @@ pub fn run(project: Option<String>) {
             commands::list_product_names,
             commands::scan_intent_graph,
             commands::intent_graph_mermaid,
+            commands::scan_product_task_graph,
+            commands::read_task_content,
+            commands::read_intent_file_cmd,
+            commands::resolve_intent_ref_cmd,
+            commands::get_issue_guidance,
         ])
         .setup(|app| {
             app.manage(watcher::ProjectWatcher {
