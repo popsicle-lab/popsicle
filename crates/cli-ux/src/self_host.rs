@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use artifact_system::Document;
@@ -34,6 +34,7 @@ const STATE_FILE: &str = "state.tsv";
 const DB_FILE: &str = "state.db";
 const RUNS_DIR: &str = "runs";
 const PIPELINES_DIR: &str = ".popsicle/pipelines";
+const INTENT_CODER_MODULE_REL: &str = ".popsicle/modules/intent-coder";
 
 /// Pipelines bundled into the binary so `popsicle init` can bootstrap a brand-new
 /// project without copying the intent-coder module first.
@@ -149,6 +150,136 @@ impl Workspace {
             installed.push(*name);
         }
         Ok(installed)
+    }
+
+    pub fn intent_coder_source(&self) -> PathBuf {
+        self.root.join("intent-coder")
+    }
+
+    pub fn intent_coder_module_dir(&self) -> PathBuf {
+        self.root.join(INTENT_CODER_MODULE_REL)
+    }
+}
+
+/// Where the module payload came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntentCoderSource {
+    /// Live `intent-coder/` at workspace root (dogfood / dev checkout).
+    WorkspaceRoot,
+    /// Compile-time bundle inside the `popsicle` binary (DMG / `cargo install`).
+    Embedded,
+}
+
+impl IntentCoderSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::WorkspaceRoot => "workspace_root",
+            Self::Embedded => "embedded",
+        }
+    }
+}
+
+/// Result of syncing intent-coder into `.popsicle/modules/intent-coder/`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntentCoderInstallResult {
+    pub installed: bool,
+    pub version: Option<String>,
+    pub dest: String,
+    pub source: Option<IntentCoderSource>,
+    pub skipped_reason: Option<String>,
+}
+
+fn read_module_version(dir: &Path) -> Option<String> {
+    let content = fs::read_to_string(dir.join("module.yaml")).ok()?;
+    content
+        .lines()
+        .find(|line| line.starts_with("version:"))
+        .and_then(|line| line.split('"').nth(1).map(str::to_string))
+}
+
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), WorkspaceError> {
+    fs::create_dir_all(dest).map_err(io_err)?;
+    for entry in fs::read_dir(src).map_err(io_err)? {
+        let entry = entry.map_err(|e| io_err(e.to_string()))?;
+        let name = entry.file_name();
+        if name == ".git" || name == "target" {
+            continue;
+        }
+        let from = entry.path();
+        let to = dest.join(&name);
+        let ft = entry.file_type().map_err(|e| io_err(e.to_string()))?;
+        if ft.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else if ft.is_file() {
+            fs::copy(&from, &to).map_err(io_err)?;
+        }
+    }
+    Ok(())
+}
+
+/// Install intent-coder into `.popsicle/modules/intent-coder/`.
+///
+/// Prefers workspace-root `intent-coder/` when present; otherwise extracts the
+/// compile-time bundle (ADR-017) so DMG/`cargo install` projects still work.
+pub fn install_intent_coder_module(
+    workspace: &Workspace,
+    force: bool,
+) -> Result<IntentCoderInstallResult, WorkspaceError> {
+    let src = workspace.intent_coder_source();
+    let dest = workspace.intent_coder_module_dir();
+    let source = if src.join("module.yaml").is_file() {
+        IntentCoderSource::WorkspaceRoot
+    } else {
+        IntentCoderSource::Embedded
+    };
+
+    if dest.exists() && !force {
+        let dest_ver = read_module_version(&dest);
+        let src_ver = match source {
+            IntentCoderSource::WorkspaceRoot => read_module_version(&src),
+            IntentCoderSource::Embedded => crate::intent_coder_bundle::embedded_module_version(),
+        };
+        if src_ver == dest_ver && dest.join("skills").is_dir() {
+            return Ok(IntentCoderInstallResult {
+                installed: false,
+                version: dest_ver,
+                dest: dest.display().to_string(),
+                source: Some(source),
+                skipped_reason: Some(
+                    "already installed (same version; run admin sync-intent-coder to refresh)"
+                        .into(),
+                ),
+            });
+        }
+    }
+
+    if dest.exists() {
+        fs::remove_dir_all(&dest).map_err(io_err)?;
+    }
+
+    match source {
+        IntentCoderSource::WorkspaceRoot => copy_dir_recursive(&src, &dest)?,
+        IntentCoderSource::Embedded => {
+            crate::intent_coder_bundle::extract_embedded_intent_coder(&dest)?
+        }
+    }
+
+    let version = read_module_version(&dest);
+    Ok(IntentCoderInstallResult {
+        installed: true,
+        version,
+        dest: dest.display().to_string(),
+        source: Some(source),
+        skipped_reason: None,
+    })
+}
+
+pub fn intent_coder_module_version(workspace: &Workspace) -> Option<String> {
+    let dest = workspace.intent_coder_module_dir();
+    if dest.join("module.yaml").is_file() {
+        read_module_version(&dest)
+    } else {
+        None
     }
 }
 
@@ -1260,13 +1391,29 @@ impl crate::CliDomain for SelfHostDomain {
             .workspace
             .install_bundled_pipelines()
             .map_err(ws_err)?;
-        let next_step = if installed.is_empty() {
-            "popsicle issue create --type product --title \"<title>\" --spec <spec> --pipeline <pipeline>".to_string()
-        } else {
-            format!(
-                "pipelines installed ({}); popsicle issue create --type product --title \"<title>\" --spec <spec> --pipeline <pipeline>",
-                installed.join(", ")
-            )
+        let module = install_intent_coder_module(&self.store.workspace, false).map_err(ws_err)?;
+        let next_step = {
+            let mut parts = Vec::new();
+            if !installed.is_empty() {
+                parts.push(format!("pipelines installed ({})", installed.join(", ")));
+            }
+            if module.installed {
+                parts.push(format!(
+                    "intent-coder module v{} → {}",
+                    module.version.as_deref().unwrap_or("?"),
+                    module.dest
+                ));
+            } else if let Some(reason) = &module.skipped_reason {
+                parts.push(format!("intent-coder: {reason}"));
+            }
+            if parts.is_empty() {
+                "popsicle issue create --type product --title \"<title>\" --spec <spec> --pipeline <pipeline>".to_string()
+            } else {
+                format!(
+                    "{}; read intent-coder/guides/pipeline-selection.md before issue create",
+                    parts.join("; ")
+                )
+            }
         };
         Ok(crate::InitResult {
             workspace_ready: true,
@@ -1537,6 +1684,25 @@ impl crate::CliDomain for SelfHostDomain {
                 self.store.backend().describe(&self.store.workspace),
             ),
             ("phase_2_issue".into(), "PROJ-11".into()),
+            (
+                "intent_coder_module".into(),
+                intent_coder_module_version(&self.store.workspace)
+                    .unwrap_or_else(|| "not installed".into()),
+            ),
+            (
+                "intent_coder_bundle".into(),
+                if self
+                    .store
+                    .workspace
+                    .intent_coder_source()
+                    .join("module.yaml")
+                    .is_file()
+                {
+                    "workspace_root_override".into()
+                } else {
+                    "embedded".into()
+                },
+            ),
         ]);
         Ok(crate::CommandResponse {
             status: if trusted { "ok" } else { "warn" },
@@ -1593,5 +1759,28 @@ impl crate::CliDomain for SelfHostDomain {
 
     fn admin_reinit(&mut self, workspace: &str) -> Result<crate::AdminResult, crate::CliError> {
         self.admin_migrate(workspace)
+    }
+
+    fn admin_sync_intent_coder(&mut self) -> Result<crate::AdminResult, crate::CliError> {
+        let result = install_intent_coder_module(&self.store.workspace, true).map_err(ws_err)?;
+        let mut details = BTreeMap::from([
+            ("installed".into(), result.installed.to_string()),
+            ("dest".into(), result.dest),
+        ]);
+        if let Some(v) = result.version {
+            details.insert("version".into(), v);
+        }
+        if let Some(src) = result.source {
+            details.insert("source".into(), src.as_str().into());
+        }
+        if let Some(reason) = result.skipped_reason {
+            details.insert("skipped_reason".into(), reason);
+        }
+        Ok(crate::AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: false,
+            workspace: self.store.workspace.root.display().to_string(),
+            details,
+        })
     }
 }

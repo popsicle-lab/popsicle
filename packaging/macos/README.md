@@ -5,9 +5,13 @@
 | Item | Purpose |
 |---|---|
 | `Popsicle.app` | Tauri desktop UI |
-| `popsicle` | CLI binary (same build, `--features ui`) |
+| `popsicle` | CLI binary (same build, `--features ui`); **embeds intent-coder** at compile time (ADR-017) |
 | `Install CLI.command` | Copies CLI to `~/.local/bin`, creates `~/.popsicle/` |
 | `Applications` | Drag target symlink |
+
+There is **no** separate `intent-coder/` folder on the DMG volume. On `popsicle init`
+in a new project, the CLI extracts the bundled module into
+`.popsicle/modules/intent-coder/` automatically.
 
 ## Build (local)
 

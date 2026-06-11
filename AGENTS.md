@@ -95,6 +95,26 @@ If `--pipeline` is omitted, the issue type's default (last column) is used
 templates self-heal: bundled definitions are installed on demand, and a
 "pipeline not found" error lists all available templates.
 
+**Pipeline routing (read before `issue create`):** `intent-coder/guides/pipeline-selection.md`
+
+| Situation | Pipeline |
+|---|---|
+| New product module, no spec | `greenfield-product-spec` (`--type product` default) |
+| Existing slice, capability not in intent yet | `slice-spec` (not `slice-delivery`) |
+| Spec decided, ready to code | `slice-delivery` |
+| Architecture decision only | `tech-decision` (`--type technical` default) |
+| Regression fix | `bugfix` |
+
+`slice-delivery` is **not** a substitute for spec work. Do not use it for greenfield
+features or incremental UI/CLI capabilities until `acceptance.intent` covers them.
+
+**intent-coder module (ADR-017):** compiled into the `popsicle` binary (`include_dir!`).
+`popsicle init` extracts it to `.popsicle/modules/intent-coder/`. In the popsicle
+monorepo, workspace-root `intent-coder/` overrides the embedded snapshot. Refresh:
+`popsicle admin sync-intent-coder`. Legacy `popsicle module add` remains **deferred**.
+`doctor --format json` reports `intent_coder_module` + `intent_coder_bundle`
+(`embedded` | `workspace_root_override`). DMG ships only the CLI — module is inside the binary.
+
 Show the created issue key to the user before proceeding.
 
 ### Step 3: Start the Issue (creates a pipeline run)

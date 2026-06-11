@@ -12,6 +12,17 @@ slice-spec / migration-bootstrap（spec 完成）
     → living-doc-author（实现态保活）
 ```
 
+## 进入 implement 前（硬门禁）
+
+在 `slice-delivery` 的 **implement** stage 写代码之前，确认：
+
+1. **Pipeline 选对**：若 PRD/intent 未覆盖本能力 → 先跑 `slice-spec` 或 `greenfield-product-spec`，不要直接 delivery。见 [`guides/pipeline-selection.md`](../../guides/pipeline-selection.md)。
+2. **Intent**：`products/<slice>/intents/` 存在与本任务对应的 acceptance block；`intent-validate` 无新增失败。
+3. **ADR**：File Manifest 列出将创建/修改的路径；无清单外文件。
+4. **模块**：`.popsicle/modules/intent-coder/` 已安装（`popsicle init` 或 `admin sync-intent-coder`），skill 模板与 guide 可引用。
+
+缺一项 → 停止实现，回到 spec 链或登记 divergence ADR。
+
 ## 定位
 
 | 做 | 不做 |

@@ -51,6 +51,12 @@
 12. `equivalence-baseline` —— golden 对账 + traceability 草稿。
 13. `cutover-author` —— 切流 ADR + progress 看板。
 
+## Pipeline 怎么选
+
+**必读**：[`guides/pipeline-selection.md`](guides/pipeline-selection.md) —— Issue 创建前的决策树与 `slice-delivery` 门禁。
+
+要点：`slice-delivery` **不是**新产品 feature 流程；它要求 spec 链已完成。`--type technical` 默认是 `tech-decision`，不是 delivery。
+
 ## Pipelines
 
 | Pipeline | 用途 |
@@ -66,8 +72,11 @@
 
 ```bash
 mkdir new-project && cd new-project && git init
-popsicle init
-popsicle module add /path/to/intent-coder
+popsicle init   # installs pipelines + intent-coder module when intent-coder/ exists at repo root
+# Or refresh module after upstream updates:
+popsicle admin sync-intent-coder
+# Legacy / external checkout:
+popsicle module add /path/to/intent-coder   # deferred in self-host MVP; use sync-intent-coder in-repo
 
 # 1. 铺出文档骨架（交互式 —— 命名 products、挑首个迁移切片）
 popsicle skill start project-init

@@ -1,6 +1,7 @@
 //! Thin IO shell for the `cli-ux` slice (ADR-007 / ADR-009 Phase 1).
 
 pub mod global_config;
+mod intent_coder_bundle;
 pub mod self_host;
 pub mod workspace_readers;
 
@@ -9,8 +10,9 @@ pub mod ui;
 
 pub use global_config::WorkspaceSource;
 pub use self_host::{
-    binary_provenance_for, bundled_pipeline_names, LocalWorkspace, SelfHostDomain, StateBackend,
-    Workspace,
+    binary_provenance_for, bundled_pipeline_names, install_intent_coder_module,
+    intent_coder_module_version, IntentCoderInstallResult, IntentCoderSource, LocalWorkspace,
+    SelfHostDomain, StateBackend, Workspace,
 };
 
 use std::collections::BTreeMap;
@@ -140,6 +142,7 @@ pub enum OutputFormat {
 pub enum AdminCommand {
     Migrate { workspace: String },
     Reinit { workspace: String },
+    SyncIntentCoder,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -310,6 +313,7 @@ pub trait CliDomain {
     }
     fn admin_migrate(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
     fn admin_reinit(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
+    fn admin_sync_intent_coder(&mut self) -> Result<AdminResult, CliError>;
     fn current_workspace(&self) -> Result<BTreeMap<String, String>, CliError> {
         Err(not_self_host("project current"))
     }
@@ -483,6 +487,11 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
             Ok(Command::Admin(AdminCommand::Reinit {
                 workspace: flag_value_or(args, "--workspace", ""),
             }))
+        }
+        "admin"
+            if args.get(1).map(String::as_str) == Some("sync-intent-coder") && args.len() == 2 =>
+        {
+            Ok(Command::Admin(AdminCommand::SyncIntentCoder))
         }
         "project" if args.get(1).map(String::as_str) == Some("list") && args.len() == 2 => {
             Ok(Command::ProjectList)
@@ -807,6 +816,9 @@ pub fn run_command<D: CliDomain>(
         Command::Admin(AdminCommand::Reinit { workspace }) => {
             admin_response(domain.admin_reinit(&workspace)?)
         }
+        Command::Admin(AdminCommand::SyncIntentCoder) => {
+            admin_response(domain.admin_sync_intent_coder()?)
+        }
         Command::ProjectList
         | Command::ProjectAdd { .. }
         | Command::ProjectUse { .. }
@@ -1034,6 +1046,7 @@ pub const COMMAND_USAGE: &[&str] = &[
     "tool run intent-validate path=<dir> [format=<text|json>]",
     "admin migrate [--workspace <path>]",
     "admin reinit [--workspace <path>]",
+    "admin sync-intent-coder",
     "project list",
     "project add <path> [--name <n>]",
     "project use <name|path>",

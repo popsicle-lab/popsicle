@@ -56,6 +56,7 @@ fn golden_004_stage_complete_requires_confirm_then_advances() {
 fn golden_005_admin_commands_are_nested_under_admin() {
     assert!(parse_args(["admin", "migrate", "--workspace", "/repo"]).is_ok());
     assert!(parse_args(["admin", "reinit", "--workspace", "/repo"]).is_ok());
+    assert!(parse_args(["admin", "sync-intent-coder"]).is_ok());
     assert!(parse_args(["migrate"]).is_err());
     assert!(parse_args(["reinit"]).is_err());
 }
