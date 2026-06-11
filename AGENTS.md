@@ -215,8 +215,8 @@ Replacement practices until these are re-adjudicated:
 2. **Issue → `issue start` → pipeline run** — `issue start` is the ONLY way to create pipeline runs and acquires an exclusive Spec lock
 3. Always check `popsicle pipeline next --run <run_id>` before starting work on a step
 4. Fill document sections with real content — template placeholders are rejected
-5. **STOP after each stage** — after creating all documents for a stage, you MUST STOP, present a summary of what was done, show the `pipeline stage complete <stage> --run <run_id>` command, and **wait for the user to confirm before proceeding**. Do NOT auto-execute `pipeline stage complete`. The user decides when a stage is done.
-6. Stages marked `requires_approval`: require `--confirm`. The user MUST run the command themselves after review. No exception.
+5. **Stage completion** — follow `workflow.approval_mode` in `.popsicle/project.yaml` (also in the project-config marker below): `manual` (default) — STOP after each stage and wait for the user before `pipeline stage complete`; `auto` — after `doc check` passes you may complete stages without waiting (`--confirm` implied for `requires_approval`); `delegate-dangerous` — auto-complete non-dangerous `requires_approval` stages, but dangerous stages (`cutover`, `living-docs`) still need explicit human `--confirm`.
+6. Stages marked `requires_approval` — apply the approval mode above; in `manual` mode the user MUST run `--confirm` themselves after review.
 7. **Spec lock**: one active run per issue; do not operate on a spec locked by another run
 8. Documents live under `.popsicle/artifacts/<run_id>/`; decision records are promoted into `products/<product>/decisions/` at their stage's completion
 9. **NEVER report a task as "complete" unless `pipeline status` shows all stages completed.** If stages remain, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
@@ -254,4 +254,9 @@ names with `popsicle doc create <skill>`.
 - **回复语言**：简体中文
 - **产品文档目录**：`products/`
 - **决策记录**：`products/<product>/decisions/{adr,pdr}/`
+- **Pipeline 审批模式**：`manual`（必须人工审批）
+
+### 阶段完成策略
+
+每完成一个 stage 的文档后 **暂停**，向用户汇报并等待确认后再执行 `pipeline stage complete`。带 `requires_approval` 的阶段必须由用户亲自 `--confirm`。
 <!-- popsicle:project-config:end -->

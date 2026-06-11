@@ -52,6 +52,7 @@ export function SettingsView({ onSaved }: Props) {
         default_spec: config.default_spec,
         sync_agents_md: config.sync_agents_md,
         inject_on_run: config.inject_on_run,
+        approval_mode: config.approval_mode,
       });
       setConfig(next);
       setSaved(true);
@@ -138,6 +139,32 @@ export function SettingsView({ onSaved }: Props) {
             onChange={(e) => update("default_spec", e.target.value)}
             placeholder="slice-3-cli-ux"
           />
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium">
+            Pipeline 审批模式
+          </label>
+          <select
+            className="filter-select w-full max-w-md"
+            value={config.approval_mode}
+            onChange={(e) =>
+              update(
+                "approval_mode",
+                e.target.value as ProjectConfigDto["approval_mode"]
+              )
+            }
+          >
+            <option value="manual">必须人工审批</option>
+            <option value="auto">全自动</option>
+            <option value="delegate-dangerous">
+              危险操作需审批（其余代批）
+            </option>
+          </select>
+          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+            控制带 <code className="text-[11px]">requires_approval</code>{" "}
+            阶段的完成方式；危险阶段为 cutover、living-docs。
+          </p>
         </div>
 
         <div className="space-y-3 border-t border-[var(--border)] pt-4">

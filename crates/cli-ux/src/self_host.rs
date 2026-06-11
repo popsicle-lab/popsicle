@@ -28,7 +28,7 @@ use crate::global_config::{
 };
 use crate::project_config::{
     ensure_project_config, load_project_config, project_config_path, prompt_context_block,
-    sync_agents_md,
+    stage_needs_explicit_confirm, sync_agents_md,
 };
 
 const SELF_HOST_DIR: &str = ".popsicle/self-host";
@@ -834,7 +834,13 @@ impl WorkspaceStore for LocalWorkspace {
             .get(snap.current_stage_index as usize)
             .ok_or_else(|| WorkspaceError::InvalidState("stage index out of range".into()))?;
         if current.status == StageStatus::StageInProgress {
-            if current.requires_approval && current.approved_at == 0 {
+            let approval_mode = load_project_config(&self.workspace.root)
+                .map(|c| c.workflow.approval_mode)
+                .unwrap_or_default();
+            if current.requires_approval
+                && current.approved_at == 0
+                && stage_needs_explicit_confirm(approval_mode, stage, true)
+            {
                 return Ok(format!(
                     "approve then `popsicle pipeline stage complete {stage} --run {run_id} --confirm`"
                 ));
@@ -866,7 +872,11 @@ impl WorkspaceStore for LocalWorkspace {
             .get(idx)
             .map(|s| s.requires_approval)
             .unwrap_or(false);
-        if requires_approval && !confirm {
+        let approval_mode = load_project_config(&self.workspace.root)
+            .map(|c| c.workflow.approval_mode)
+            .unwrap_or_default();
+        let needs_confirm = stage_needs_explicit_confirm(approval_mode, stage, requires_approval);
+        if needs_confirm && !confirm {
             return Err(WorkspaceError::InvalidState(format!(
                 "lock:{stage}:rerun `popsicle pipeline stage complete {stage} --run {run_id} --confirm`"
             )));
@@ -1784,6 +1794,10 @@ impl crate::CliDomain for SelfHostDomain {
                 cfg.agent.language.as_str().to_string(),
             );
             fields.insert("products_dir".into(), cfg.paths.products_dir.clone());
+            fields.insert(
+                "approval_mode".into(),
+                cfg.workflow.approval_mode.as_str().to_string(),
+            );
             if !cfg.paths.default_spec.is_empty() {
                 fields.insert("default_spec".into(), cfg.paths.default_spec.clone());
             }

@@ -53,6 +53,15 @@ fn write_pipeline(root: &Path, name: &str, content: &str) {
     fs::write(dir.join(format!("{name}.pipeline.yaml")), content).expect("write pipeline");
 }
 
+fn write_approval_mode(root: &Path, mode: &str) {
+    fs::create_dir_all(root.join(".popsicle")).expect("popsicle dir");
+    fs::write(
+        root.join(".popsicle/project.yaml"),
+        format!("workflow:\n  approval_mode: {mode}\n"),
+    )
+    .expect("write project.yaml");
+}
+
 #[test]
 fn tsv_roundtrip_persists_issue_and_doc() {
     let root = temp_workspace();
@@ -344,6 +353,103 @@ fn tsv_gated_stage_requires_confirm_but_open_stage_does_not() {
     store
         .complete_stage(&gated_stage, &gated_run.run_id, true)
         .expect("complete gated stage with confirm");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn auto_approval_mode_completes_gated_stage_without_confirm() {
+    let root = temp_workspace();
+    write_approval_mode(&root, "auto");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+
+    let issue = store
+        .create_issue(
+            "bug",
+            "auto gated",
+            "cli-ux",
+            Some("test-gated"),
+            "medium",
+            "",
+        )
+        .expect("create issue");
+    let run = store
+        .start_issue(&issue.key, "", "test-gated")
+        .expect("start run");
+    let stage = store
+        .pipeline_status(&run.run_id)
+        .expect("status")
+        .current_stage;
+    store
+        .complete_stage(&stage, &run.run_id, false)
+        .expect("auto mode completes gated stage without confirm");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn delegate_dangerous_mode_splits_gated_and_cutover() {
+    let root = temp_workspace();
+    write_approval_mode(&root, "delegate-dangerous");
+    write_pipeline(
+        &root,
+        "test-cutover",
+        r#"name: test-cutover
+description: dangerous gated stage
+stages:
+  - name: cutover
+    skill: cutover-author
+    description: cutover gate
+    requires_approval: true
+"#,
+    );
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+
+    let review_issue = store
+        .create_issue(
+            "bug",
+            "delegate review",
+            "cli-ux",
+            Some("test-gated"),
+            "medium",
+            "",
+        )
+        .expect("create review issue");
+    let review_run = store
+        .start_issue(&review_issue.key, "", "test-gated")
+        .expect("start review run");
+    let review_stage = store
+        .pipeline_status(&review_run.run_id)
+        .expect("review status")
+        .current_stage;
+    store
+        .complete_stage(&review_stage, &review_run.run_id, false)
+        .expect("delegate completes non-dangerous gated stage");
+
+    let cutover_issue = store
+        .create_issue(
+            "bug",
+            "delegate cutover",
+            "cli-ux",
+            Some("test-cutover"),
+            "medium",
+            "",
+        )
+        .expect("create cutover issue");
+    let cutover_run = store
+        .start_issue(&cutover_issue.key, "", "test-cutover")
+        .expect("start cutover run");
+    let cutover_stage = store
+        .pipeline_status(&cutover_run.run_id)
+        .expect("cutover status")
+        .current_stage;
+    let err = store
+        .complete_stage(&cutover_stage, &cutover_run.run_id, false)
+        .expect_err("cutover still requires confirm in delegate mode");
+    assert!(err.to_string().contains("lock:"));
+    store
+        .complete_stage(&cutover_stage, &cutover_run.run_id, true)
+        .expect("cutover with confirm");
 
     let _ = fs::remove_dir_all(root);
 }

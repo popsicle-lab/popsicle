@@ -33,6 +33,7 @@ pub struct ProjectConfigDto {
     pub default_spec: String,
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
+    pub approval_mode: String,
     pub config_path: String,
 }
 

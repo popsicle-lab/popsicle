@@ -24,12 +24,15 @@ export interface ProjectsList {
   global_config_path: string;
 }
 
+export type ApprovalMode = "manual" | "auto" | "delegate-dangerous";
+
 export interface ProjectConfigDto {
   language: string;
   products_dir: string;
   default_spec: string;
   sync_agents_md: boolean;
   inject_on_run: boolean;
+  approval_mode: ApprovalMode;
   config_path: string;
 }
 
@@ -46,6 +49,21 @@ export interface SaveProjectConfigInput {
   default_spec: string;
   sync_agents_md: boolean;
   inject_on_run: boolean;
+  approval_mode: ApprovalMode;
+}
+
+const DANGEROUS_STAGES = new Set(["cutover", "living-docs"]);
+
+/** Mirrors `project_config::stage_needs_explicit_confirm` for UI gating. */
+export function stageNeedsExplicitConfirm(
+  mode: ApprovalMode,
+  stageName: string,
+  requiresApproval: boolean
+): boolean {
+  if (!requiresApproval) return false;
+  if (mode === "auto") return false;
+  if (mode === "delegate-dangerous") return DANGEROUS_STAGES.has(stageName);
+  return true;
 }
 
 export interface IssueInfo {

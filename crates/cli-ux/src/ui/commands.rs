@@ -539,6 +539,7 @@ fn config_to_dto(root: &std::path::Path, cfg: &ProjectConfig) -> ProjectConfigDt
         default_spec: cfg.paths.default_spec.clone(),
         sync_agents_md: cfg.workflow.sync_agents_md,
         inject_on_run: cfg.workflow.inject_on_run,
+        approval_mode: cfg.workflow.approval_mode.as_str().to_string(),
         config_path: project_config_path(root).display().to_string(),
     }
 }
@@ -561,6 +562,7 @@ pub struct SaveProjectConfigInput {
     pub default_spec: String,
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
+    pub approval_mode: String,
 }
 
 #[tauri::command]
@@ -585,6 +587,7 @@ pub fn save_project_config_cmd(
         workflow: crate::project_config::WorkflowConfig {
             sync_agents_md: input.sync_agents_md,
             inject_on_run: input.inject_on_run,
+            approval_mode: crate::project_config::ApprovalMode::parse(&input.approval_mode),
         },
     };
     save_project_config(&dir, &cfg).map_err(|e| e.to_string())?;

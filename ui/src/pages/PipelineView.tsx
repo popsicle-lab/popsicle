@@ -11,6 +11,9 @@ import { FileText, ShieldAlert } from "lucide-react";
 import {
   completeStage,
   getPipelineStatus,
+  getProjectConfig,
+  stageNeedsExplicitConfirm,
+  type ApprovalMode,
   type PipelineStatusFull,
   type StageStatusInfo,
 } from "../hooks/useTauri";
@@ -105,6 +108,13 @@ export function PipelineView({ runId, setPage }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [approvalMode, setApprovalMode] = useState<ApprovalMode>("manual");
+
+  useEffect(() => {
+    getProjectConfig()
+      .then((cfg) => setApprovalMode(cfg.approval_mode))
+      .catch(() => setApprovalMode("manual"));
+  }, []);
 
   const load = useCallback(() => {
     getPipelineStatus(runId)
@@ -125,6 +135,13 @@ export function PipelineView({ runId, setPage }: Props) {
   );
 
   const stage = status?.stages.find((s) => s.name === selected) ?? null;
+  const needsConfirm =
+    stage != null &&
+    stageNeedsExplicitConfirm(
+      approvalMode,
+      stage.name,
+      stage.requires_approval
+    );
 
   const doComplete = async (confirm: boolean) => {
     if (!stage) return;
@@ -211,9 +228,7 @@ export function PipelineView({ runId, setPage }: Props) {
                     <button
                       type="button"
                       onClick={() =>
-                        stage.requires_approval
-                          ? setConfirming(true)
-                          : doComplete(false)
+                        needsConfirm ? setConfirming(true) : doComplete(false)
                       }
                       disabled={busy}
                       className="btn btn-primary w-full"

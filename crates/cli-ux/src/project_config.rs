@@ -61,12 +61,80 @@ pub struct PathConfig {
     pub default_spec: String,
 }
 
+/// Pipeline stage completion policy for `requires_approval` gates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApprovalMode {
+    /// Every `requires_approval` stage needs explicit human `--confirm` (default).
+    #[serde(alias = "required")]
+    #[default]
+    Manual,
+    /// Agent may complete all stages; `--confirm` is implied when needed.
+    #[serde(alias = "automatic", alias = "full")]
+    Auto,
+    /// Non-dangerous `requires_approval` stages may be delegated; dangerous ones still need human confirm.
+    #[serde(alias = "delegate", alias = "dangerous-only")]
+    DelegateDangerous,
+}
+
+impl ApprovalMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::Auto => "auto",
+            Self::DelegateDangerous => "delegate-dangerous",
+        }
+    }
+
+    pub fn label_zh(self) -> &'static str {
+        match self {
+            Self::Manual => "必须人工审批",
+            Self::Auto => "全自动",
+            Self::DelegateDangerous => "危险操作需审批（其余代批）",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" | "automatic" | "full" => Self::Auto,
+            "delegate" | "delegate-dangerous" | "delegate_dangerous" | "dangerous-only"
+            | "dangerous_only" => Self::DelegateDangerous,
+            _ => Self::Manual,
+        }
+    }
+}
+
+/// Stages that remain human-gated under [`ApprovalMode::DelegateDangerous`].
+pub const DANGEROUS_STAGES: &[&str] = &["cutover", "living-docs"];
+
+pub fn is_dangerous_stage(stage: &str) -> bool {
+    DANGEROUS_STAGES.contains(&stage)
+}
+
+/// Whether CLI/UI must collect explicit `--confirm` before completing this stage.
+pub fn stage_needs_explicit_confirm(
+    mode: ApprovalMode,
+    stage: &str,
+    requires_approval: bool,
+) -> bool {
+    if !requires_approval {
+        return false;
+    }
+    match mode {
+        ApprovalMode::Manual => true,
+        ApprovalMode::Auto => false,
+        ApprovalMode::DelegateDangerous => is_dangerous_stage(stage),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkflowConfig {
     #[serde(default = "default_true")]
     pub sync_agents_md: bool,
     #[serde(default = "default_true")]
     pub inject_on_run: bool,
+    #[serde(default)]
+    pub approval_mode: ApprovalMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +182,7 @@ impl Default for WorkflowConfig {
         Self {
             sync_agents_md: true,
             inject_on_run: true,
+            approval_mode: ApprovalMode::default(),
         }
     }
 }
@@ -192,19 +261,40 @@ pub fn ensure_project_config(workspace_root: &Path) -> Result<ProjectConfig, Wor
     Ok(config)
 }
 
+pub fn approval_mode_guidance(mode: ApprovalMode) -> &'static str {
+    match mode {
+        ApprovalMode::Manual => {
+            "STOP after each stage; wait for the user before `pipeline stage complete`. \
+             `requires_approval` stages need human `--confirm`."
+        }
+        ApprovalMode::Auto => {
+            "After `doc check` passes, you may run `pipeline stage complete` without waiting; \
+             `--confirm` is implied for `requires_approval` stages."
+        }
+        ApprovalMode::DelegateDangerous => {
+            "You may auto-complete non-dangerous `requires_approval` stages. \
+             Dangerous stages (`cutover`, `living-docs`) still need explicit human `--confirm`."
+        }
+    }
+}
+
 pub fn prompt_context_block(config: &ProjectConfig) -> String {
     let lang = config.agent.language;
+    let mode = config.workflow.approval_mode;
     let spec_line = if config.paths.default_spec.is_empty() {
         String::new()
     } else {
         format!("\n- Default spec: `{}`", config.paths.default_spec)
     };
     format!(
-        "[Project preferences]\n- Respond in: {}\n- Products directory: `{}/`\n- ADRs: `{}/<product>/decisions/adr/`\n- PDRs: `{}/<product>/decisions/pdr/`{spec_line}",
+        "[Project preferences]\n- Respond in: {}\n- Products directory: `{}/`\n- ADRs: `{}/<product>/decisions/adr/`\n- PDRs: `{}/<product>/decisions/pdr/`\n- Pipeline approval: {} ({}){spec_line}\n- {}",
         lang.label(),
         config.paths.products_dir,
         config.paths.products_dir,
         config.paths.products_dir,
+        mode.as_str(),
+        mode.label_zh(),
+        approval_mode_guidance(mode),
     )
 }
 
@@ -215,12 +305,33 @@ pub fn agents_md_section(config: &ProjectConfig) -> String {
     } else {
         format!("\n- **默认 spec**：`{}`", config.paths.default_spec)
     };
+    let mode = config.workflow.approval_mode;
     format!(
-        "{MARKER_START}\n## 本项目 Agent 偏好\n\n- **回复语言**：{}\n- **产品文档目录**：`{}/`\n- **决策记录**：`{}/<product>/decisions/{{adr,pdr}}/`{spec_line}\n{MARKER_END}",
+        "{MARKER_START}\n## 本项目 Agent 偏好\n\n- **回复语言**：{}\n- **产品文档目录**：`{}/`\n- **决策记录**：`{}/<product>/decisions/{{adr,pdr}}/`{spec_line}\n- **Pipeline 审批模式**：`{}`（{}）\n\n### 阶段完成策略\n\n{}\n{MARKER_END}",
         lang.label(),
         config.paths.products_dir,
         config.paths.products_dir,
+        mode.as_str(),
+        mode.label_zh(),
+        approval_mode_guidance_zh(mode),
     )
+}
+
+fn approval_mode_guidance_zh(mode: ApprovalMode) -> &'static str {
+    match mode {
+        ApprovalMode::Manual => {
+            "每完成一个 stage 的文档后 **暂停**，向用户汇报并等待确认后再执行 `pipeline stage complete`。\
+             带 `requires_approval` 的阶段必须由用户亲自 `--confirm`。"
+        }
+        ApprovalMode::Auto => {
+            "文档通过 `doc check` 后可直接 `pipeline stage complete`；\
+             `requires_approval` 阶段由系统自动代批（无需 `--confirm`）。"
+        }
+        ApprovalMode::DelegateDangerous => {
+            "非危险 `requires_approval` 阶段可由 agent 代批完成；\
+             **危险阶段**（`cutover`、`living-docs`）仍需用户显式 `--confirm`。"
+        }
+    }
 }
 
 pub fn sync_agents_md(workspace_root: &Path, config: &ProjectConfig) -> Result<(), WorkspaceError> {
@@ -280,5 +391,35 @@ mod tests {
         let parsed: ProjectConfig = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(parsed.version, 1);
         assert_eq!(parsed.paths.products_dir, "products");
+        assert_eq!(parsed.workflow.approval_mode, ApprovalMode::Manual);
+    }
+
+    #[test]
+    fn approval_mode_policy() {
+        assert!(stage_needs_explicit_confirm(
+            ApprovalMode::Manual,
+            "review",
+            true
+        ));
+        assert!(!stage_needs_explicit_confirm(
+            ApprovalMode::Auto,
+            "review",
+            true
+        ));
+        assert!(!stage_needs_explicit_confirm(
+            ApprovalMode::DelegateDangerous,
+            "review",
+            true
+        ));
+        assert!(stage_needs_explicit_confirm(
+            ApprovalMode::DelegateDangerous,
+            "cutover",
+            true
+        ));
+        assert!(!stage_needs_explicit_confirm(
+            ApprovalMode::DelegateDangerous,
+            "implement",
+            false
+        ));
     }
 }
