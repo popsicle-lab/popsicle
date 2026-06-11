@@ -57,6 +57,9 @@ pub fn run(project: Option<String>) {
             commands::read_intent_file_cmd,
             commands::resolve_intent_ref_cmd,
             commands::get_issue_guidance,
+            commands::get_create_issue_form_options,
+            commands::get_project_config,
+            commands::save_project_config_cmd,
         ])
         .setup(|app| {
             app.manage(watcher::ProjectWatcher {

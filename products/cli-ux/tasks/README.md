@@ -1,13 +1,13 @@
 # cli-ux — Tasks 索引
 
-> **Status**: 12/12 task 已实现（T-CU-0009–0012 retro spec ✓ PDR-003 / PROJ-35）
+> **Status**: 13/13 task 已实现（T-CU-0013 project config ✓ PROJ-37 / ADR-019）
 > **Last-Updated**: 2026-06-11
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
 
 | 旅程阶段 | 任务数 | 已实施 | 健康度 |
 |---|---|---|---|
-| `onboarding/` | 4 | 4 | 🟢 implemented |
+| `onboarding/` | 5 | 5 | 🟢 implemented |
 | `daily-ops/` | 4 | 4 | 🟢 implemented |
 | `troubleshooting/` | 1 | 1 | 🟢 implemented |
 | `admin/` | 1 | 1 | 🟢 implemented |
@@ -29,6 +29,7 @@
 | T-CU-0010 | onboarding | 用桌面 UI 打开项目并看最近列表 | UiProjectOpenPersistsRecents |
 | T-CU-0011 | onboarding | 全新目录 init 后获得 intent-coder 模块 | InitInstallsEmbeddedIntentCoder |
 | T-CU-0012 | onboarding | macOS DMG 安装 CLI 并加入 PATH | MacosDmgInstallExposesCli |
+| T-CU-0013 | onboarding | 配置本项目 Agent 偏好 | ADR-019 / project.yaml |
 
 ## 命名约定
 

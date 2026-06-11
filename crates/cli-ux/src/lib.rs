@@ -2,6 +2,7 @@
 
 pub mod global_config;
 mod intent_coder_bundle;
+pub mod project_config;
 pub mod self_host;
 pub mod workspace_readers;
 
@@ -143,6 +144,7 @@ pub enum AdminCommand {
     Migrate { workspace: String },
     Reinit { workspace: String },
     SyncIntentCoder,
+    SyncProjectConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,6 +160,8 @@ pub struct IssueStartResult {
     pub spec_locked: bool,
     pub has_run_id: bool,
     pub run_id: String,
+    /// Project preferences for agent prompts when `inject_on_run` is enabled.
+    pub agent_context: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -314,6 +318,7 @@ pub trait CliDomain {
     fn admin_migrate(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
     fn admin_reinit(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
     fn admin_sync_intent_coder(&mut self) -> Result<AdminResult, CliError>;
+    fn admin_sync_project_config(&mut self) -> Result<AdminResult, CliError>;
     fn current_workspace(&self) -> Result<BTreeMap<String, String>, CliError> {
         Err(not_self_host("project current"))
     }
@@ -492,6 +497,12 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
             if args.get(1).map(String::as_str) == Some("sync-intent-coder") && args.len() == 2 =>
         {
             Ok(Command::Admin(AdminCommand::SyncIntentCoder))
+        }
+        "admin"
+            if args.get(1).map(String::as_str) == Some("sync-project-config")
+                && args.len() == 2 =>
+        {
+            Ok(Command::Admin(AdminCommand::SyncProjectConfig))
         }
         "project" if args.get(1).map(String::as_str) == Some("list") && args.len() == 2 => {
             Ok(Command::ProjectList)
@@ -685,6 +696,9 @@ pub fn run_command<D: CliDomain>(
             fields.insert("run_created".into(), result.run_created.to_string());
             fields.insert("spec_locked".into(), result.spec_locked.to_string());
             fields.insert("has_run_id".into(), result.has_run_id.to_string());
+            if !result.agent_context.is_empty() {
+                fields.insert("agent_context".into(), result.agent_context);
+            }
             Ok(CommandResponse {
                 status: "ok",
                 next_step: Some("popsicle pipeline next --run <run_id>".into()),
@@ -819,6 +833,9 @@ pub fn run_command<D: CliDomain>(
         Command::Admin(AdminCommand::SyncIntentCoder) => {
             admin_response(domain.admin_sync_intent_coder()?)
         }
+        Command::Admin(AdminCommand::SyncProjectConfig) => {
+            admin_response(domain.admin_sync_project_config()?)
+        }
         Command::ProjectList
         | Command::ProjectAdd { .. }
         | Command::ProjectUse { .. }
@@ -924,6 +941,7 @@ pub fn start_issue_run(
         spec_locked: issue.spec_id == spec_id,
         has_run_id: !session.run.id.is_empty(),
         run_id: session.run.id,
+        agent_context: String::new(),
     })
 }
 
@@ -1047,6 +1065,7 @@ pub const COMMAND_USAGE: &[&str] = &[
     "admin migrate [--workspace <path>]",
     "admin reinit [--workspace <path>]",
     "admin sync-intent-coder",
+    "admin sync-project-config",
     "project list",
     "project add <path> [--name <n>]",
     "project use <name|path>",

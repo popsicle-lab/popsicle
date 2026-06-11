@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   type Edge,
   type Node,
@@ -15,6 +14,7 @@ import {
   type PipelineStatusFull,
   type StageStatusInfo,
 } from "../hooks/useTauri";
+import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
 import type { Page } from "../App";
 
@@ -24,11 +24,11 @@ interface Props {
 }
 
 const stateBorder: Record<string, string> = {
-  completed: "#4ade80",
-  in_progress: "#a78bfa",
-  ready: "#38bdf8",
-  blocked: "#475569",
-  error: "#f87171",
+  completed: "#22c55e",
+  in_progress: "#3b82f6",
+  ready: "#60a5fa",
+  blocked: "#52525b",
+  error: "#ef4444",
 };
 
 function layoutStages(stages: StageStatusInfo[]): { nodes: Node[]; edges: Edge[] } {
@@ -63,20 +63,21 @@ function layoutStages(stages: StageStatusInfo[]): { nodes: Node[]; edges: Edge[]
     group.forEach((stage, i) => {
       nodes.push({
         id: stage.name,
-        position: { x: d * 260, y: i * 120 },
+        position: { x: d * 240, y: i * 100 },
         data: {
           label: `${stage.name}\n${stage.state}`,
           stageName: stage.name,
         },
         style: {
-          width: 200,
+          width: 180,
           padding: 10,
           borderRadius: 8,
           border: `2px solid ${stateBorder[stage.state] ?? stateBorder.blocked}`,
-          background: "var(--bg-secondary)",
+          background: "var(--bg-elevated)",
           color: "var(--text-primary)",
           fontSize: 11,
           whiteSpace: "pre-wrap",
+          transition: "box-shadow 0.15s ease",
         },
       });
     });
@@ -90,7 +91,7 @@ function layoutStages(stages: StageStatusInfo[]): { nodes: Node[]; edges: Edge[]
         source: dep,
         target: stage.name,
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: { stroke: "var(--text-secondary)" },
+        style: { stroke: "var(--text-muted)" },
       });
     }
   }
@@ -109,14 +110,14 @@ export function PipelineView({ runId, setPage }: Props) {
     getPipelineStatus(runId)
       .then((s) => {
         setStatus(s);
-        if (!selected && s.current_stage) setSelected(s.current_stage);
+        setSelected((prev) => prev ?? s.current_stage ?? null);
       })
       .catch((e) => setError(String(e)));
   }, [runId]);
 
   useEffect(() => {
     load();
-  }, [runId]);
+  }, [load]);
 
   const flow = useMemo(
     () => (status ? layoutStages(status.stages) : { nodes: [], edges: [] }),
@@ -141,99 +142,116 @@ export function PipelineView({ runId, setPage }: Props) {
 
   if (error) {
     return (
-      <div className="text-[var(--accent-red)] p-4 bg-red-500/10 rounded-lg">
-        {error}
+      <div className="page-frame">
+        <div className="card border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)] p-4 text-[13px] text-[var(--accent-red)]">
+          {error}
+        </div>
       </div>
     );
   }
   if (!status) {
-    return <div className="text-[var(--text-secondary)]">Loading…</div>;
+    return (
+      <div className="page-frame">
+        <LoadingState label="Loading pipeline…" />
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
-      <div>
-        <h2 className="text-2xl font-bold">{status.pipeline_name}</h2>
-        <p className="text-sm text-[var(--text-secondary)]">
-          {status.issue_key} · {status.run_status} · current:{" "}
-          {status.current_stage || "—"}
+    <div className="page-frame flex h-full flex-col gap-3">
+      <div className="shrink-0">
+        <p className="text-[13px] font-semibold">{status.pipeline_name}</p>
+        <p className="text-[12px] text-[var(--text-muted)]">
+          {status.issue_key} · {status.run_status}
+          {status.current_stage ? ` · ${status.current_stage}` : ""}
         </p>
       </div>
 
-      <div className="h-[360px] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl overflow-hidden">
-        <ReactFlow
-          nodes={flow.nodes}
-          edges={flow.edges}
-          onNodeClick={(_, n) => setSelected(n.id)}
-          fitView
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background color="var(--border)" gap={16} />
-          <Controls />
-          <MiniMap />
-        </ReactFlow>
-      </div>
+      <div className="pipeline-split min-h-0 flex-1">
+        <div className="graph-panel">
+          <ReactFlow
+            nodes={flow.nodes}
+            edges={flow.edges}
+            onNodeClick={(_, n) => setSelected(n.id)}
+            fitView
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background color="var(--border)" gap={20} />
+            <Controls showInteractive={false} />
+          </ReactFlow>
+        </div>
 
-      {stage && (
-        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-medium">{stage.name}</h3>
-            <StatusBadge status={stage.state} />
-          </div>
-          <p className="text-xs text-[var(--text-secondary)] mb-3">
-            {stage.description || stage.skills.join(", ")}
-          </p>
-          <div className="space-y-1 mb-3">
-            {stage.documents.map((doc) => (
-              <button
-                key={doc.id}
-                onClick={() => setPage({ kind: "document", docId: doc.id })}
-                className="w-full text-left text-xs px-2 py-1 rounded hover:bg-[var(--bg-tertiary)] flex items-center gap-2"
-              >
-                <FileText size={12} />
-                {doc.title}
-                <StatusBadge status={doc.status} />
-              </button>
-            ))}
-          </div>
-          {(stage.state === "ready" || stage.state === "in_progress") && (
-            <div>
-              {!confirming ? (
-                <button
-                  onClick={() =>
-                    stage.requires_approval
-                      ? setConfirming(true)
-                      : doComplete(false)
-                  }
-                  disabled={busy}
-                  className="text-sm px-3 py-1.5 rounded bg-[var(--accent)]/20 text-[var(--accent)]"
-                >
-                  Complete stage
-                </button>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-yellow-300 flex items-center gap-1">
-                    <ShieldAlert size={14} /> Requires approval
-                  </span>
+        <aside className="detail-panel flex min-h-[240px] flex-col md:min-h-0">
+          {stage ? (
+            <div className="detail-panel-scroll space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[13px] font-semibold">{stage.name}</h3>
+                <StatusBadge status={stage.state} />
+              </div>
+              <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
+                {stage.description || stage.skills.join(", ")}
+              </p>
+              <div className="space-y-0.5">
+                {stage.documents.map((doc) => (
                   <button
-                    onClick={() => doComplete(true)}
-                    disabled={busy}
-                    className="text-sm px-3 py-1.5 rounded bg-yellow-500/20 text-yellow-200"
+                    key={doc.id}
+                    type="button"
+                    onClick={() => setPage({ kind: "document", docId: doc.id })}
+                    className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2 py-2 text-left text-[12px] transition-colors hover:bg-[var(--bg-hover)]"
                   >
-                    Confirm complete
+                    <FileText size={13} className="shrink-0 text-[var(--text-muted)]" />
+                    <span className="min-w-0 flex-1 truncate">{doc.title}</span>
+                    <StatusBadge status={doc.status} />
                   </button>
-                  <button
-                    onClick={() => setConfirming(false)}
-                    className="text-xs text-[var(--text-secondary)]"
-                  >
-                    Cancel
-                  </button>
+                ))}
+              </div>
+              {(stage.state === "ready" || stage.state === "in_progress") && (
+                <div className="border-t border-[var(--border)] pt-3">
+                  {!confirming ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        stage.requires_approval
+                          ? setConfirming(true)
+                          : doComplete(false)
+                      }
+                      disabled={busy}
+                      className="btn btn-primary w-full"
+                    >
+                      Complete stage
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="flex items-center gap-1.5 text-[11px] text-[var(--accent-yellow)]">
+                        <ShieldAlert size={13} /> Requires approval
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => doComplete(true)}
+                        disabled={busy}
+                        className="btn btn-primary w-full"
+                      >
+                        Confirm complete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirming(false)}
+                        className="btn btn-secondary w-full"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+          ) : (
+            <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-[var(--text-muted)]">
+              Select a stage in the graph
+            </div>
           )}
-        </div>
-      )}
+        </aside>
+      </div>
     </div>
   );
 }

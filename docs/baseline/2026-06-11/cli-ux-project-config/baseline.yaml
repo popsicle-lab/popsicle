@@ -1,0 +1,68 @@
+slice: "cli-ux-project-config"
+date: "2026-06-11"
+legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+baseline_dir: "docs/baseline/2026-06-11/cli-ux-project-config/"
+summary:
+  golden_total: 5
+  golden_pass: 5
+  golden_fail: 0
+  divergence_count: 1
+  equivalence_gate_pass: true
+goldens:
+  - id: G-001
+    description: "init writes .popsicle/project.yaml and AGENTS.md marker"
+    script: "golden-001-init-project-yaml.sh"
+    legacy: "legacy .popsicle/config.toml + context scan (deferred)"
+    new: "project.yaml + ensure_project_config on init"
+    compares: "bootstrap"
+    status: pass
+    diff_summary: "yaml schema; no legacy config.toml parity"
+    traces_to:
+      - "PROJ-37"
+  - id: G-002
+    description: "admin sync-project-config refreshes AGENTS.md"
+    script: "golden-002-admin-sync.sh"
+    legacy: "deferred context/AGENTS installer"
+    new: "admin sync-project-config"
+    compares: "command"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "crates/cli-ux/src/project_config.rs"
+  - id: G-003
+    description: "doctor exposes agent_language and products_dir"
+    script: "golden-003-doctor-fields.sh"
+    legacy: "doctor without per-project prefs"
+    new: "doctor project config fields"
+    compares: "json"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "PROJ-37"
+  - id: G-004
+    description: "issue start returns agent_context when inject_on_run"
+    script: "golden-004-issue-start-context.sh"
+    legacy: "deferred prompt command"
+    new: "issue start JSON agent_context + doc frontmatter"
+    compares: "workflow"
+    status: pass
+    diff_summary: "prompt assembly deferred; lightweight injection only"
+    traces_to:
+      - "PROJ-37"
+  - id: G-005
+    description: "Tauri Settings page builds"
+    script: "golden-005-settings-ui.sh"
+    legacy: "no per-project settings UI"
+    new: "SettingsView + get/save_project_config IPC"
+    compares: "build"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "ui/src/pages/SettingsView.tsx"
+divergences:
+  - id: D-801
+    behavior: "Full ContextLayer prompt assembly still deferred (context/prompt commands)"
+    legacy: "legacy context scan + prompt"
+    new: "yaml + AGENTS.md marker + issue start/doc frontmatter injection"
+    reason: "Self-host MVP defers context command; PROJ-37 delivers per-project prefs without artifact-system wiring"
+    adr: "ADR-019"

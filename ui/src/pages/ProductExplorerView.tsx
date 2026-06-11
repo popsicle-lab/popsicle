@@ -28,6 +28,14 @@ const JOURNEY_ORDER = [
   "lifecycle",
 ];
 
+const JOURNEY_LABELS: Record<string, string> = {
+  onboarding: "Onboarding",
+  "daily-ops": "Daily ops",
+  troubleshooting: "Troubleshooting",
+  admin: "Admin",
+  lifecycle: "Lifecycle",
+};
+
 type Tab = "tasks" | "intents" | "graph";
 
 interface Props {
@@ -170,151 +178,192 @@ export function ProductExplorerView({
     ...[...journeyGroups.keys()].filter((s) => !JOURNEY_ORDER.includes(s)),
   ];
 
+  const tabHint =
+    tab === "tasks"
+      ? "按旅程阶段浏览 task 文档"
+      : tab === "intents"
+        ? "按 intent 文件浏览 acceptance 块"
+        : "任务依赖图 + intent 关系图";
+
   if (error) {
     return (
-      <div className="text-[var(--accent-red)] p-4 bg-red-500/10 rounded-lg">
+      <div className="card border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)] p-4 text-[13px] text-[var(--accent-red)]">
         {error}
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h2 className="text-2xl font-bold">Products</h2>
-        <select
-          value={product}
-          onChange={(e) => {
-            setProduct(e.target.value);
-            setSelectedTaskId("");
-            setSelectedIntentFile("");
-            setSelectedIntentBlock("");
-          }}
-          className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm"
-        >
+    <div className="page-frame flex h-full min-h-0 flex-col gap-3">
+      <div className="product-explorer-header shrink-0 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-semibold tracking-tight">Products</h2>
+            <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">{tabHint}</p>
+          </div>
+          <div className="flex items-center gap-3 text-[12px] text-[var(--text-muted)]">
+            <span>{tasks.length} tasks</span>
+            <span>{intentBlocks.length} intent blocks</span>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Products">
           {products.map((p) => (
-            <option key={p} value={p}>
+            <button
+              key={p}
+              type="button"
+              role="tab"
+              aria-selected={product === p}
+              onClick={() => {
+                setProduct(p);
+                setSelectedTaskId("");
+                setSelectedIntentFile("");
+                setSelectedIntentBlock("");
+              }}
+              className={`product-pill ${product === p ? "product-pill-active" : ""}`}
+            >
               {p}
-            </option>
+            </button>
           ))}
-        </select>
-      </div>
-
-      <div className="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-lg w-fit border border-[var(--border)]">
-        {(["tasks", "intents", "graph"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-md text-sm capitalize ${
-              tab === t
-                ? "bg-[var(--accent)]/20 text-[var(--accent)]"
-                : "text-[var(--text-secondary)]"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
+        </div>
+        <div className="tab-group w-fit">
+          {(["tasks", "intents", "graph"] as Tab[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`tab-btn capitalize ${tab === t ? "tab-btn-active" : ""}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === "tasks" && (
-        <div className="flex gap-4 flex-1 min-h-0">
-          <div className="w-72 shrink-0 overflow-auto border border-[var(--border)] rounded-xl bg-[var(--bg-secondary)] p-2 space-y-3">
-            {sortedStages.map((stage) => (
-              <div key={stage}>
-                <p className="text-xs font-medium text-[var(--text-secondary)] uppercase px-2 mb-1">
-                  {stage}
-                </p>
-                {(journeyGroups.get(stage) ?? []).map((t) => (
-                  <button
-                    key={t.task_id}
-                    onClick={() => setSelectedTaskId(t.task_id)}
-                    className={`w-full text-left px-2 py-2 rounded-lg text-sm mb-1 ${
-                      selectedTaskId === t.task_id
-                        ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-                        : "hover:bg-[var(--bg-tertiary)]"
-                    }`}
-                  >
-                    <span className="font-mono text-xs block">{t.task_id}</span>
-                    <span className="line-clamp-2">{t.title}</span>
-                  </button>
-                ))}
-              </div>
-            ))}
+        <div className="explorer-split min-h-0 flex-1">
+          <div className="master-panel">
+            <div className="master-panel-scroll space-y-3 p-2">
+              {sortedStages.map((stage) => (
+                <div key={stage} className="product-journey-card">
+                  <p className="section-label">
+                    {JOURNEY_LABELS[stage] ?? stage}
+                  </p>
+                  {(journeyGroups.get(stage) ?? []).map((t) => (
+                    <button
+                      key={t.task_id}
+                      type="button"
+                      onClick={() => setSelectedTaskId(t.task_id)}
+                      className={`product-task-row ${
+                        selectedTaskId === t.task_id ? "product-task-row-active" : ""
+                      }`}
+                    >
+                      <span className="font-mono text-[11px] text-[#93c5fd]">
+                        {t.task_id}
+                      </span>
+                      <span className="mt-0.5 line-clamp-2 block text-[var(--text-primary)]">
+                        {t.title}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {tasks.length === 0 && (
+                <p className="empty-state">No tasks in this product.</p>
+              )}
+            </div>
           </div>
-          <div className="flex-1 min-w-0 overflow-auto">
-            {selectedTaskId ? (
-              <TaskDetailPanel
-                product={product}
-                taskId={selectedTaskId}
-                setPage={setPage}
-              />
-            ) : (
-              <p className="text-[var(--text-secondary)] text-sm">
-                选择左侧 task 查看完整内容
-              </p>
-            )}
+          <div className="detail-panel">
+            <div className="detail-panel-scroll">
+              {selectedTaskId ? (
+                <TaskDetailPanel
+                  product={product}
+                  taskId={selectedTaskId}
+                  setPage={setPage}
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
+                  <p className="text-[13px] font-medium text-[var(--text-secondary)]">
+                    选择 task 查看详情
+                  </p>
+                  <p className="max-w-xs text-[12px] text-[var(--text-muted)]">
+                    左侧按旅程阶段分组；点击行在右侧预览 Markdown 与关联 intent。
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {tab === "intents" && (
-        <div className="flex gap-4 flex-1 min-h-0">
-          <div className="w-72 shrink-0 overflow-auto border border-[var(--border)] rounded-xl bg-[var(--bg-secondary)] p-2 space-y-3">
-            {[...intentFileGroups.keys()].sort().map((file) => (
-              <div key={file}>
-                <p className="text-xs font-medium text-[var(--accent)] font-mono px-2 mb-1">
-                  {file}
-                </p>
-                {(intentFileGroups.get(file) ?? []).map((b) => (
+        <div className="explorer-split min-h-0 flex-1">
+          <div className="master-panel">
+            <div className="master-panel-scroll space-y-3 p-2">
+              {[...intentFileGroups.keys()].sort().map((file) => (
+                <div key={file} className="product-journey-card">
+                  <p className="section-label font-mono text-[#93c5fd]">{file}</p>
+                  {(intentFileGroups.get(file) ?? []).map((b) => (
+                    <button
+                      key={`${file}-${b.name}`}
+                      onClick={() => {
+                        setSelectedIntentFile(file);
+                        setSelectedIntentBlock(b.name);
+                      }}
+                      type="button"
+                      className={`product-task-row ${
+                        selectedIntentFile === file &&
+                        selectedIntentBlock === b.name
+                          ? "product-task-row-active"
+                          : ""
+                      }`}
+                    >
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        {b.kind}
+                      </span>
+                      <span className="block text-[var(--text-primary)]">{b.name}</span>
+                    </button>
+                  ))}
                   <button
-                    key={`${file}-${b.name}`}
+                    type="button"
                     onClick={() => {
                       setSelectedIntentFile(file);
-                      setSelectedIntentBlock(b.name);
+                      setSelectedIntentBlock("");
                     }}
-                    className={`w-full text-left px-2 py-1.5 rounded text-xs mb-1 ${
-                      selectedIntentFile === file &&
-                      selectedIntentBlock === b.name
-                        ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-                        : "hover:bg-[var(--bg-tertiary)]"
-                    }`}
+                    className="w-full px-3 py-2 text-left text-[11px] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                   >
-                    <span className="text-[var(--text-secondary)]">{b.kind}</span>{" "}
-                    {b.name}
+                    查看完整文件
                   </button>
-                ))}
-                <button
-                  onClick={() => {
-                    setSelectedIntentFile(file);
-                    setSelectedIntentBlock("");
-                  }}
-                  className="text-xs text-[var(--text-secondary)] px-2 py-1 hover:underline"
-                >
-                  View full file
-                </button>
-              </div>
-            ))}
+                </div>
+              ))}
+              {intentBlocks.length === 0 && (
+                <p className="empty-state">No intent blocks found.</p>
+              )}
+            </div>
           </div>
-          <div className="flex-1 min-w-0 overflow-auto">
-            {selectedIntentFile ? (
-              <IntentDetailPanel
-                product={product}
-                file={selectedIntentFile}
-                block={selectedIntentBlock || undefined}
-                setPage={setPage}
-              />
-            ) : (
-              <p className="text-[var(--text-secondary)] text-sm">
-                选择 intent 块或文件查看内容
-              </p>
-            )}
+          <div className="detail-panel">
+            <div className="detail-panel-scroll">
+              {selectedIntentFile ? (
+                <IntentDetailPanel
+                  product={product}
+                  file={selectedIntentFile}
+                  block={selectedIntentBlock || undefined}
+                  setPage={setPage}
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
+                  <p className="text-[13px] font-medium text-[var(--text-secondary)]">
+                    选择 intent 块或文件
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {tab === "graph" && (
-        <div className="space-y-4 flex-1 min-h-0">
-          <div className="h-64 border border-[var(--border)] rounded-xl overflow-hidden bg-[var(--bg-secondary)]">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="graph-panel min-h-[280px] flex-1">
             <ReactFlow
               nodes={taskFlow.nodes}
               edges={taskFlow.edges}
@@ -330,10 +379,8 @@ export function ProductExplorerView({
             </ReactFlow>
           </div>
           {mermaid && (
-            <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 overflow-auto">
-              <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">
-                Intent diagram
-              </h3>
+            <div className="card shrink-0 overflow-auto p-4">
+              <h3 className="section-label mb-2">Intent diagram</h3>
               <MermaidRenderer chart={mermaid} />
             </div>
           )}

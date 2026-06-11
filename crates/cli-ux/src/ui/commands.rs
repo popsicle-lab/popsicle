@@ -8,13 +8,20 @@ use crate::global_config::{
     global_config_path, is_valid_workspace_path, list_projects, open_project, remove_project,
     WorkspaceSource,
 };
-use crate::self_host::{binary_provenance_for, load_pipeline_def, Workspace};
+use crate::project_config::{
+    ensure_project_config, load_project_config, project_config_path, save_project_config,
+    sync_agents_md, AgentLanguage, ProjectConfig,
+};
+use crate::self_host::{
+    binary_provenance_for, list_installed_pipeline_names, load_pipeline_def, Workspace,
+};
 use crate::workspace_readers::{
     guidance_for_issue, intent_fallback_mermaid, list_products, read_intent_file, read_task,
     resolve_intent_ref, scan_intents, scan_product_tasks, scan_tasks, task_graph_mermaid,
     IntentBlockDetail, IntentFileFull, IntentGraph, IssueGuidance, TaskFull, TaskGraph,
 };
 use crate::LocalWorkspace;
+use skill_runtime::IssueType;
 
 use super::dto::*;
 use super::state::AppState;
@@ -209,6 +216,52 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueInfo, Strin
             description: row.description,
             active_run_id: active,
             run_ids,
+        })
+    })
+}
+
+#[tauri::command]
+pub fn get_create_issue_form_options(
+    state: State<AppState>,
+) -> Result<CreateIssueFormOptions, String> {
+    state.with_store(|store| {
+        let root = store.workspace().root.clone();
+        let cfg = load_project_config(&root).unwrap_or_default();
+        let mut spec_options: Vec<String> = store
+            .list_issues()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|i| i.spec_id)
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !cfg.paths.default_spec.is_empty() {
+            spec_options.push(cfg.paths.default_spec.clone());
+        }
+        spec_options.sort();
+        spec_options.dedup();
+        if spec_options.is_empty() {
+            spec_options.push("slice-4-ui".into());
+        }
+        let default_spec = if !cfg.paths.default_spec.is_empty() {
+            cfg.paths.default_spec.clone()
+        } else {
+            spec_options[0].clone()
+        };
+        let pipeline_options = list_installed_pipeline_names(store.workspace());
+        let default_pipeline_by_type = [
+            (IssueType::Product.as_str(), "greenfield-product-spec"),
+            (IssueType::Technical.as_str(), "tech-decision"),
+            (IssueType::Bug.as_str(), "bugfix"),
+            (IssueType::Idea.as_str(), "tech-decision"),
+        ]
+        .into_iter()
+        .map(|(t, p)| (t.to_string(), p.to_string()))
+        .collect();
+        Ok(CreateIssueFormOptions {
+            default_spec,
+            spec_options,
+            pipeline_options,
+            default_pipeline_by_type,
         })
     })
 }
@@ -474,4 +527,66 @@ pub fn get_issue_guidance(
         )
         .map_err(|e| e.to_string())
     })
+}
+
+fn config_to_dto(root: &std::path::Path, cfg: &ProjectConfig) -> ProjectConfigDto {
+    ProjectConfigDto {
+        language: cfg.agent.language.as_str().to_string(),
+        products_dir: cfg.paths.products_dir.clone(),
+        default_spec: cfg.paths.default_spec.clone(),
+        sync_agents_md: cfg.workflow.sync_agents_md,
+        inject_on_run: cfg.workflow.inject_on_run,
+        config_path: project_config_path(root).display().to_string(),
+    }
+}
+
+#[tauri::command]
+pub fn get_project_config(state: State<AppState>) -> Result<ProjectConfigDto, String> {
+    let dir = get_dir(&state)?;
+    let cfg = if project_config_path(&dir).is_file() {
+        load_project_config(&dir).map_err(|e| e.to_string())?
+    } else {
+        ensure_project_config(&dir).map_err(|e| e.to_string())?
+    };
+    Ok(config_to_dto(&dir, &cfg))
+}
+
+#[derive(serde::Deserialize)]
+pub struct SaveProjectConfigInput {
+    pub language: String,
+    pub products_dir: String,
+    pub default_spec: String,
+    pub sync_agents_md: bool,
+    pub inject_on_run: bool,
+}
+
+#[tauri::command]
+pub fn save_project_config_cmd(
+    input: SaveProjectConfigInput,
+    state: State<AppState>,
+) -> Result<ProjectConfigDto, String> {
+    let dir = get_dir(&state)?;
+    let products_dir = input.products_dir.trim();
+    if products_dir.is_empty() || products_dir.contains("..") {
+        return Err("products_dir must be a non-empty relative path".into());
+    }
+    let cfg = ProjectConfig {
+        version: 1,
+        agent: crate::project_config::AgentConfig {
+            language: AgentLanguage::parse(&input.language),
+        },
+        paths: crate::project_config::PathConfig {
+            products_dir: products_dir.to_string(),
+            default_spec: input.default_spec.trim().to_string(),
+        },
+        workflow: crate::project_config::WorkflowConfig {
+            sync_agents_md: input.sync_agents_md,
+            inject_on_run: input.inject_on_run,
+        },
+    };
+    save_project_config(&dir, &cfg).map_err(|e| e.to_string())?;
+    if cfg.workflow.sync_agents_md {
+        sync_agents_md(&dir, &cfg).map_err(|e| e.to_string())?;
+    }
+    Ok(config_to_dto(&dir, &cfg))
 }

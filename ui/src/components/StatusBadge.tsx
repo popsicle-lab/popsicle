@@ -1,24 +1,18 @@
-const statusColors: Record<string, string> = {
-  draft: "bg-gray-500/20 text-gray-300",
-  review: "bg-yellow-500/20 text-yellow-300",
-  approved: "bg-green-500/20 text-green-300",
-  completed: "bg-green-500/20 text-green-300",
-  done: "bg-green-500/20 text-green-300",
-  ready: "bg-blue-500/20 text-blue-300",
-  in_progress: "bg-purple-500/20 text-purple-300",
-  blocked: "bg-red-500/20 text-red-300",
-  error: "bg-red-500/20 text-red-400",
-  backlog: "bg-gray-500/20 text-gray-300",
-  cancelled: "bg-red-500/20 text-red-400",
+const statusVariant: Record<string, string> = {
+  draft: "badge-neutral",
+  review: "badge-warning",
+  approved: "badge-success",
+  completed: "badge-success",
+  done: "badge-success",
+  ready: "badge-accent",
+  in_progress: "badge-accent",
+  blocked: "badge-danger",
+  error: "badge-danger",
+  backlog: "badge-neutral",
+  cancelled: "badge-danger",
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  const color = statusColors[status] || "bg-gray-500/20 text-gray-300";
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}
-    >
-      {status}
-    </span>
-  );
+  const variant = statusVariant[status] ?? "badge-neutral";
+  return <span className={`badge ${variant}`}>{status.replace(/_/g, " ")}</span>;
 }

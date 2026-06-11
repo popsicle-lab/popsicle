@@ -2,9 +2,9 @@
 
 > **Layer**: L2（用户可见行为）
 > **Audience**: PM、销售、客户成功、AI Copilot
-> **Status**: cutover-done + 多项目/UI/DMG + 嵌入 intent-coder（ADR-014–017 Accepted 2026-06-11）
+> **Status**: cutover-done + 多项目/UI/DMG + 嵌入 intent-coder + UI modern layout（ADR-014–018 Accepted 2026-06-11）
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: PDR-003（PROJ-35 retro spec）
+> **Last-Decision-Ref**: ADR-018（PROJ-36 UI modern layout）
 
 ## 一行用途
 
@@ -53,6 +53,7 @@
 - ADR-014：DevOps 工具链迁移——Makefile（check/golden/intent）、install.sh（裁剪 UI/completions）、pre-commit hook、CI/Release workflows（纯 Rust 矩阵）；fmt/clippy 欠账清零。
 - ADR-015：Tauri 2 桌面 UI（MVP+）— `popsicle ui`，Cargo feature `ui`，直连 `SelfHostDomain`。
 - ADR-016：UI 项目切换器 + MRU，桥接 `global.json`；`.app` 零参数启动 UI。
+- ADR-018：UI modern layout — collapsible sidebar、breadcrumb、Issues/Pipeline/Products master-detail split（≥1100px）；D-701 美学 divergence。
 - ADR-017：intent-coder 编译期嵌入，`init` 解压到 `.popsicle/modules/intent-coder/`（DMG 无独立 module 目录）。
 - PDR-003：多项目注册表、UI shell、嵌入模块、DMG 安装路径的 retro task/intent（PROJ-35）。
 

@@ -1,0 +1,68 @@
+slice: "cli-ux-ui-modern"
+date: "2026-06-11"
+legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+baseline_dir: "docs/baseline/2026-06-11/cli-ux-ui-modern/"
+summary:
+  golden_total: 5
+  golden_pass: 5
+  golden_fail: 0
+  divergence_count: 1
+  equivalence_gate_pass: true
+goldens:
+  - id: G-001
+    description: "ui/ Vite production build succeeds"
+    script: "golden-001-ui-build.sh"
+    legacy: "legacy/popsicle/ui/ (14-page shell)"
+    new: "ui/ modern layout tokens + split views"
+    compares: "build"
+    status: pass
+    diff_summary: "visual/layout refresh; no IPC change"
+    traces_to:
+      - "slice-4-ui PROJ-36"
+  - id: G-002
+    description: "cargo build --features ui"
+    script: "golden-002-cargo-ui.sh"
+    legacy: "legacy popsicle-cli + ui feature"
+    new: "crates/cli-ux feature ui"
+    compares: "build"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/decisions/adr/ADR-015-tauri-ui-self-host-bridge.md"
+  - id: G-003
+    description: "layout shell modules present"
+    script: "golden-003-layout-shell.sh"
+    legacy: "legacy ui monolithic pages"
+    new: "navigation.ts + collapsible sidebar + breadcrumbs"
+    compares: "structural"
+    status: pass
+    diff_summary: "new layout primitives"
+    traces_to:
+      - "PROJ-36 implement"
+  - id: G-004
+    description: "issues master-detail wide layout"
+    script: "golden-004-issues-split.sh"
+    legacy: "full-page issue navigation only"
+    new: "IssuesView split pane >=1100px"
+    compares: "ux"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "PROJ-36 implement"
+  - id: G-005
+    description: "pipeline and products split layouts"
+    script: "golden-005-pipeline-split.sh"
+    legacy: "stacked pipeline stage panel"
+    new: "graph + inspector rail; explorer split"
+    compares: "ux"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "PROJ-36 implement"
+divergences:
+  - id: D-701
+    behavior: "Visual typography/spacing not formalized in acceptance.intent"
+    legacy: "legacy ui styling"
+    new: "zinc design system + CSS primitives in ui/src/index.css"
+    reason: "Aesthetic constraints belong in tasks/e2e per intent-lang D2; PROJ-36 slice-delivery"
+    adr: "ADR-018"

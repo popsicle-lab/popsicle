@@ -4,18 +4,29 @@ import remarkGfm from "remark-gfm";
 import { ArrowLeft } from "lucide-react";
 import { readTaskContent, type TaskFull } from "../hooks/useTauri";
 import { FrontmatterSidebar } from "./FrontmatterSidebar";
+import { LoadingState } from "./LoadingState";
 import type { Page } from "../App";
 
 interface Props {
   product: string;
   taskId: string;
+  returnTo?: Page;
   setPage: (p: Page) => void;
   showBack?: boolean;
+}
+
+function backLabel(returnTo?: Page): string {
+  if (returnTo?.kind === "issue") return `Back to ${returnTo.issueKey}`;
+  if (returnTo?.kind === "issues" && returnTo.selectedKey) {
+    return `Back to ${returnTo.selectedKey}`;
+  }
+  return "Back to Products";
 }
 
 export function TaskDetailPanel({
   product,
   taskId,
+  returnTo,
   setPage,
   showBack,
 }: Props) {
@@ -31,13 +42,13 @@ export function TaskDetailPanel({
 
   if (error) {
     return (
-      <div className="text-[var(--accent-red)] p-4 bg-red-500/10 rounded-lg">
+      <div className="card border-[rgba(239,68,68,0.25)] bg-[rgba(239,68,68,0.08)] p-4 text-[13px] text-[var(--accent-red)]">
         {error}
       </div>
     );
   }
   if (!task) {
-    return <div className="text-[var(--text-secondary)]">Loading…</div>;
+    return <LoadingState label="Loading task…" />;
   }
 
   const rawIntents = task.frontmatter.related_intents;
@@ -48,38 +59,40 @@ export function TaskDetailPanel({
       : [];
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       {showBack && (
         <button
+          type="button"
           onClick={() =>
-            setPage({
-              kind: "products",
-              product,
-              tab: "tasks",
-              taskId,
-            })
+            setPage(
+              returnTo ?? {
+                kind: "products",
+                product,
+                tab: "tasks",
+                taskId,
+              }
+            )
           }
-          className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]"
+          className="btn btn-ghost w-fit gap-1.5 px-0"
         >
-          <ArrowLeft size={16} /> Back to Products
+          <ArrowLeft size={15} /> {backLabel(returnTo)}
         </button>
       )}
-      <div className="flex gap-6 min-h-0 flex-1">
-        <div className="flex-1 min-w-0 overflow-auto">
-          <p className="font-mono text-sm text-[var(--accent)]">{task.task_id}</p>
-          <h2 className="text-xl font-bold mb-4">{task.title}</h2>
-          <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] p-6 prose prose-invert max-w-none">
+      <div className="detail-grid min-h-0 flex-1">
+        <div className="min-w-0 overflow-auto">
+          <p className="font-mono text-[12px] text-[#93c5fd]">{task.task_id}</p>
+          <h2 className="mb-3 text-base font-semibold leading-snug">{task.title}</h2>
+          <div className="card p-5 prose prose-invert max-w-none">
             <Markdown remarkPlugins={[remarkGfm]}>{task.body}</Markdown>
           </div>
           {relatedIntents.length > 0 && (
-            <div className="mt-4 text-sm">
-              <h3 className="font-medium text-[var(--text-secondary)] mb-2">
-                Related intents
-              </h3>
-              <div className="flex flex-wrap gap-2">
+            <div className="mt-3">
+              <h3 className="section-label mb-2">Related intents</h3>
+              <div className="flex flex-wrap gap-1.5">
                 {relatedIntents.map((ref) => (
                   <button
                     key={ref}
+                    type="button"
                     onClick={() => {
                       const [file, block] = ref.split("#");
                       setPage({
@@ -90,7 +103,7 @@ export function TaskDetailPanel({
                         intentBlock: block,
                       });
                     }}
-                    className="px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[var(--accent)] text-xs font-mono hover:opacity-90"
+                    className="badge badge-accent font-mono transition-opacity hover:opacity-90"
                   >
                     {ref}
                   </button>

@@ -24,6 +24,30 @@ export interface ProjectsList {
   global_config_path: string;
 }
 
+export interface ProjectConfigDto {
+  language: string;
+  products_dir: string;
+  default_spec: string;
+  sync_agents_md: boolean;
+  inject_on_run: boolean;
+  config_path: string;
+}
+
+export interface CreateIssueFormOptions {
+  default_spec: string;
+  spec_options: string[];
+  pipeline_options: string[];
+  default_pipeline_by_type: Record<string, string>;
+}
+
+export interface SaveProjectConfigInput {
+  language: string;
+  products_dir: string;
+  default_spec: string;
+  sync_agents_md: boolean;
+  inject_on_run: boolean;
+}
+
 export interface IssueInfo {
   key: string;
   title: string;
@@ -312,4 +336,18 @@ export async function getIssueGuidance(
   issueKey: string
 ): Promise<IssueGuidance> {
   return invoke("get_issue_guidance", { issueKey });
+}
+
+export async function getCreateIssueFormOptions(): Promise<CreateIssueFormOptions> {
+  return invoke("get_create_issue_form_options");
+}
+
+export async function getProjectConfig(): Promise<ProjectConfigDto> {
+  return invoke("get_project_config");
+}
+
+export async function saveProjectConfig(
+  input: SaveProjectConfigInput
+): Promise<ProjectConfigDto> {
+  return invoke("save_project_config_cmd", { input });
 }

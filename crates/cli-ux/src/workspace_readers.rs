@@ -484,7 +484,7 @@ fn parse_intent_blocks_detailed(content: &str) -> Vec<IntentBlockDetail> {
 }
 
 pub fn list_products(workspace_root: &Path) -> Result<Vec<String>, WorkspaceError> {
-    let products_dir = workspace_root.join("products");
+    let products_dir = crate::project_config::products_dir_path(workspace_root);
     let mut names = Vec::new();
     if products_dir.is_dir() {
         for entry in fs::read_dir(&products_dir).map_err(io_err)? {

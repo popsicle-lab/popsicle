@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   getActiveProject,
   getWorkspaceInfo,
@@ -17,9 +17,10 @@ import { DocumentView } from "./pages/DocumentView";
 import { ProductExplorerView } from "./pages/ProductExplorerView";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { IntentDetailPage } from "./pages/IntentDetailPage";
+import { SettingsView } from "./pages/SettingsView";
 
 export type Page =
-  | { kind: "issues" }
+  | { kind: "issues"; selectedKey?: string }
   | { kind: "issue"; issueKey: string }
   | { kind: "pipeline"; runId: string }
   | { kind: "document"; docId: string }
@@ -31,29 +32,15 @@ export type Page =
       intentFile?: string;
       intentBlock?: string;
     }
-  | { kind: "task"; taskId: string; product: string }
-  | { kind: "intent"; product: string; file: string; block?: string };
-
-function pageTitle(page: Page): string {
-  switch (page.kind) {
-    case "issues":
-      return "Issues";
-    case "issue":
-      return page.issueKey;
-    case "pipeline":
-      return "Pipeline";
-    case "document":
-      return "Document";
-    case "products":
-      return page.product ? `Products · ${page.product}` : "Products";
-    case "task":
-      return page.taskId;
-    case "intent":
-      return page.block ?? page.file;
-    default:
-      return "Popsicle";
-  }
-}
+  | { kind: "task"; taskId: string; product: string; returnTo?: Page }
+  | {
+      kind: "intent";
+      product: string;
+      file: string;
+      block?: string;
+      returnTo?: Page;
+    }
+  | { kind: "settings" };
 
 export default function App() {
   const { project, openProjectDir, closeProject, syncProject } =
@@ -62,6 +49,13 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("popsicle.sidebarCollapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
   useRefresh(refresh);
@@ -118,10 +112,25 @@ export default function App() {
     setPage({ kind: "issues" });
   }, [closeProject]);
 
-  const title = useMemo(() => pageTitle(page), [page]);
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("popsicle.sidebarCollapsed", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   if (!bootstrapped) {
-    return <div className="flex h-screen items-center justify-center text-sm text-[var(--text-secondary)]">Loading…</div>;
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
+        <div className="spinner" aria-hidden />
+        <span className="text-[13px]">Loading workspace…</span>
+      </div>
+    );
   }
 
   if (!project) {
@@ -142,14 +151,25 @@ export default function App() {
           page={page}
           setPage={setPage}
           project={project}
+          collapsed={sidebarCollapsed}
           onSwitchProject={handleSwitchProject}
           onBrowseOther={handleBrowseOther}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <AppHeader workspace={workspace} pageTitle={title} />
-          <main className="main-content flex-1 overflow-auto p-6">
+          <AppHeader
+            workspace={workspace}
+            page={page}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={toggleSidebar}
+            onNavigate={setPage}
+          />
+          <main className="main-content page-enter flex-1 overflow-hidden px-4 py-3">
             {page.kind === "issues" && (
-              <IssuesView key={refreshKey} setPage={setPage} />
+              <IssuesView
+                key={refreshKey}
+                setPage={setPage}
+                initialSelectedKey={page.selectedKey}
+              />
             )}
             {page.kind === "issue" && (
               <IssueDetailView
@@ -188,6 +208,7 @@ export default function App() {
                 key={`${page.taskId}-${refreshKey}`}
                 product={page.product}
                 taskId={page.taskId}
+                returnTo={page.returnTo}
                 setPage={setPage}
               />
             )}
@@ -197,7 +218,14 @@ export default function App() {
                 product={page.product}
                 file={page.file}
                 block={page.block}
+                returnTo={page.returnTo}
                 setPage={setPage}
+              />
+            )}
+            {page.kind === "settings" && (
+              <SettingsView
+                key={refreshKey}
+                onSaved={() => setRefreshKey((k) => k + 1)}
               />
             )}
           </main>

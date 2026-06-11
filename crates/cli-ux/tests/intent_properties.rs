@@ -74,6 +74,15 @@ impl CliDomain for TestDomain {
             details: Default::default(),
         })
     }
+
+    fn admin_sync_project_config(&mut self) -> Result<AdminResult, CliError> {
+        Ok(AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: false,
+            workspace: "/tmp".into(),
+            details: Default::default(),
+        })
+    }
 }
 
 #[test]

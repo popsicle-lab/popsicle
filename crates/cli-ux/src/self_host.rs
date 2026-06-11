@@ -26,6 +26,10 @@ use crate::global_config::{
     global_config_path, resolve_init_root, resolve_workspace_root, ResolvedWorkspace,
     WorkspaceSource,
 };
+use crate::project_config::{
+    ensure_project_config, load_project_config, project_config_path, prompt_context_block,
+    sync_agents_md,
+};
 
 const SELF_HOST_DIR: &str = ".popsicle/self-host";
 const STATE_FILE: &str = "state.tsv";
@@ -68,6 +72,31 @@ const BUNDLED_PIPELINES: &[(&str, &str)] = &[
 /// Names of all pipelines bundled into the binary.
 pub fn bundled_pipeline_names() -> Vec<&'static str> {
     BUNDLED_PIPELINES.iter().map(|(name, _)| *name).collect()
+}
+
+/// Pipeline template names available in a workspace (installed + bundled).
+pub fn list_installed_pipeline_names(workspace: &Workspace) -> Vec<String> {
+    let dir = workspace.pipelines_dir();
+    let mut names: Vec<String> = bundled_pipeline_names()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    if dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if let Some(stem) = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|s| s.strip_suffix(".pipeline.yaml"))
+                {
+                    names.push(stem.to_string());
+                }
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
 }
 
 /// Resolved workspace root (directory containing `.popsicle/`).
@@ -671,6 +700,12 @@ impl WorkspaceStore for LocalWorkspace {
         let mut doc = Document::new(&doc_id, skill, title);
         doc.extra_frontmatter
             .insert("pipeline_run_id".into(), run_id.to_string());
+        if let Ok(cfg) = load_project_config(&self.workspace.root) {
+            if cfg.workflow.inject_on_run {
+                doc.extra_frontmatter
+                    .insert("agent_context".into(), prompt_context_block(&cfg));
+            }
+        }
         doc.body = format!("# {title}\n");
         let rel_path = format!(".popsicle/artifacts/{run_id}/{doc_id}.{skill}.md");
         let abs_path = self.workspace.root.join(&rel_path);
@@ -1392,6 +1427,7 @@ impl crate::CliDomain for SelfHostDomain {
             .install_bundled_pipelines()
             .map_err(ws_err)?;
         let module = install_intent_coder_module(&self.store.workspace, false).map_err(ws_err)?;
+        let project_cfg = ensure_project_config(&self.store.workspace.root).map_err(ws_err)?;
         let next_step = {
             let mut parts = Vec::new();
             if !installed.is_empty() {
@@ -1415,10 +1451,15 @@ impl crate::CliDomain for SelfHostDomain {
                 )
             }
         };
+        let next_with_config = if project_cfg.workflow.sync_agents_md {
+            format!("{next_step}; project preferences synced to AGENTS.md")
+        } else {
+            next_step
+        };
         Ok(crate::InitResult {
             workspace_ready: true,
             has_next_step: true,
-            next_step,
+            next_step: next_with_config,
         })
     }
 
@@ -1506,11 +1547,17 @@ impl crate::CliDomain for SelfHostDomain {
             .store
             .start_issue(key, spec_id, pipeline)
             .map_err(ws_err)?;
+        let agent_context = load_project_config(&self.store.workspace.root)
+            .ok()
+            .filter(|c| c.workflow.inject_on_run)
+            .map(|c| prompt_context_block(&c))
+            .unwrap_or_default();
         Ok(crate::IssueStartResult {
             run_created: true,
             spec_locked: run.spec_locked,
             has_run_id: !run.run_id.is_empty(),
             run_id: run.run_id,
+            agent_context,
         })
     }
 
@@ -1650,7 +1697,7 @@ impl crate::CliDomain for SelfHostDomain {
         } else {
             "cargo build -p cli-ux && ./target/debug/popsicle doctor".to_string()
         };
-        let fields = BTreeMap::from([
+        let mut fields = BTreeMap::from([
             ("executable_path".into(), prov.executable_path),
             ("workspace_root".into(), prov.workspace_root),
             ("workspace_source".into(), prov.workspace_source),
@@ -1704,6 +1751,22 @@ impl crate::CliDomain for SelfHostDomain {
                 },
             ),
         ]);
+        if let Ok(cfg) = load_project_config(&self.store.workspace.root) {
+            fields.insert(
+                "project_config_path".into(),
+                project_config_path(&self.store.workspace.root)
+                    .display()
+                    .to_string(),
+            );
+            fields.insert(
+                "agent_language".into(),
+                cfg.agent.language.as_str().to_string(),
+            );
+            fields.insert("products_dir".into(), cfg.paths.products_dir.clone());
+            if !cfg.paths.default_spec.is_empty() {
+                fields.insert("default_spec".into(), cfg.paths.default_spec.clone());
+            }
+        }
         Ok(crate::CommandResponse {
             status: if trusted { "ok" } else { "warn" },
             next_step: Some(next_step),
@@ -1780,6 +1843,30 @@ impl crate::CliDomain for SelfHostDomain {
             under_admin_tree: true,
             explicit_workspace: false,
             workspace: self.store.workspace.root.display().to_string(),
+            details,
+        })
+    }
+
+    fn admin_sync_project_config(&mut self) -> Result<crate::AdminResult, crate::CliError> {
+        let root = &self.store.workspace.root;
+        let config = load_project_config(root).map_err(ws_err)?;
+        sync_agents_md(root, &config).map_err(ws_err)?;
+        let details = BTreeMap::from([
+            ("synced".into(), "true".into()),
+            (
+                "project_config_path".into(),
+                project_config_path(root).display().to_string(),
+            ),
+            (
+                "agent_language".into(),
+                config.agent.language.as_str().to_string(),
+            ),
+            ("products_dir".into(), config.paths.products_dir),
+        ]);
+        Ok(crate::AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: false,
+            workspace: root.display().to_string(),
             details,
         })
     }

@@ -19,6 +19,24 @@ pub struct ProjectInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CreateIssueFormOptions {
+    pub default_spec: String,
+    pub spec_options: Vec<String>,
+    pub pipeline_options: Vec<String>,
+    pub default_pipeline_by_type: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectConfigDto {
+    pub language: String,
+    pub products_dir: String,
+    pub default_spec: String,
+    pub sync_agents_md: bool,
+    pub inject_on_run: bool,
+    pub config_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ProjectsList {
     pub projects: Vec<ProjectInfo>,
     pub default_path: Option<String>,

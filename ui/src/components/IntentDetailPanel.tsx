@@ -13,14 +13,24 @@ interface Props {
   product: string;
   file: string;
   block?: string;
+  returnTo?: Page;
   setPage: (p: Page) => void;
   showBack?: boolean;
+}
+
+function backLabel(returnTo?: Page): string {
+  if (returnTo?.kind === "issue") return `Back to ${returnTo.issueKey}`;
+  if (returnTo?.kind === "issues" && returnTo.selectedKey) {
+    return `Back to ${returnTo.selectedKey}`;
+  }
+  return "Back to Products";
 }
 
 export function IntentDetailPanel({
   product,
   file,
   block,
+  returnTo,
   setPage,
   showBack,
 }: Props) {
@@ -66,18 +76,21 @@ export function IntentDetailPanel({
     <div className="space-y-4 h-full flex flex-col">
       {showBack && (
         <button
+          type="button"
           onClick={() =>
-            setPage({
-              kind: "products",
-              product,
-              tab: "intents",
-              intentFile: file,
-              intentBlock: block,
-            })
+            setPage(
+              returnTo ?? {
+                kind: "products",
+                product,
+                tab: "intents",
+                intentFile: file,
+                intentBlock: block,
+              }
+            )
           }
-          className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)]"
+          className="btn btn-ghost w-fit gap-1.5 px-0"
         >
-          <ArrowLeft size={16} /> Back to Products
+          <ArrowLeft size={15} /> {backLabel(returnTo)}
         </button>
       )}
       <div className="flex items-center justify-between gap-4">

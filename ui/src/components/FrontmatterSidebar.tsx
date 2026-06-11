@@ -33,13 +33,15 @@ export function FrontmatterSidebar({ data, keys }: Props) {
   ];
 
   return (
-    <aside className="w-56 shrink-0 space-y-2 text-xs">
-      <h3 className="font-medium text-[var(--text-secondary)]">Frontmatter</h3>
-      <dl className="space-y-2">
+    <aside className="detail-rail card p-3.5 text-[12px]">
+      <h3 className="section-label mb-3">Metadata</h3>
+      <dl className="space-y-2.5">
         {ordered.map((key) => (
           <div key={key}>
-            <dt className="text-[var(--text-secondary)] font-mono">{key}</dt>
-            <dd className="mt-0.5 break-words">{fmt(data[key])}</dd>
+            <dt className="font-mono text-[10px] text-[var(--text-muted)]">{key}</dt>
+            <dd className="mt-0.5 break-words text-[var(--text-secondary)]">
+              {fmt(data[key])}
+            </dd>
           </div>
         ))}
       </dl>
