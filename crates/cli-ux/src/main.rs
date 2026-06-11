@@ -60,6 +60,23 @@ fn main() {
         }
     };
 
+    #[cfg(feature = "ui")]
+    if let Command::Ui { project } = command {
+        cli_ux::ui::run(project);
+        return;
+    }
+    #[cfg(not(feature = "ui"))]
+    if matches!(command, Command::Ui { .. }) {
+        let err = CliError::actionable(
+            "feature-disabled",
+            "ui",
+            "rebuild with `cargo build --features ui -p cli-ux`",
+            "desktop UI requires the `ui` Cargo feature",
+        );
+        print_error(&err, format);
+        std::process::exit(2);
+    }
+
     let is_tool_run = matches!(command, Command::ToolRun { .. });
 
     // `help` needs no workspace; `init` may bootstrap a brand-new one.

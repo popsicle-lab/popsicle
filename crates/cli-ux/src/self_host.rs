@@ -272,6 +272,26 @@ impl LocalWorkspace {
         self.backend
     }
 
+    pub fn workspace(&self) -> &Workspace {
+        &self.workspace
+    }
+
+    pub fn load_run_session(&self, run_id: &str) -> Result<PipelineSession, WorkspaceError> {
+        load_session(&self.workspace, run_id)
+    }
+
+    pub fn pipeline_name_for_run(&self, run_id: &str) -> Result<String, WorkspaceError> {
+        self.state
+            .runs
+            .get(run_id)
+            .map(|r| r.pipeline_name.clone())
+            .ok_or_else(|| WorkspaceError::NotFound(run_id.into()))
+    }
+
+    pub fn issue_key_for_run(&self, run_id: &str) -> Option<String> {
+        self.state.runs.get(run_id).map(|r| r.issue_key.clone())
+    }
+
     /// Migrate a legacy TSV workspace to the SQLite backend. Idempotent: an
     /// already-SQLite workspace reports `migrated=false`. The TSV file is kept
     /// as `state.tsv.migrated` for rollback/audit.
@@ -349,7 +369,7 @@ impl LocalWorkspace {
         Ok(())
     }
 
-    fn active_run_id(&self, issue_key: &str) -> Result<Option<String>, WorkspaceError> {
+    pub fn active_run_id(&self, issue_key: &str) -> Result<Option<String>, WorkspaceError> {
         for run in self.state.runs.values() {
             if run.issue_key != issue_key {
                 continue;
@@ -926,7 +946,11 @@ fn issue_row_to_domain(row: &IssueRow) -> Issue {
     }
 }
 
-fn load_pipeline_def(workspace: &Workspace, name: &str) -> Result<PipelineDef, WorkspaceError> {
+/// Load a pipeline definition (used by CLI and Tauri UI).
+pub(crate) fn load_pipeline_def(
+    workspace: &Workspace,
+    name: &str,
+) -> Result<PipelineDef, WorkspaceError> {
     let dirs = [
         workspace.root.join(".popsicle/pipelines"),
         workspace
@@ -1019,7 +1043,11 @@ fn save_session(workspace: &Workspace, session: &PipelineSession) -> Result<(), 
     Ok(())
 }
 
-fn load_session(workspace: &Workspace, run_id: &str) -> Result<PipelineSession, WorkspaceError> {
+/// Load a persisted pipeline session (used by CLI and Tauri UI).
+pub(crate) fn load_session(
+    workspace: &Workspace,
+    run_id: &str,
+) -> Result<PipelineSession, WorkspaceError> {
     let content = fs::read_to_string(session_path(workspace, run_id))
         .map_err(|_| WorkspaceError::NotFound(format!("run {run_id}")))?;
     let persisted: PersistedSession =

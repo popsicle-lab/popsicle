@@ -1,6 +1,10 @@
 //! Thin IO shell for the `cli-ux` slice (ADR-007 / ADR-009 Phase 1).
 
 pub mod self_host;
+pub mod workspace_readers;
+
+#[cfg(feature = "ui")]
+pub mod ui;
 
 pub use self_host::{
     bundled_pipeline_names, LocalWorkspace, SelfHostDomain, StateBackend, Workspace,
@@ -15,7 +19,7 @@ use storage::{DocumentRow, MemoryDocumentStore};
 /// The implemented self-host command surface (PROJ-17 re-adjudication of
 /// PDR-001). Help must only advertise commands that `parse_args` accepts.
 pub const TOP_LEVEL_COMMANDS: &[&str] = &[
-    "init", "doctor", "issue", "pipeline", "doc", "tool", "admin",
+    "init", "doctor", "issue", "pipeline", "doc", "tool", "admin", "ui",
 ];
 
 /// Legacy commands PDR-001 marked "preserve" but that are not part of the
@@ -93,6 +97,9 @@ pub enum Command {
         args: BTreeMap<String, String>,
     },
     Admin(AdminCommand),
+    Ui {
+        project: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -425,6 +432,9 @@ where
                 workspace: flag_value_or(&args, "--workspace", ""),
             }))
         }
+        "ui" => Ok(Command::Ui {
+            project: optional_flag_value(&args, "--project"),
+        }),
         "migrate" | "reinit" => Err(CliError::actionable(
             "invalid-args",
             args[0].clone(),
@@ -652,6 +662,12 @@ pub fn run_command<D: CliDomain>(
         Command::Admin(AdminCommand::Reinit { workspace }) => {
             admin_response(domain.admin_reinit(&workspace)?)
         }
+        Command::Ui { .. } => Err(CliError::actionable(
+            "invalid-args",
+            "ui",
+            "run `popsicle ui` without other CLI dispatch",
+            "desktop UI is launched from main, not run_command",
+        )),
     }
 }
 
@@ -851,6 +867,7 @@ pub const COMMAND_USAGE: &[&str] = &[
     "tool run intent-validate path=<dir> [format=<text|json>]",
     "admin migrate [--workspace <path>]",
     "admin reinit [--workspace <path>]",
+    "ui [--project <path>]",
 ];
 
 pub fn help_response() -> CommandResponse {

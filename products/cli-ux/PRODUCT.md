@@ -54,7 +54,7 @@
 
 ## Open Questions
 
-- Tauri UI bridge 不进 MVP；是否迁入另开 slice。
+- **ADR-015**：Tauri 2 桌面 UI（MVP+）— `popsicle ui`，Cargo feature `ui`，直连 `SelfHostDomain`；Issues/Pipeline/文档 + Task/Intent/Mermaid 图。
 - `sync` 不进 IDD 主路径；是否 hibernate 或独立 product 另开 PDR。
 
 ---

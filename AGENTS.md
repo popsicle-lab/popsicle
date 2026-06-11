@@ -121,6 +121,7 @@ removed (see below).
 - `popsicle init` — bootstrap `.popsicle/` workspace (installs bundled pipelines)
 - `popsicle doctor [--format json]` — binary/workspace provenance check
 - `popsicle help` — top-level commands + full usage lines
+- `popsicle ui [--project <path>]` — Tauri 2 desktop UI（需 `cargo build --features ui -p cli-ux`；见 ADR-015）
 
 ### Issue
 

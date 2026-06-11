@@ -24,7 +24,10 @@
 | `crates/popsicle-cli/src/commands/{admin,migrate,reinit}.rs` | `crates/cli-ux/src/lib.rs::AdminCommand` / `parse_args` | slice-3-cli-ux | ADR-008 | G-005 | cutover-done |
 | legacy `checklist` / `item` / `sync` command families | `REMOVED_TOP_LEVEL_COMMANDS` + actionable errors | slice-3-cli-ux | ADR-008 | G-006 | cutover-done |
 | legacy issue/pipeline/doc CLI（full SQLite）| `crates/cli-ux/src/self_host.rs` + `.popsicle/self-host/` | slice-3-cli-ux | ADR-010 | `docs/baseline/2026-06-11/cli-ux-self-host/` | cutover-done（TSV Phase 1）|
-| legacy `popsicle.db` IndexDb | Phase 2 `WorkspaceStore` SQLite（PROJ-11）| slice-3-cli-ux | PROJ-11 pending | — | not-started |
+| legacy `popsicle.db` IndexDb | Phase 2 `WorkspaceStore` SQLite（PROJ-11）| slice-3-cli-ux | ADR-013 | `docs/baseline/2026-06-11/cli-ux-sqlite-phase2/` | cutover-done |
+| `legacy/popsicle/ui/`（14 页 Tauri SPA）| `ui/`（MVP+：Issues/Pipeline/Document/Task/Intent）| slice-4-ui | ADR-015 | `docs/baseline/2026-06-11/cli-ux-ui/` | cutover-done |
+| `legacy/popsicle/crates/popsicle-cli/src/ui/commands.rs` | `crates/cli-ux/src/ui/commands.rs` | slice-4-ui | ADR-015 | G-002/G-003 | cutover-done |
+| `legacy/popsicle/crates/popsicle-core`（IndexDb Tauri IPC）| `LocalWorkspace` + `.popsicle/self-host/state.db` | slice-4-ui | ADR-015 D-501 | — | cutover-done |
 
 ## 规则
 

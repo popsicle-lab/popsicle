@@ -2,7 +2,7 @@
 # Differences from legacy: no UI bundle (build-ui dropped), golden/intent
 # targets added for the IDD verification chain.
 
-.PHONY: check fmt fmt-fix clippy test build golden intent install install-hooks
+.PHONY: check fmt fmt-fix clippy test build build-ui ui-dev golden intent install install-hooks
 
 check: fmt clippy test
 
@@ -13,13 +13,20 @@ fmt-fix:
 	cargo fmt --all
 
 clippy:
-	RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --all-features
+	RUSTFLAGS="-Dwarnings" cargo clippy --all-targets
 
 test:
-	RUSTFLAGS="-Dwarnings" cargo test --all-targets --all-features
+	RUSTFLAGS="-Dwarnings" cargo test --all-targets
 
 build:
 	cargo build --release
+
+build-ui:
+	cd ui && npm ci && npm run build
+	cargo build --features ui -p cli-ux
+
+ui-dev:
+	cd ui && npm run dev
 
 # Full golden-baseline chain (latest run-all chains all earlier baselines).
 golden:

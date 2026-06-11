@@ -10,4 +10,7 @@ for script in "$DIR"/golden-*.sh; do
   echo "==> $(basename "$script")"
   bash "$script"
 done
+
+bash "$DIR/../cli-ux-ui/run-all.sh"
+
 echo "All cli-ux sqlite-phase2 golden baselines passed."

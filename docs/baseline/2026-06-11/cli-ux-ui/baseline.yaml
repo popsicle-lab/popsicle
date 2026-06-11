@@ -1,0 +1,64 @@
+slice: "cli-ux-ui"
+date: "2026-06-11"
+legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+baseline_dir: "docs/baseline/2026-06-11/cli-ux-ui/"
+summary:
+  golden_total: 4
+  golden_pass: 4
+  golden_fail: 0
+  divergence_count: 2
+  equivalence_gate_pass: true
+goldens:
+  - id: G-001
+    description: "help advertises ui command and usage line"
+    script: "golden-001-help-ui.sh"
+    legacy: "legacy/popsicle/crates/popsicle-cli (14-page Tauri app, no self-host ui subcommand)"
+    new: "crates/cli-ux/src/lib.rs::TOP_LEVEL_COMMANDS + COMMAND_USAGE"
+    compares: "semantic"
+    status: pass
+    diff_summary: "new adds popsicle ui; legacy used popsicle tauri binary directly"
+    traces_to:
+      - "products/cli-ux/intents/acceptance.intent#RenderTopLevelHelp"
+  - id: G-002
+    description: "npm build + cargo build --features ui succeeds"
+    script: "golden-002-build-ui.sh"
+    legacy: "legacy/popsicle/Makefile build-ui + popsicle-cli/ui/"
+    new: "ui/ + crates/cli-ux feature ui"
+    compares: "build"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/decisions/adr/ADR-015-tauri-ui-self-host-bridge.md"
+  - id: G-003
+    description: "workspace_readers unit tests pass"
+    script: "golden-003-readers-test.sh"
+    legacy: "legacy popsicle-core task/intent readers (SQLite)"
+    new: "crates/cli-ux/src/workspace_readers.rs"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/intents/acceptance.intent#ErrorsAreActionable"
+  - id: G-004
+    description: "task scan finds T-CU-* nodes under products/"
+    script: "golden-004-task-scan.sh"
+    legacy: "legacy/popsicle/ui TaskGraph (if present)"
+    new: "scan_tasks + TaskGraphView"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/tasks/"
+divergences:
+  - id: D-501
+    behavior: "IPC backend is SelfHostDomain not popsicle-core"
+    legacy: "crates/popsicle-cli/src/ui/commands.rs + popsicle-core IndexDb"
+    new: "crates/cli-ux/src/ui/commands.rs + LocalWorkspace / state.db"
+    reason: "ADR-015: self-host MVP cannot reuse legacy DB/commands"
+    adr: "ADR-015"
+  - id: D-502
+    behavior: "MVP+ page surface is subset of legacy 14 pages"
+    legacy: "legacy/popsicle/ui/ full desktop app"
+    new: "ui/ Issues/Pipeline/Document/Task/Intent only"
+    reason: "ADR-015 D-501 scope cut"
+    adr: "ADR-015"
