@@ -69,3 +69,56 @@ fn golden_006_removed_commands_return_actionable_errors() {
         assert!(err.has_category_object_and_next_step());
     }
 }
+
+// PROJ-17 command surface alignment goldens.
+
+#[test]
+fn golden_007_deferred_commands_return_actionable_errors() {
+    for command in cli_ux::DEFERRED_TOP_LEVEL_COMMANDS {
+        let err = parse_args([*command]).unwrap_err();
+        assert_eq!(err.category, "deferred");
+        assert_eq!(err.object_ref, *command);
+        assert!(err.has_category_object_and_next_step());
+    }
+}
+
+#[test]
+fn golden_008_format_flag_is_global() {
+    use cli_ux::Command;
+    assert_eq!(
+        parse_args(["issue", "list", "--format", "json"]).unwrap(),
+        Command::IssueList
+    );
+    assert!(matches!(
+        parse_args(["pipeline", "next", "--run", "run-1", "--format", "json"]).unwrap(),
+        Command::PipelineNext { .. }
+    ));
+    assert!(matches!(
+        parse_args(["--format", "json"]).unwrap(),
+        Command::Help
+    ));
+}
+
+#[test]
+fn golden_009_help_advertises_only_implemented_commands() {
+    let help = top_level_help();
+    for deferred in cli_ux::DEFERRED_TOP_LEVEL_COMMANDS {
+        assert!(
+            !help.lines().any(|line| line.trim() == *deferred),
+            "help must not advertise deferred command `{deferred}`"
+        );
+    }
+    let response = cli_ux::help_response();
+    assert!(response.fields.contains_key("usage"));
+    assert!(response.fields.contains_key("deferred_commands"));
+    // Every advertised top-level command must lead somewhere in the parser:
+    // either parse on its own or fail asking for a subcommand (not "unknown").
+    for command in cli_ux::TOP_LEVEL_COMMANDS {
+        if let Err(err) = parse_args([*command]) {
+            assert_ne!(
+                err.category, "deferred",
+                "advertised command `{command}` must not be deferred"
+            );
+        }
+    }
+}

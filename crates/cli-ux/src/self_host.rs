@@ -569,18 +569,21 @@ pub fn binary_provenance() -> Result<BinaryProvenance, WorkspaceError> {
 
 pub fn run_intent_validate(path: &str, format: &str) -> Result<i32, WorkspaceError> {
     let workspace = Workspace::discover()?;
-    let tool_yaml = workspace
-        .root
-        .parent()
-        .map(|p| p.join("intent-coder/tools/intent-validate/tool.yaml"))
-        .filter(|p| p.is_file())
-        .or_else(|| {
-            let p = workspace
-                .root
-                .join(".popsicle/modules/intent-coder/tools/intent-validate/tool.yaml");
-            p.is_file().then_some(p)
-        })
-        .ok_or_else(|| WorkspaceError::NotFound("intent-validate tool.yaml".into()))?;
+    // Resolve strictly inside the workspace. The old `root.parent()` lookup
+    // predates the repo-root promotion (4d8b5c6) and could silently pick up an
+    // unrelated sibling checkout — the same provenance bug class ADR-010 D-003
+    // blocks for binaries.
+    let tool_yaml = [
+        workspace
+            .root
+            .join("intent-coder/tools/intent-validate/tool.yaml"),
+        workspace
+            .root
+            .join(".popsicle/modules/intent-coder/tools/intent-validate/tool.yaml"),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())
+    .ok_or_else(|| WorkspaceError::NotFound("intent-validate tool.yaml".into()))?;
     let content = fs::read_to_string(&tool_yaml).map_err(io_err)?;
     let command_block = content
         .split("command: |")
@@ -717,18 +720,41 @@ fn issue_row_to_domain(row: &IssueRow) -> Issue {
 }
 
 fn load_pipeline_def(workspace: &Workspace, name: &str) -> Result<PipelineDef, WorkspaceError> {
-    for dir in [
+    let dirs = [
         workspace.root.join(".popsicle/pipelines"),
         workspace
             .root
             .join(".popsicle/modules/intent-coder/pipelines"),
-    ] {
+    ];
+    for dir in &dirs {
         let path = dir.join(format!("{name}.pipeline.yaml"));
         if path.is_file() {
             return PipelineDef::load(&path).map_err(|e| WorkspaceError::Io(e.to_string()));
         }
     }
-    Err(WorkspaceError::NotFound(format!("pipeline {name}")))
+    let mut available: Vec<String> = dirs
+        .iter()
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .to_str()?
+                .strip_suffix(".pipeline.yaml")
+                .map(str::to_string)
+        })
+        .collect();
+    available.sort();
+    available.dedup();
+    Err(WorkspaceError::NotFound(format!(
+        "pipeline {name} (available: {})",
+        if available.is_empty() {
+            "none".to_string()
+        } else {
+            available.join(", ")
+        }
+    )))
 }
 
 fn session_path(workspace: &Workspace, run_id: &str) -> PathBuf {

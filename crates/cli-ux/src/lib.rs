@@ -10,19 +10,27 @@ use artifact_system::Document;
 use skill_runtime::{Issue, IssueType, PipelineDef, PipelineSession, PipelineStageDef};
 use storage::{DocumentRow, MemoryDocumentStore};
 
+/// The implemented self-host command surface (PROJ-17 re-adjudication of
+/// PDR-001). Help must only advertise commands that `parse_args` accepts.
 pub const TOP_LEVEL_COMMANDS: &[&str] = &[
     "init",
     "doctor",
-    "module",
-    "tool",
-    "skill",
-    "pipeline",
-    "spec",
     "issue",
-    "namespace",
+    "pipeline",
     "doc",
-    "prompt",
+    "tool",
     "admin",
+];
+
+/// Legacy commands PDR-001 marked "preserve" but that are not part of the
+/// self-host MVP. They fail with an actionable error instead of a generic
+/// "unknown command" so agents following stale docs get redirected.
+pub const DEFERRED_TOP_LEVEL_COMMANDS: &[&str] = &[
+    "module",
+    "skill",
+    "spec",
+    "namespace",
+    "prompt",
     "git",
     "memory",
     "context",
@@ -260,7 +268,18 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
-    let args: Vec<String> = args.into_iter().map(Into::into).collect();
+    let mut args: Vec<String> = args.into_iter().map(Into::into).collect();
+    // `--format <text|json>` is a global flag: record it, then strip it so
+    // positional/arity matching below is unaffected.
+    let format = parse_format_flag(&args);
+    if let Some(idx) = args.iter().position(|a| a == "--format") {
+        let end = if args.get(idx + 1).is_some_and(|v| !v.starts_with("--")) {
+            idx + 2
+        } else {
+            idx + 1
+        };
+        args.drain(idx..end);
+    }
     if args.is_empty() || args == ["--help"] || args == ["help"] {
         return Ok(Command::Help);
     }
@@ -274,10 +293,17 @@ where
         ));
     }
 
+    if DEFERRED_TOP_LEVEL_COMMANDS.contains(&args[0].as_str()) {
+        return Err(CliError::actionable(
+            "deferred",
+            args[0].clone(),
+            "run `popsicle --help` for the implemented self-host surface",
+            "command is deferred from the self-host MVP (PROJ-17 re-adjudication of PDR-001)",
+        ));
+    }
+
     match args[0].as_str() {
-        "doctor" => Ok(Command::Doctor {
-            format: parse_format_flag(&args),
-        }),
+        "doctor" => Ok(Command::Doctor { format }),
         "init" if args.len() == 1 => Ok(Command::Init),
         "issue" if args.get(1).map(String::as_str) == Some("create") => Ok(Command::IssueCreate {
             issue_type: flag_value(&args, "--type")?,
@@ -705,7 +731,9 @@ fn optional_flag_value(args: &[String], flag: &str) -> Option<String> {
     flag_value(args, flag).ok()
 }
 
-fn parse_format_flag(args: &[String]) -> OutputFormat {
+/// Resolve `--format <text|json>` from a raw argument list. Used both by
+/// per-command parsing and by the binary to pick the global output format.
+pub fn parse_format_flag(args: &[String]) -> OutputFormat {
     match flag_value_or(args, "--format", "text").as_str() {
         "json" => OutputFormat::Json,
         _ => OutputFormat::Text,
@@ -740,9 +768,38 @@ fn removed_command_next_step(command: &str) -> &'static str {
     }
 }
 
+/// Full syntax of every implemented subcommand, one per line. All commands
+/// accept `--format json` for machine-readable output.
+pub const COMMAND_USAGE: &[&str] = &[
+    "init",
+    "doctor [--format json]",
+    "issue create --type <product|technical|bug|idea> --title <t> --spec <spec-id> [--pipeline <name>] [--priority <p>] [--description <d>]",
+    "issue list",
+    "issue show <key>",
+    "issue start <key> [--spec <spec-id>] [--pipeline <name>]",
+    "pipeline status --run <run_id>",
+    "pipeline next --run <run_id>",
+    "pipeline stage complete <stage> --run <run_id> [--confirm]",
+    "doc create <skill> --title <t> --run <run_id>",
+    "doc list [--run <run_id>]",
+    "doc show <doc_id>",
+    "tool run intent-validate path=<dir> [format=<text|json>]",
+    "admin migrate [--workspace <path>]",
+    "admin reinit [--workspace <path>]",
+];
+
 pub fn help_response() -> CommandResponse {
     let mut fields = BTreeMap::new();
     fields.insert("commands".into(), top_level_help());
+    fields.insert("usage".into(), COMMAND_USAGE.join("\n"));
+    fields.insert(
+        "global_flags".into(),
+        "--format json (machine-readable output, any command)".into(),
+    );
+    fields.insert(
+        "deferred_commands".into(),
+        DEFERRED_TOP_LEVEL_COMMANDS.join(", "),
+    );
     CommandResponse {
         status: "ok",
         next_step: Some("popsicle doctor --format json".into()),

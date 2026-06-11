@@ -1,9 +1,13 @@
 # PDR-001 · cli-ux command tree redesign
 
-> **Status**: Proposed
+> **Status**: Proposed — **disposition table amended by ADR-011 (2026-06-11)**
 > **Date**: 2026-06-09
 > **Product**: cli-ux
 > **Source**: PROJ-6 product-debate + fact-extractor
+> **Amended-by**: [`ADR-011`](../adr/ADR-011-command-surface-realignment.md)（PROJ-17）：
+> 下表 "preserve" 命令中仅 `init/issue/pipeline/doc/tool/admin`（+ `doctor`）进入
+> self-host 实现面；`module/skill/spec/namespace/prompt/git/memory/context/registry/completions`
+> 重分类为 **deferred**（不宣传、结构化报错、逐个待 PDR 修订）；drop 清单不变。
 
 ## Context
 

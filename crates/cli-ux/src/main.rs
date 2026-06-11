@@ -1,7 +1,10 @@
 use std::fmt::Write as _;
 use std::io::Write as _;
 
-use cli_ux::{parse_args, run_command, Command, CommandResponse, OutputFormat, SelfHostDomain};
+use cli_ux::{
+    parse_args, parse_format_flag, run_command, CliError, Command, CommandResponse, OutputFormat,
+    SelfHostDomain,
+};
 
 fn print_response(response: CommandResponse, format: OutputFormat) {
     let mut buf = String::new();
@@ -30,22 +33,32 @@ fn print_response(response: CommandResponse, format: OutputFormat) {
     }
 }
 
-fn output_format(command: &cli_ux::Command) -> OutputFormat {
-    match command {
-        cli_ux::Command::Doctor { format } => *format,
-        _ => OutputFormat::Text,
+fn print_error(err: &CliError, format: OutputFormat) {
+    if matches!(format, OutputFormat::Json) {
+        let obj = serde_json::json!({
+            "status": "error",
+            "category": err.category,
+            "object": err.object_ref,
+            "message": err.message,
+            "next": err.next_step,
+        });
+        eprintln!("{obj}");
+    } else {
+        eprintln!("{err}");
     }
 }
 
 fn main() {
-    let command = match parse_args(std::env::args().skip(1)) {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let format = parse_format_flag(&raw_args);
+
+    let command = match parse_args(raw_args) {
         Ok(command) => command,
         Err(err) => {
-            eprintln!("{err}");
+            print_error(&err, format);
             std::process::exit(2);
         }
     };
-    let format = output_format(&command);
 
     let is_tool_run = matches!(command, Command::ToolRun { .. });
 
@@ -61,7 +74,7 @@ fn main() {
     let mut domain = match domain_result {
         Ok(domain) => domain,
         Err(err) => {
-            eprintln!("{err}");
+            print_error(&err, format);
             std::process::exit(2);
         }
     };
@@ -82,7 +95,7 @@ fn main() {
             }
         }
         Err(err) => {
-            eprintln!("{err}");
+            print_error(&err, format);
             std::process::exit(1);
         }
     }

@@ -2,21 +2,26 @@
 
 > **Layer**: L2（用户可见行为）
 > **Audience**: PM、销售、客户成功、AI Copilot
-> **Status**: cutover-done + self-host Phase 1（ADR-010 Accepted 2026-06-11）
+> **Status**: cutover-done + self-host Phase 1 + 命令面对齐（ADR-011 Accepted 2026-06-11）
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-010（self-hosting Phase 1）
+> **Last-Decision-Ref**: ADR-011（command surface realignment）
 
 ## 一行用途
 
 把 IDD runtime/artifact 暴露成 agent-friendly 命令行。
 
-## 用户视角的入口
+## 用户视角的入口（实现面 = 宣传面，ADR-011）
 
-- `popsicle init` / `module` / `tool`：准备一个 IDD-ready workspace。
-- `popsicle skill` / `pipeline` / `spec` / `issue`：启动并推进迁移工作流。
-- `popsicle doc` / `prompt`：生产、校验和召回 stage artifact。
-- `popsicle admin`：承载低频维护命令（如 migrate/reinit），不污染主路径。
-- `popsicle context` / `memory` / `registry` / `git`：为 agent 提供项目背景、记忆、发布与审计辅助。
+- `popsicle init` / `doctor`：准备 workspace 并校验二进制/工作区来源。
+- `popsicle issue` / `pipeline`：启动并推进 IDD 工作流（create/list/show/start · status/next/stage complete）。
+- `popsicle doc`：生产与召回 stage artifact（create/list/show）。
+- `popsicle tool run intent-validate`：Z3 intent 校验。
+- `popsicle admin`：低频维护（migrate/reinit），不污染主路径。
+- 全命令支持 `--format json`；错误同样 JSON 化并携带 actionable next-step。
+
+**Deferred**（不在 help 宣传，调用返回结构化 `deferred` 错误）：`module` / `skill` /
+`spec` / `namespace` / `prompt` / `git` / `memory` / `context` / `registry` /
+`completions` — 永久去留待逐个 PDR 修订。**Removed**：`checklist` / `item` / `sync`。
 
 ## Tasks Catalog
 
@@ -38,9 +43,11 @@
 
 ## Committed Roadmap
 
-- PDR-001：命令树重组，legacy 22 命令分为 preserve/redesign/drop/defer。
+- PDR-001：命令树重组，legacy 22 命令分为 preserve/redesign/drop/defer。**其 preserve 清单已被 ADR-011 二次裁决修订**（17 preserve → 7 implemented + 10 deferred）。
 - ADR-007：`crates/cli-ux` 只做 IO shell，依赖 `skill-runtime` / `artifact-system` / `storage`。
 - ADR-008：`crates/cli-ux` binary `popsicle` 切为 semantic shell 主路径，不追求 legacy byte parity。
+- ADR-010：self-host Phase 1（TSV workspace + IDD workflow + doctor provenance）。
+- ADR-011：命令面对齐——help 收敛到实现面、`--format json` 全局化、工具解析仓库内严格化、根 AGENTS.md 与实现面绑定。
 
 ## Open Questions
 
