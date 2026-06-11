@@ -255,7 +255,7 @@ pub fn list_recent_projects(limit: usize) -> Result<Vec<ProjectEntry>, Workspace
         .into_iter()
         .filter(|p| p.last_opened_at.is_some() && is_valid_workspace_path(&p.path))
         .collect();
-    recent.sort_by(|a, b| b.last_opened_at.cmp(&a.last_opened_at));
+    recent.sort_by_key(|b| std::cmp::Reverse(b.last_opened_at));
     recent.truncate(limit.min(MAX_RECENT));
     Ok(recent)
 }

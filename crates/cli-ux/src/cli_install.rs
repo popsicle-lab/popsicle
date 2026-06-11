@@ -1,11 +1,14 @@
 //! Silent macOS CLI install when launched from `Popsicle.app` (ADR-016 / DMG flow).
 
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 
+#[cfg(any(target_os = "macos", test))]
 const BIN_NAME: &str = "popsicle";
+#[cfg(any(target_os = "macos", test))]
 const PATH_LINE: &str = r#"export PATH="$HOME/.local/bin:$PATH""#;
+#[cfg(any(target_os = "macos", test))]
 const ZSHRC_MARKER: &str = ".local/bin";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +72,7 @@ pub fn ensure_silent() -> io::Result<InstallOutcome> {
     ))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn should_copy(src: &Path, dest: &Path) -> io::Result<bool> {
     if !dest.is_file() {
         return Ok(true);
@@ -84,7 +88,7 @@ fn should_copy(src: &Path, dest: &Path) -> io::Result<bool> {
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, any(target_os = "macos", test)))]
 fn set_executable(path: &Path) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let mut perms = fs::metadata(path)?.permissions();
@@ -92,12 +96,14 @@ fn set_executable(path: &Path) -> io::Result<()> {
     fs::set_permissions(path, perms)
 }
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), any(target_os = "macos", test)))]
 fn set_executable(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn ensure_zshrc_path_line(zshrc: &Path) -> io::Result<bool> {
+    use std::io::Write;
     if zshrc.is_file() {
         let content = fs::read_to_string(zshrc)?;
         if content.contains(ZSHRC_MARKER) {

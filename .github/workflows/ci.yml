@@ -1,6 +1,6 @@
 # CI (migrated from legacy/popsicle ci.yml, ADR-014).
-# Differences from legacy: no UI/node/webkit toolchain — the self-host CLI is
-# a pure Rust workspace. The cargo test suite already includes the golden
+# Differences from legacy: the `check` job is pure Rust; the optional `ui` job
+# installs Node + Linux webkit/gtk deps for `make build-ui`. The cargo test suite includes the golden
 # tests (golden_001-011), TSV/SQLite backend tests, and the isolated e2e
 # workflow smoke. The intent-validate / shell golden chain needs intent-lang
 # and runs locally via `make golden` / `make intent` (see Makefile).
@@ -30,6 +30,9 @@ jobs:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ci-check"
+          save-if: true
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -46,10 +49,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Linux Tauri dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ci-ui"
+          save-if: true
 
       - name: Install Node
         uses: actions/setup-node@v4

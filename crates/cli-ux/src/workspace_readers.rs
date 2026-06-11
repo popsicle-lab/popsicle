@@ -401,7 +401,7 @@ pub fn guidance_for_issue(
             .into_iter()
             .map(|node| (score_task(&node, issue_type, status, pipeline_stage), node))
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|b| std::cmp::Reverse(b.0));
         recommended_tasks = scored.into_iter().take(5).map(|(_, n)| n).collect();
 
         let mut seen = std::collections::BTreeSet::new();
