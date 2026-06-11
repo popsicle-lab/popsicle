@@ -1,6 +1,6 @@
 # Legacy Pin
 
-> 这份文件记录 `legacy/popsicle/` submodule 锁定的具体 commit、所有已知的 patch
+> 这份文件记录 `legacy/popsicle/` submodule 锁定的具体 commit、跟踪分支、所有已知的 patch
 > 与限制。所有后续 fact-extractor / 等价性测试 / 切流操作都以这里记录的 SHA 为 ground truth。
 
 ## Pinning
@@ -9,28 +9,25 @@
 |---|---|
 | Submodule | `legacy/popsicle/` |
 | Upstream URL | `https://github.com/popsicle-lab/popsicle.git` |
-| Pinned commit | `c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1` |
-| Commit message | `[feat] 重新迁移组织仓库` |
-| Pin reason | bootstrap 当日父仓库 HEAD；含已 commit 的 3 个工程 crate（core / cli / sync）、UI、Cargo workspace |
-| License | Apache-2.0（与 popsicle-new MIT 兼容 —— MIT 可消费 Apache-2.0 内容；注：本字段 init stage 错记为 MIT，fact-extractor 2026-06-08 从 `legacy/popsicle/LICENSE` + 根 `Cargo.toml` 验证后修正）|
+| Tracked branch | `backup-v0.5`（`.gitmodules` `branch = backup-v0.5`）|
+| Pinned commit | `6f7be399b4b86d9baf6165589f66229f03a3ad19` |
+| Commit message | `feat(intent-coder): Improve intent coder.` |
+| Pin reason | 迁移前 **legacy 全量 popsicle**（`backup-v0.5`）；含 `popsicle-core` / `popsicle-cli` / `popsicle-sync`、Tauri UI、`intent-coder/`、`vender/intent-lang/` |
+| License | Apache-2.0（与 popsicle MIT 兼容 —— MIT 可消费 Apache-2.0 内容）|
+
+### 历史 pin（仅供 baseline 追溯）
+
+| 日期 | SHA | 说明 |
+|---|---|---|
+| 2026-06-08 bootstrap | `c76d729` | 当日 `main` HEAD；`intent-coder` / `vender` 当时未 commit。早期 `docs/baseline/2026-06-08/` 事实基基于此 SHA。|
 
 ## ⚠️ Known limitations of this pin
 
-1. **未 commit 资产不在 submodule 里**：父仓库 popsicle 在 `c76d729` 时有大量 untracked
-   文件未提交，包括：
-   - `intent-coder/` 整个 v0.3.0 技能包（10 个 skill + 1 pipeline + 1 tool）
-   - `vender/intent-lang/`（intent-lang Rust 实现，含 `intent-cli` / `intent-core` / `intent-syntax`）
-   - `intent-devlopment/` 旧版技能包（注：拼写错误的目录名，是 intent-coder 的早期版本，将被淘汰）
-   - 多份 `docs/*.md`
+1. **与 `main` 分支不同源**：submodule 跟踪 `backup-v0.5`（legacy 单体），父仓库 `main` 是 IDD 迁移后的新 crate 布局。golden 对账时 legacy 侧应读 submodule 内路径，不要混用父仓库根目录代码。
 
-   **影响**：fact-extractor 在 submodule 内只看 commit 过的代码（crates/、ui/、Makefile 等）。
-   对未 commit 的资产，popsicle-new 通过相对路径 `../intent-coder` / `../vender/intent-lang`
-   临时引用——见 [`Cargo.toml`](Cargo.toml) workspace 声明 / [`.popsicle/config.toml`](.popsicle/config.toml) module 路径。
+2. **submodule 更新**：`git submodule update --remote legacy/popsicle` 会拉取 `backup-v0.5` 最新 tip；重 pin 后必须刷新本文件并评估是否重跑 `docs/baseline/`。
 
-   **长期解决**：用户应把这些资产在父 popsicle 提交并打新 tag，本文件 pin 升级到新 SHA。
-
-2. **submodule URL 公开可达，但部分历史可能未推送**：`c76d729` 已确认在 `origin/main`
-   （`git branch -r --contains` 校验通过）。任何重 pin 操作必须重新验证。
+3. **`c76d729` baseline 仍有效**：2026-06-08 fact-extraction 与部分 golden 脚本锚定在旧 SHA；追溯时以各 baseline README 头部注明的 commit 为准，不要求 submodule 回退。
 
 ## Known patches
 
@@ -39,12 +36,12 @@
 
 | 日期 | 文件（在 legacy popsicle 中的路径）| 修复 | 理由 |
 |---|---|---|---|
-| 2026-06-08 | `intent-coder/skills/intent-consistency-check/skill.yaml` | `inputs[0]` 字段格式 `type:` → `from_skill: + artifact_type:` | 阻塞性 bug：popsicle CLI 加载 module 时 schema 校验失败，导致 10 个 skill 全部加载不到。属于"让 legacy 能跑"的例外修复。fact-extractor 应把这条 schema drift 风险写进 `unsafe-risk-report`。 |
+| — | — | （无活跃 patch）| `backup-v0.5` 已含修正后的 `intent-consistency-check/skill.yaml`（`from_skill` + `artifact_type`）|
 
 ## How to update this pin
 
-1. 在父 popsicle 把待提交资产 commit 并推到 `origin/main`
-2. 在 `popsicle-new/legacy/popsicle/` 跑 `git fetch && git checkout <new-sha>`
-3. 在 popsicle-new 根目录 `git add legacy/popsicle && git commit -m "chore(legacy): re-pin to <new-sha>"`
-4. 本文件的 "Pinning" 表 + "Known patches" 表都要刷新（patch 已上游则移除条目）
+1. 在 upstream `backup-v0.5` 合并所需变更并推送
+2. 在 `legacy/popsicle/` 跑 `git fetch origin backup-v0.5 && git checkout backup-v0.5 && git pull`
+3. 在仓库根目录 `git add legacy/popsicle .gitmodules && git commit -m "chore(legacy): re-pin backup-v0.5 to <new-sha>"`
+4. 刷新本文件 "Pinning" 表；已上游的 patch 从 "Known patches" 移除
 5. 受影响的 baseline 必须重跑（`docs/baseline/` 下的产物作废）
