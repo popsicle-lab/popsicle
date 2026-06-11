@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::loader::{load_pipelines_dir, load_skills_dir, LoadedSkill, LoadError, PipelineDef};
+use crate::loader::{load_pipelines_dir, load_skills_dir, LoadError, LoadedSkill, PipelineDef};
 
 /// In-memory skill catalog keyed by skill name.
 #[derive(Debug, Default)]

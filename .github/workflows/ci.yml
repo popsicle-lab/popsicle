@@ -1,0 +1,41 @@
+# CI (migrated from legacy/popsicle ci.yml, ADR-014).
+# Differences from legacy: no UI/node/webkit toolchain — the self-host CLI is
+# a pure Rust workspace. The cargo test suite already includes the golden
+# tests (golden_001-011), TSV/SQLite backend tests, and the isolated e2e
+# workflow smoke. The intent-validate / shell golden chain needs intent-lang
+# and runs locally via `make golden` / `make intent` (see Makefile).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  check:
+    name: Check & Lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features
+
+      - name: Run tests
+        run: cargo test --all-targets --all-features

@@ -41,7 +41,9 @@ impl MemoryDocumentStore {
     }
 
     pub fn get(&self, id: &str) -> Result<&DocumentRow, StoreError> {
-        self.rows.get(id).ok_or_else(|| StoreError::NotFound(id.into()))
+        self.rows
+            .get(id)
+            .ok_or_else(|| StoreError::NotFound(id.into()))
     }
 
     pub fn update(&mut self, row: DocumentRow) -> Result<(), StoreError> {

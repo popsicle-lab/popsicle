@@ -96,7 +96,14 @@ fn fresh_workspace_defaults_to_sqlite_backend() {
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     assert_eq!(store.backend(), StateBackend::Sqlite);
     store
-        .create_issue("bug", "sqlite native", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .create_issue(
+            "bug",
+            "sqlite native",
+            "slice-3-cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+        )
         .expect("create issue");
     assert!(root.join(".popsicle/self-host/state.db").is_file());
     assert!(!root.join(".popsicle/self-host/state.tsv").is_file());
@@ -117,11 +124,21 @@ fn legacy_tsv_workspace_still_loads_and_saves() {
 
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     assert_eq!(store.backend(), StateBackend::Tsv);
-    assert_eq!(store.get_issue("PROJ-1").expect("legacy issue").title, "legacy issue");
+    assert_eq!(
+        store.get_issue("PROJ-1").expect("legacy issue").title,
+        "legacy issue"
+    );
 
     // Mutations keep writing TSV until an explicit migration.
     store
-        .create_issue("bug", "tsv second", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .create_issue(
+            "bug",
+            "tsv second",
+            "slice-3-cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+        )
         .expect("create issue");
     assert!(!root.join(".popsicle/self-host/state.db").is_file());
 
@@ -143,7 +160,9 @@ fn migrate_to_sqlite_preserves_rows_and_is_idempotent() {
     assert!(store.migrate_to_sqlite().expect("migrate"));
     assert_eq!(store.backend(), StateBackend::Sqlite);
     assert!(root.join(".popsicle/self-host/state.db").is_file());
-    assert!(root.join(".popsicle/self-host/state.tsv.migrated").is_file());
+    assert!(root
+        .join(".popsicle/self-host/state.tsv.migrated")
+        .is_file());
     assert!(!root.join(".popsicle/self-host/state.tsv").is_file());
 
     drop(store);
@@ -153,7 +172,14 @@ fn migrate_to_sqlite_preserves_rows_and_is_idempotent() {
     assert_eq!(reloaded.get_issue("PROJ-2").expect("issue").status, "done");
     // Counter preserved: next issue gets PROJ-3.
     let next = reloaded
-        .create_issue("bug", "post-migration", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .create_issue(
+            "bug",
+            "post-migration",
+            "slice-3-cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+        )
         .expect("create issue");
     assert_eq!(next.key, "PROJ-3");
     // Idempotent: second migrate reports false.
@@ -167,7 +193,14 @@ fn tsv_issue_close_requires_completed_run() {
     let root = temp_workspace();
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
-        .create_issue("bug", "close me", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .create_issue(
+            "bug",
+            "close me",
+            "slice-3-cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+        )
         .expect("create issue");
     let run = store
         .start_issue(&issue.key, "", "test-open")
@@ -194,7 +227,14 @@ fn tsv_doc_check_fails_stub_and_passes_filled_doc() {
     let root = temp_workspace();
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
-        .create_issue("bug", "doc check", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .create_issue(
+            "bug",
+            "doc check",
+            "slice-3-cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+        )
         .expect("create issue");
     let run = store
         .start_issue(&issue.key, "", "test-open")

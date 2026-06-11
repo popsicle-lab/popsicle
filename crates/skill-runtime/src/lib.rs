@@ -27,13 +27,11 @@ pub mod state_machine;
 pub mod upstream;
 
 pub use context::ContextRegistry;
-pub use domain::{
-    PipelineRun, PipelineRunStatus, Skill, SkillStatus, Stage, StageStatus,
-};
+pub use domain::{PipelineRun, PipelineRunStatus, Skill, SkillStatus, Stage, StageStatus};
 pub use inspect::{PipelineStatusSnapshot, StageSnapshot};
 pub use issue::{Issue, IssueType};
 pub use loader::{
-    load_pipelines_dir, load_skill, load_skills_dir, LoadedSkill, LoadError, PipelineDef,
+    load_pipelines_dir, load_skill, load_skills_dir, LoadError, LoadedSkill, PipelineDef,
     PipelineStageDef, SKILL_LOAD_SCHEMA_VERSION,
 };
 pub use memory_layer::{MemoriesLayer, Memory};

@@ -111,7 +111,9 @@ fn state_machine_allows_only_canonical_forward_transitions() {
         }
     }
     // No bypass: pending cannot jump straight to completed.
-    assert!(SkillState::Pending.transition(SkillState::Completed).is_err());
+    assert!(SkillState::Pending
+        .transition(SkillState::Completed)
+        .is_err());
 }
 
 #[test]
@@ -145,7 +147,7 @@ fn approved_required_stage_completes_and_preserves_invariant() {
     let s = stage(StageStatus::StageInProgress, true, 42);
     let out = advance_stage_with_approval(&s).expect("approved stage advances");
     assert_eq!(out.status, StageStatus::StageCompleted);
-    assert_eq!(out.requires_approval, true); // framed
+    assert!(out.requires_approval); // framed
     assert_eq!(out.approved_at, 42); // framed
     assert!(approved_before_completed(&out));
 }
@@ -259,7 +261,10 @@ fn bootstrap_requires_pending_run_and_blocked_stage() {
     }
     // Right run, wrong stage status.
     assert_eq!(
-        bootstrap_to_first_pause(&run(PipelineRunStatus::RunPending, 0, 5), &in_progress_stage),
+        bootstrap_to_first_pause(
+            &run(PipelineRunStatus::RunPending, 0, 5),
+            &in_progress_stage
+        ),
         Err(BootstrapError::StageNotBlocked),
     );
 }

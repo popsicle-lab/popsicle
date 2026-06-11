@@ -28,6 +28,14 @@ Run `popsicle doctor --format json` before starting work. It must report
 `current_workspace_binary_match: true`; otherwise rebuild with
 `cargo build -p cli-ux` and use `./target/debug/popsicle`.
 
+## DevOps Entry Points (ADR-014)
+
+- `make check` — fmt + clippy + test, all `-Dwarnings` (CI runs the same trio)
+- `make golden` — full golden-baseline chain; `make intent` — Z3 intent validation
+- `make install-hooks` — install the pre-commit hook (fmt/clippy/test)
+- `scripts/install.sh [--prefix <dir>] [--uninstall]` — install the CLI (no UI, no completions — deferred)
+- Releases: push a `v*` tag → `.github/workflows/release.yml` builds 4 targets
+
 ## Global Flags
 
 Every command accepts `--format json` for machine-readable output. Always use

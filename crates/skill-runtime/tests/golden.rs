@@ -21,13 +21,11 @@ fn repo_root() -> PathBuf {
 }
 
 fn intent_coder_skills_dir() -> PathBuf {
-    repo_root()
-        .join(".popsicle/modules/intent-coder/skills")
+    repo_root().join(".popsicle/modules/intent-coder/skills")
 }
 
 fn intent_coder_pipelines_dir() -> PathBuf {
-    repo_root()
-        .join(".popsicle/modules/intent-coder/pipelines")
+    repo_root().join(".popsicle/modules/intent-coder/pipelines")
 }
 
 /// G-001: `project-init` skill loads with ADR-002 four-field result.
@@ -41,10 +39,7 @@ fn golden_001_load_project_init_skill() {
     let loaded = load_skill(&path).expect("load project-init");
     assert_eq!(loaded.load_result.name, "project-init");
     assert_eq!(loaded.load_result.schema_version, SKILL_LOAD_SCHEMA_VERSION);
-    assert_eq!(
-        loaded.load_result.state_machine,
-        StateMachine::canonical()
-    );
+    assert_eq!(loaded.load_result.state_machine, StateMachine::canonical());
     assert_eq!(loaded.workflow_initial, "surveying");
 }
 

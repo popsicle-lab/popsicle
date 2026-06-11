@@ -7,8 +7,8 @@
 //! Pipeline session working files stay as per-run JSON (ADR-013).
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::fmt::Write as _;
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
@@ -184,9 +184,21 @@ impl StoreState {
             next_issue_num: snap.next_issue_num,
             next_run_num: snap.next_run_num,
             next_doc_num: snap.next_doc_num,
-            issues: snap.issues.into_iter().map(|i| (i.key.clone(), i)).collect(),
-            runs: snap.runs.into_iter().map(|r| (r.run_id.clone(), r)).collect(),
-            documents: snap.documents.into_iter().map(|d| (d.id.clone(), d)).collect(),
+            issues: snap
+                .issues
+                .into_iter()
+                .map(|i| (i.key.clone(), i))
+                .collect(),
+            runs: snap
+                .runs
+                .into_iter()
+                .map(|r| (r.run_id.clone(), r))
+                .collect(),
+            documents: snap
+                .documents
+                .into_iter()
+                .map(|d| (d.id.clone(), d))
+                .collect(),
         }
     }
 }
@@ -209,7 +221,7 @@ impl StateBackend {
     }
 }
 
-fn rel_display(workspace: &Workspace, path: &PathBuf) -> String {
+fn rel_display(workspace: &Workspace, path: &std::path::Path) -> String {
     path.strip_prefix(&workspace.root)
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| path.display().to_string())
@@ -289,10 +301,12 @@ impl LocalWorkspace {
 
     fn save_tsv(&self) -> Result<(), WorkspaceError> {
         let mut out = String::new();
-        writeln!(out, "# self-host state (ADR-009 Phase 1; Phase 2 → PROJ-11 SQLite)")
-            .map_err(io_err)?;
-        writeln!(out, "meta\tnext_issue_num\t{}", self.state.next_issue_num)
-            .map_err(io_err)?;
+        writeln!(
+            out,
+            "# self-host state (ADR-009 Phase 1; Phase 2 → PROJ-11 SQLite)"
+        )
+        .map_err(io_err)?;
+        writeln!(out, "meta\tnext_issue_num\t{}", self.state.next_issue_num).map_err(io_err)?;
         writeln!(out, "meta\tnext_run_num\t{}", self.state.next_run_num).map_err(io_err)?;
         writeln!(out, "meta\tnext_doc_num\t{}", self.state.next_doc_num).map_err(io_err)?;
         for issue in self.state.issues.values() {
@@ -314,11 +328,7 @@ impl LocalWorkspace {
             writeln!(
                 out,
                 "run\t{}\t{}\t{}\t{}\t{}",
-                run.run_id,
-                run.issue_key,
-                run.pipeline_name,
-                run.spec_id,
-                run.spec_locked,
+                run.run_id, run.issue_key, run.pipeline_name, run.spec_id, run.spec_locked,
             )
             .map_err(io_err)?;
         }
@@ -451,7 +461,11 @@ impl WorkspaceStore for LocalWorkspace {
             issue
                 .pipeline
                 .clone()
-                .or_else(|| issue_row_to_domain(&issue).resolved_pipeline().map(str::to_string))
+                .or_else(|| {
+                    issue_row_to_domain(&issue)
+                        .resolved_pipeline()
+                        .map(str::to_string)
+                })
                 .ok_or_else(|| WorkspaceError::InvalidState("no resolvable pipeline".into()))?
         } else {
             pipeline.to_string()
@@ -459,9 +473,9 @@ impl WorkspaceStore for LocalWorkspace {
         let pipeline_def = load_pipeline_def(&self.workspace, &pipeline_name)?;
         let run_id = alloc_run_id(&mut self.state.next_run_num);
         let mut session = PipelineSession::new_pending(&run_id, pipeline_def);
-        session.start().map_err(|e| {
-            WorkspaceError::InvalidState(format!("pipeline start failed: {e:?}"))
-        })?;
+        session
+            .start()
+            .map_err(|e| WorkspaceError::InvalidState(format!("pipeline start failed: {e:?}")))?;
         save_session(&self.workspace, &session)?;
         self.state.runs.insert(
             run_id.clone(),
@@ -569,8 +583,8 @@ impl WorkspaceStore for LocalWorkspace {
 
         let placeholder_count =
             (count_occurrences(body, "[TBD") + count_occurrences(body, "{{")) as u32;
-        let checkboxes_checked = (count_occurrences(body, "- [x]")
-            + count_occurrences(body, "- [X]")) as u32;
+        let checkboxes_checked =
+            (count_occurrences(body, "- [x]") + count_occurrences(body, "- [X]")) as u32;
         let checkboxes_total = checkboxes_checked + count_occurrences(body, "- [ ]") as u32;
 
         let passed = file_exists && frontmatter_complete && body_filled && placeholder_count == 0;
@@ -662,13 +676,13 @@ impl WorkspaceStore for LocalWorkspace {
             )));
         }
         if requires_approval {
-            session.approve_current(1).map_err(|e| {
-                WorkspaceError::InvalidState(format!("approve failed: {e:?}"))
-            })?;
+            session
+                .approve_current(1)
+                .map_err(|e| WorkspaceError::InvalidState(format!("approve failed: {e:?}")))?;
         }
-        session.complete_current().map_err(|e| {
-            WorkspaceError::InvalidState(format!("complete failed: {e:?}"))
-        })?;
+        session
+            .complete_current()
+            .map_err(|e| WorkspaceError::InvalidState(format!("complete failed: {e:?}")))?;
         save_session(&self.workspace, &session)?;
         let snap = session.snapshot();
         Ok(StageCompleteRow {
@@ -868,7 +882,7 @@ fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
 }
 
 fn escape_tsv(s: &str) -> String {
-    s.replace('\t', " ").replace('\n', " ")
+    s.replace(['\t', '\n'], " ")
 }
 
 fn atomic_write(path: &PathBuf, content: &str) -> Result<(), WorkspaceError> {
@@ -1097,15 +1111,18 @@ fn ws_err(e: storage::WorkspaceError) -> crate::CliError {
         let mut parts = rest.splitn(2, ':');
         let run_id = parts.next().unwrap_or("run");
         let next = parts.next().unwrap_or("complete the active pipeline run");
-        return crate::CliError::actionable("pipeline", run_id, next, "issue already has an active run");
+        return crate::CliError::actionable(
+            "pipeline",
+            run_id,
+            next,
+            "issue already has an active run",
+        );
     }
     if let Some(rest) = msg.strip_prefix("invalid state: spec-lock:") {
         let mut parts = rest.splitn(3, ':');
         let issue_spec = parts.next().unwrap_or("issue-spec");
         let provided = parts.next().unwrap_or("provided-spec");
-        let next = parts
-            .next()
-            .unwrap_or("omit --spec or pass the issue spec");
+        let next = parts.next().unwrap_or("omit --spec or pass the issue spec");
         return crate::CliError::actionable(
             "invalid-args",
             provided,
@@ -1246,7 +1263,10 @@ impl crate::CliDomain for SelfHostDomain {
         spec_id: &str,
         pipeline: &str,
     ) -> Result<crate::IssueStartResult, crate::CliError> {
-        let run = self.store.start_issue(key, spec_id, pipeline).map_err(ws_err)?;
+        let run = self
+            .store
+            .start_issue(key, spec_id, pipeline)
+            .map_err(ws_err)?;
         Ok(crate::IssueStartResult {
             run_created: true,
             spec_locked: run.spec_locked,
@@ -1261,7 +1281,10 @@ impl crate::CliDomain for SelfHostDomain {
         title: &str,
         run_id: &str,
     ) -> Result<crate::DocCreateResult, crate::CliError> {
-        let doc = self.store.create_doc(skill, title, run_id).map_err(ws_err)?;
+        let doc = self
+            .store
+            .create_doc(skill, title, run_id)
+            .map_err(ws_err)?;
         Ok(crate::DocCreateResult {
             artifact_file_exists: doc.artifact_file_exists,
             document_row_exists: true,
@@ -1271,7 +1294,10 @@ impl crate::CliDomain for SelfHostDomain {
         })
     }
 
-    fn list_docs(&self, run_id: Option<&str>) -> Result<Vec<BTreeMap<String, String>>, crate::CliError> {
+    fn list_docs(
+        &self,
+        run_id: Option<&str>,
+    ) -> Result<Vec<BTreeMap<String, String>>, crate::CliError> {
         self.store
             .list_docs(run_id)
             .map(|rows| {
@@ -1315,7 +1341,10 @@ impl crate::CliDomain for SelfHostDomain {
                 "placeholder_count".into(),
                 check.placeholder_count.to_string(),
             ),
-            ("checkboxes_total".into(), check.checkboxes_total.to_string()),
+            (
+                "checkboxes_total".into(),
+                check.checkboxes_total.to_string(),
+            ),
             (
                 "checkboxes_checked".into(),
                 check.checkboxes_checked.to_string(),
@@ -1331,7 +1360,10 @@ impl crate::CliDomain for SelfHostDomain {
             ("pipeline".into(), snap.pipeline_name),
             ("run_status".into(), snap.run_status),
             ("current_stage".into(), snap.current_stage),
-            ("current_stage_index".into(), snap.current_stage_index.to_string()),
+            (
+                "current_stage_index".into(),
+                snap.current_stage_index.to_string(),
+            ),
             ("total_stages".into(), snap.total_stages.to_string()),
         ]);
         for (idx, stage) in snap.stages.iter().enumerate() {
@@ -1367,7 +1399,10 @@ impl crate::CliDomain for SelfHostDomain {
         })
     }
 
-    fn doctor(&self, _format: crate::OutputFormat) -> Result<crate::CommandResponse, crate::CliError> {
+    fn doctor(
+        &self,
+        _format: crate::OutputFormat,
+    ) -> Result<crate::CommandResponse, crate::CliError> {
         let prov = binary_provenance().map_err(ws_err)?;
         let trusted = prov.is_trusted();
         let next_step = if trusted {
@@ -1389,8 +1424,14 @@ impl crate::CliDomain for SelfHostDomain {
                 "current_workspace_binary_match".into(),
                 prov.current_workspace_binary_match.to_string(),
             ),
-            ("used_parent_binary".into(), prov.used_parent_binary.to_string()),
-            ("used_system_binary".into(), prov.used_system_binary.to_string()),
+            (
+                "used_parent_binary".into(),
+                prov.used_parent_binary.to_string(),
+            ),
+            (
+                "used_system_binary".into(),
+                prov.used_system_binary.to_string(),
+            ),
             (
                 "storage_backend".into(),
                 self.store.backend().describe(&self.store.workspace),
@@ -1404,7 +1445,11 @@ impl crate::CliDomain for SelfHostDomain {
         })
     }
 
-    fn tool_run(&self, tool: &str, args: &BTreeMap<String, String>) -> Result<i32, crate::CliError> {
+    fn tool_run(
+        &self,
+        tool: &str,
+        args: &BTreeMap<String, String>,
+    ) -> Result<i32, crate::CliError> {
         if tool != "intent-validate" {
             return Err(crate::CliError::actionable(
                 "not-found",

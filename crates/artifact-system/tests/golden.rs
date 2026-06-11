@@ -12,9 +12,7 @@ use artifact_system::document::Document;
 use artifact_system::extractor::{
     extract_bugs, extract_test_cases, extract_user_stories, ChunkKind,
 };
-use artifact_system::guard::{
-    check_guard, GuardError, GuardResult, UpstreamApprovalChecker,
-};
+use artifact_system::guard::{check_guard, GuardError, GuardResult, UpstreamApprovalChecker};
 use artifact_system::task_chunk::{rename_work_item_to_task_chunk, CKind, WorkItem};
 
 /// G-001: document file content round-trips id, version, metadata, and body.

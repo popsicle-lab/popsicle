@@ -61,7 +61,7 @@ fn self_host_workflow_smoke_passes() {
     // Binary-match only holds when the test binary IS the workspace binary;
     // sandboxed/redirected CARGO_TARGET_DIR runs use a different path. The
     // unconditional check lives in the doctor-provenance golden script.
-    if PathBuf::from(bin()) == repo.join("target/debug/popsicle") {
+    if repo.join("target/debug/popsicle") == std::path::Path::new(bin()) {
         assert!(doctor.contains("\"current_workspace_binary_match\":\"true\""));
     }
     assert!(doctor.contains("storage_backend"));
@@ -76,7 +76,14 @@ fn self_host_workflow_smoke_passes() {
     let created = ok_in(
         &ws,
         &[
-            "issue", "create", "--type", "bug", "--title", "smoke bug", "--spec", "smoke-spec",
+            "issue",
+            "create",
+            "--type",
+            "bug",
+            "--title",
+            "smoke bug",
+            "--spec",
+            "smoke-spec",
         ],
     );
     let key = field(&created, "key");
@@ -115,7 +122,9 @@ fn self_host_workflow_smoke_passes() {
 
     let abs = ws.join(&doc_path);
     let mut content = std::fs::read_to_string(&abs).expect("read doc");
-    content.push_str("\n## Fix\n\nReproduced, fixed, regression test added.\n\n- [x] regression test\n");
+    content.push_str(
+        "\n## Fix\n\nReproduced, fixed, regression test added.\n\n- [x] regression test\n",
+    );
     std::fs::write(&abs, content).expect("fill doc");
     let check_ok = ok_in(&ws, &["doc", "check", &doc_id]);
     assert_eq!(field(&check_ok, "passed"), "true");
@@ -124,7 +133,14 @@ fn self_host_workflow_smoke_passes() {
     // bugfix pipeline: implement → verify, no approvals.
     ok_in(
         &ws,
-        &["pipeline", "stage", "complete", "implement", "--run", &run_id],
+        &[
+            "pipeline",
+            "stage",
+            "complete",
+            "implement",
+            "--run",
+            &run_id,
+        ],
     );
     ok_in(
         &ws,

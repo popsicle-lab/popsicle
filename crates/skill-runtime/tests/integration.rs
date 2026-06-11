@@ -25,10 +25,7 @@ fn load_skill_yaml_produces_adr002_result() {
     assert_eq!(loaded.load_result.name, "demo-skill");
     assert_eq!(loaded.load_result.pkg_version, "1.2.3");
     assert_eq!(loaded.load_result.schema_version, SKILL_LOAD_SCHEMA_VERSION);
-    assert_eq!(
-        loaded.load_result.state_machine,
-        StateMachine::canonical()
-    );
+    assert_eq!(loaded.load_result.state_machine, StateMachine::canonical());
     assert_eq!(loaded.workflow_initial, "scoping");
 }
 
@@ -40,19 +37,16 @@ fn load_pipeline_yaml_and_run_session_happy_path() {
 
     let mut session = PipelineSession::new_pending("run-1", pipeline);
     session.start().expect("bootstrap");
-    assert_eq!(session.run.status, skill_runtime::PipelineRunStatus::RunInProgress);
     assert_eq!(
-        session.stages[0].status,
-        StageStatus::StageInProgress
+        session.run.status,
+        skill_runtime::PipelineRunStatus::RunInProgress
     );
+    assert_eq!(session.stages[0].status, StageStatus::StageInProgress);
 
     session.approve_current(42).expect("approve");
     session.complete_current().expect("complete stage 0");
     assert_eq!(session.run.current_stage_index, 1);
-    assert_eq!(
-        session.stages[1].status,
-        StageStatus::StageInProgress
-    );
+    assert_eq!(session.stages[1].status, StageStatus::StageInProgress);
 
     let snap = session.snapshot();
     assert_eq!(snap.pipeline_name, "demo-pipeline");
@@ -73,9 +67,7 @@ fn recover_blocked_pipeline_session() {
 #[test]
 fn registry_loads_fixture_dirs() {
     let mut skills = SkillRegistry::new();
-    let n = skills
-        .load_dir(&fixtures_dir())
-        .expect("load skills dir");
+    let n = skills.load_dir(&fixtures_dir()).expect("load skills dir");
     assert_eq!(n, 1);
     assert!(skills.get("demo-skill").is_some());
 

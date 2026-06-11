@@ -1,0 +1,14 @@
+#!/bin/sh
+# Pre-commit gate (migrated from legacy/popsicle hooks/pre-commit, ADR-014).
+set -e
+
+echo "==> cargo fmt"
+cargo fmt --all -- --check
+
+echo "==> cargo clippy"
+RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --all-features
+
+echo "==> cargo test"
+RUSTFLAGS="-Dwarnings" cargo test --all-targets --all-features
+
+echo "All checks passed."

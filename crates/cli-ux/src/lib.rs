@@ -15,13 +15,7 @@ use storage::{DocumentRow, MemoryDocumentStore};
 /// The implemented self-host command surface (PROJ-17 re-adjudication of
 /// PDR-001). Help must only advertise commands that `parse_args` accepts.
 pub const TOP_LEVEL_COMMANDS: &[&str] = &[
-    "init",
-    "doctor",
-    "issue",
-    "pipeline",
-    "doc",
-    "tool",
-    "admin",
+    "init", "doctor", "issue", "pipeline", "doc", "tool", "admin",
 ];
 
 /// Legacy commands PDR-001 marked "preserve" but that are not part of the
@@ -45,7 +39,9 @@ pub const REMOVED_TOP_LEVEL_COMMANDS: &[&str] = &["checklist", "item", "sync"];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Help,
-    Doctor { format: OutputFormat },
+    Doctor {
+        format: OutputFormat,
+    },
     Init,
     IssueCreate {
         issue_type: String,
@@ -56,8 +52,12 @@ pub enum Command {
         description: String,
     },
     IssueList,
-    IssueShow { key: String },
-    IssueClose { key: String },
+    IssueShow {
+        key: String,
+    },
+    IssueClose {
+        key: String,
+    },
     IssueStart {
         key: String,
         spec_id: String,
@@ -68,11 +68,21 @@ pub enum Command {
         title: String,
         run_id: String,
     },
-    DocList { run_id: Option<String> },
-    DocShow { doc_id: String },
-    DocCheck { doc_id: String },
-    PipelineStatus { run_id: String },
-    PipelineNext { run_id: String },
+    DocList {
+        run_id: Option<String>,
+    },
+    DocShow {
+        doc_id: String,
+    },
+    DocCheck {
+        doc_id: String,
+    },
+    PipelineStatus {
+        run_id: String,
+    },
+    PipelineNext {
+        run_id: String,
+    },
     StageComplete {
         stage: String,
         run_id: String,
@@ -331,7 +341,9 @@ where
             Ok(Command::IssueList)
         }
         "issue" if args.get(1).map(String::as_str) == Some("show") => {
-            let key = args.get(2).ok_or_else(|| missing("issue-key", "issue show"))?;
+            let key = args
+                .get(2)
+                .ok_or_else(|| missing("issue-key", "issue show"))?;
             Ok(Command::IssueShow { key: key.clone() })
         }
         "issue" if args.get(1).map(String::as_str) == Some("close") => {
@@ -378,9 +390,11 @@ where
                 run_id: flag_value(&args, "--run")?,
             })
         }
-        "pipeline" if args.get(1).map(String::as_str) == Some("next") => Ok(Command::PipelineNext {
-            run_id: flag_value(&args, "--run")?,
-        }),
+        "pipeline" if args.get(1).map(String::as_str) == Some("next") => {
+            Ok(Command::PipelineNext {
+                run_id: flag_value(&args, "--run")?,
+            })
+        }
         "pipeline"
             if args.get(1).map(String::as_str) == Some("stage")
                 && args.get(2).map(String::as_str) == Some("complete") =>

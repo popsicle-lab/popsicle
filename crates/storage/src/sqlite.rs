@@ -121,7 +121,9 @@ impl SqliteStateDb {
 
         let mut stmt = self
             .conn
-            .prepare("SELECT id, doc_type, title, status, version, parent_id, file_path FROM documents")
+            .prepare(
+                "SELECT id, doc_type, title, status, version, parent_id, file_path FROM documents",
+            )
             .map_err(db_err)?;
         let rows = stmt
             .query_map([], |row| {
@@ -147,15 +149,20 @@ impl SqliteStateDb {
     /// Replace the entire indexed state in one transaction.
     pub fn save(&mut self, snap: &StateSnapshot) -> Result<(), WorkspaceError> {
         let tx = self.conn.transaction().map_err(db_err)?;
-        tx.execute_batch("DELETE FROM meta; DELETE FROM issues; DELETE FROM runs; DELETE FROM documents;")
-            .map_err(db_err)?;
+        tx.execute_batch(
+            "DELETE FROM meta; DELETE FROM issues; DELETE FROM runs; DELETE FROM documents;",
+        )
+        .map_err(db_err)?;
         for (key, value) in [
             ("next_issue_num", snap.next_issue_num),
             ("next_run_num", snap.next_run_num),
             ("next_doc_num", snap.next_doc_num),
         ] {
-            tx.execute("INSERT INTO meta (key, value) VALUES (?1, ?2)", params![key, value])
-                .map_err(db_err)?;
+            tx.execute(
+                "INSERT INTO meta (key, value) VALUES (?1, ?2)",
+                params![key, value],
+            )
+            .map_err(db_err)?;
         }
         for issue in &snap.issues {
             tx.execute(
@@ -215,7 +222,9 @@ fn db_err(e: rusqlite::Error) -> WorkspaceError {
 impl SqliteStateDb {
     fn meta(&self, key: &str) -> Result<Option<u32>, WorkspaceError> {
         self.conn
-            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| row.get(0))
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
             .map(Some)
             .or_else(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),

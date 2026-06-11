@@ -32,8 +32,11 @@ impl ContextRegistry {
 
     /// Assemble without consuming the registry (re-renders each layer).
     pub fn assemble_borrowed(&self, base_prompt: &str) -> String {
-        let mut ordered: Vec<&dyn ContextLayer> =
-            self.layers.iter().map(|l| l.as_ref() as &dyn ContextLayer).collect();
+        let mut ordered: Vec<&dyn ContextLayer> = self
+            .layers
+            .iter()
+            .map(|l| l.as_ref() as &dyn ContextLayer)
+            .collect();
         ordered.sort_by(|a, b| {
             a.relevance()
                 .cmp(&b.relevance())

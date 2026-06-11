@@ -2,9 +2,9 @@
 
 > **Layer**: L2（用户可见行为）
 > **Audience**: PM、销售、客户成功、AI Copilot
-> **Status**: cutover-done + self-host Phase 2 存储 + 命令面对齐 + 可用性闭环（ADR-013 Accepted 2026-06-11）
+> **Status**: cutover-done + self-host Phase 2 存储 + 可用性闭环 + DevOps 工具链（ADR-014 Accepted 2026-06-11）
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-013（SQLite Phase 2 storage）
+> **Last-Decision-Ref**: ADR-014（devops tooling migration）
 
 ## 一行用途
 
@@ -50,6 +50,7 @@
 - ADR-011：命令面对齐——help 收敛到实现面、`--format json` 全局化、工具解析仓库内严格化、根 AGENTS.md 与实现面绑定。
 - ADR-012：可用性闭环——`doc check` / `issue close` 落地、默认管线 bundled 化（D-101）+ 模板自愈、smoke 隔离与残留清理（O-102）。
 - ADR-013：SQLite Phase 2 存储——`.popsicle/self-host/state.db`（避开 legacy popsicle.db）、后端自动检测 + TSV 兼容、`admin migrate` 真迁移（幂等留底）、doctor 后端动态报告。PROJ-11 关闭。
+- ADR-014：DevOps 工具链迁移——Makefile（check/golden/intent）、install.sh（裁剪 UI/completions）、pre-commit hook、CI/Release workflows（纯 Rust 矩阵）；fmt/clippy 欠账清零。
 
 ## Open Questions
 

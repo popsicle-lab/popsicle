@@ -3,7 +3,9 @@
 use crate::domain::{PipelineRun, PipelineRunStatus, Stage, StageStatus};
 use crate::inspect::PipelineStatusSnapshot;
 use crate::loader::PipelineDef;
-use crate::runs::{bootstrap_to_first_pause, recover_blocked_pipeline, BootstrapError, RecoverError};
+use crate::runs::{
+    bootstrap_to_first_pause, recover_blocked_pipeline, BootstrapError, RecoverError,
+};
 use crate::state_machine::{advance_stage_with_approval, StageAdvanceError};
 
 /// Errors mutating a [`PipelineSession`].
@@ -86,7 +88,10 @@ impl PipelineSession {
             return Err(SessionError::RunAlreadyStarted);
         }
         let idx = self.run.current_stage_index as usize;
-        let stage = self.stages.get_mut(idx).ok_or(SessionError::NoCurrentStage)?;
+        let stage = self
+            .stages
+            .get_mut(idx)
+            .ok_or(SessionError::NoCurrentStage)?;
         let (run2, stage2) = bootstrap_to_first_pause(&self.run, stage)?;
         self.run = run2;
         *stage = stage2;
@@ -98,7 +103,9 @@ impl PipelineSession {
         if self.run.status != PipelineRunStatus::RunInProgress {
             return Err(SessionError::RunNotActive);
         }
-        let stage = self.current_stage_mut().ok_or(SessionError::NoCurrentStage)?;
+        let stage = self
+            .current_stage_mut()
+            .ok_or(SessionError::NoCurrentStage)?;
         stage.approved_at = approved_at;
         Ok(())
     }
@@ -109,7 +116,10 @@ impl PipelineSession {
             return Err(SessionError::RunNotActive);
         }
         let idx = self.run.current_stage_index as usize;
-        let stage = self.stages.get_mut(idx).ok_or(SessionError::NoCurrentStage)?;
+        let stage = self
+            .stages
+            .get_mut(idx)
+            .ok_or(SessionError::NoCurrentStage)?;
         let completed = advance_stage_with_approval(stage)?;
         *stage = completed;
 
@@ -129,7 +139,9 @@ impl PipelineSession {
         if self.run.status != PipelineRunStatus::RunInProgress {
             return Err(SessionError::RunNotActive);
         }
-        let stage = self.current_stage_mut().ok_or(SessionError::NoCurrentStage)?;
+        let stage = self
+            .current_stage_mut()
+            .ok_or(SessionError::NoCurrentStage)?;
         stage.status = StageStatus::StageError;
         self.run.status = PipelineRunStatus::RunBlocked;
         Ok(())
@@ -138,7 +150,10 @@ impl PipelineSession {
     /// `RecoveredPipelineCanAdvance` (acceptance.intent, T-0004).
     pub fn recover_current(&mut self) -> Result<(), SessionError> {
         let idx = self.run.current_stage_index as usize;
-        let stage = self.stages.get_mut(idx).ok_or(SessionError::NoCurrentStage)?;
+        let stage = self
+            .stages
+            .get_mut(idx)
+            .ok_or(SessionError::NoCurrentStage)?;
         let (run2, stage2) = recover_blocked_pipeline(&self.run, stage)?;
         self.run = run2;
         *stage = stage2;
