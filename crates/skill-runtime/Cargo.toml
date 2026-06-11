@@ -1,0 +1,13 @@
+[package]
+name = "skill-runtime"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "skill-runtime product — in-shadow implementation slice (ADR-002/003/004; mirrors Z3-verified intents)."
+
+[dependencies]
+artifact-system = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }

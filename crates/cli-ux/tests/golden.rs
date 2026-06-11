@@ -1,0 +1,71 @@
+//! Golden semantic baselines for the `cli-ux` slice.
+
+use cli_ux::{
+    complete_pipeline_stage, contains_removed_top_level_command, create_document_artifact,
+    parse_args, start_issue_run, top_level_help,
+};
+use storage::MemoryDocumentStore;
+
+#[test]
+fn golden_001_help_exposes_idd_main_path_without_removed_commands() {
+    let help = top_level_help();
+    for command in ["init", "issue", "pipeline", "doc", "admin", "doctor"] {
+        assert!(help.lines().any(|line| line == command));
+    }
+    assert!(!contains_removed_top_level_command(&help));
+}
+
+#[test]
+fn golden_002_issue_start_returns_run_id_and_lock_signal() {
+    let result = start_issue_run("PROJ-7", "slice-3-cli-ux", "slice-delivery", "run-7").unwrap();
+    assert!(result.run_created);
+    assert!(result.spec_locked);
+    assert!(result.has_run_id);
+    assert_eq!(result.run_id, "run-7");
+}
+
+#[test]
+fn golden_003_doc_create_writes_artifact_and_document_row() {
+    let mut store = MemoryDocumentStore::new();
+    let result = create_document_artifact(
+        &mut store,
+        "doc-7",
+        "shadow-implementer",
+        "cli-ux implementation coverage",
+        "run-7",
+    )
+    .unwrap();
+    assert!(result.artifact_file_exists);
+    assert!(result.document_row_exists);
+    assert_eq!(store.len(), 1);
+}
+
+#[test]
+fn golden_004_stage_complete_requires_confirm_then_advances() {
+    let err = complete_pipeline_stage("current", "run-7", false).unwrap_err();
+    assert_eq!(err.category, "lock");
+    assert!(err.next_step.contains("--confirm"));
+
+    let result = complete_pipeline_stage("current", "run-7", true).unwrap();
+    assert!(result.previous_completed);
+    assert!(result.downstream_ready);
+    assert!(result.status_reflects_state);
+}
+
+#[test]
+fn golden_005_admin_commands_are_nested_under_admin() {
+    assert!(parse_args(["admin", "migrate", "--workspace", "/repo"]).is_ok());
+    assert!(parse_args(["admin", "reinit", "--workspace", "/repo"]).is_ok());
+    assert!(parse_args(["migrate"]).is_err());
+    assert!(parse_args(["reinit"]).is_err());
+}
+
+#[test]
+fn golden_006_removed_commands_return_actionable_errors() {
+    for command in ["checklist", "item", "sync"] {
+        let err = parse_args([command]).unwrap_err();
+        assert_eq!(err.category, "invalid-args");
+        assert_eq!(err.object_ref, command);
+        assert!(err.has_category_object_and_next_step());
+    }
+}

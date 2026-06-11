@@ -1,0 +1,80 @@
+slice: "cli-ux"
+date: "2026-06-10"
+legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+baseline_dir: "docs/baseline/2026-06-10/cli-ux/"
+summary:
+  golden_total: 6
+  golden_pass: 6
+  golden_fail: 0
+  divergence_count: 1
+  equivalence_gate_pass: true
+goldens:
+  - id: G-001
+    description: "top-level help exposes IDD main path and hides removed commands"
+    script: "golden-001-help-surface.sh"
+    legacy: "legacy/popsicle/crates/popsicle-cli/src/main.rs command surface"
+    new: "crates/cli-ux/src/lib.rs::top_level_help"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/intents/invariants.intent#RenderTopLevelHelp"
+      - "products/cli-ux/intents/invariants.intent#RemovedCommandsStayRemoved"
+  - id: G-002
+    description: "issue start returns run id and spec lock signal"
+    script: "golden-002-issue-start.sh"
+    legacy: "legacy/popsicle issue/pipeline run creation semantics"
+    new: "crates/cli-ux/src/lib.rs::start_issue_run"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/intents/acceptance.intent#IssueStartCreatesRun"
+  - id: G-003
+    description: "doc create writes artifact content and document row"
+    script: "golden-003-doc-create.sh"
+    legacy: "legacy/popsicle doc artifact + documents table semantics"
+    new: "crates/cli-ux/src/lib.rs::create_document_artifact"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/intents/acceptance.intent#DocCommandWritesArtifact"
+  - id: G-004
+    description: "stage complete requires confirm and advances pipeline state"
+    script: "golden-004-stage-complete.sh"
+    legacy: "legacy/popsicle pipeline stage complete approval semantics"
+    new: "crates/cli-ux/src/lib.rs::complete_pipeline_stage"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/intents/acceptance.intent#StageAdvanceReflectsState"
+  - id: G-005
+    description: "migrate and reinit are nested under admin"
+    script: "golden-005-admin-tree.sh"
+    legacy: "legacy/popsicle migrate/reinit top-level commands"
+    new: "crates/cli-ux/src/lib.rs::parse_args"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/intents/acceptance.intent#AdminCommandsAreExplicit"
+  - id: G-006
+    description: "removed commands return actionable errors"
+    script: "golden-006-removed-commands.sh"
+    legacy: "legacy/popsicle checklist/item/sync commands"
+    new: "crates/cli-ux/src/lib.rs::parse_args"
+    compares: "semantic"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "products/cli-ux/intents/acceptance.intent#ErrorsAreActionable"
+      - "products/cli-ux/intents/invariants.intent#RemovedCommandsStayRemoved"
+divergences:
+  - id: D-001
+    behavior: "CLI byte parity is intentionally not locked"
+    legacy: "legacy stdout/stderr wording and full 22-command compatibility"
+    new: "semantic IDD command shell with preserve/redesign/drop/defer disposition"
+    reason: "PDR-001 states cli-ux is not a full compatibility rewrite and acceptance captures command effects, not byte parity"
+    adr: "ADR-007"

@@ -1,0 +1,37 @@
+# cli-ux — Tasks 索引
+
+> **Status**: 8/8 task 已实现（T-CU-0008 self-host Phase 1 ✓ ADR-010）
+> **Last-Updated**: 2026-06-11
+
+5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
+
+| 旅程阶段 | 任务数 | 已实施 | 健康度 |
+|---|---|---|---|
+| `onboarding/` | 1 | 1 | 🟢 implemented |
+| `daily-ops/` | 3 | 3 | 🟢 implemented |
+| `troubleshooting/` | 1 | 1 | 🟢 implemented |
+| `admin/` | 1 | 1 | 🟢 implemented |
+| `lifecycle/` | 2 | 2 | 🟢 implemented |
+
+## Task 清单（PDR-001）
+
+| Task | 旅程 | 标题 | acceptance/invariant |
+|---|---|---|---|
+| T-CU-0001 | onboarding | 第一次初始化 popsicle-new 并看到下一步 | InitShowsNextStep |
+| T-CU-0002 | daily-ops | 创建 issue 并启动 pipeline run | IssueStartCreatesRun |
+| T-CU-0003 | daily-ops | 创建/查看/校验 stage 文档 | DocCommandWritesArtifact |
+| T-CU-0004 | daily-ops | 查询 pipeline 状态并推进 stage | StageAdvanceReflectsState |
+| T-CU-0005 | troubleshooting | guard/lock/not-found 错误可诊断 | ErrorsAreActionable |
+| T-CU-0006 | admin | 执行低频 admin migrate/reinit | AdminCommandsAreExplicit |
+| T-CU-0007 | lifecycle | 确认旧命令 disposition | RemovedCommandsStayRemoved |
+| T-CU-0008 | lifecycle | 自举运行 workflow 并确认 binary provenance | SelfHostedWorkflowSmokePasses / BinaryProvenanceVisible |
+
+## 命名约定
+
+task 文件命名：`<旅程阶段>/<动词-名词-短语>.md`（小写连字符）。
+每个 task 文件**必须**带 YAML frontmatter（id / acceptance refs / intent refs）——见 prd-writer 模板。
+
+## 何时新增 task
+
+- 由 prd-writer 在产出 PRD 五件套时铺；不在 bootstrap 期间手工添加
+- 已存在的 task 进入 in-progress / done / blocked 由 `migration/progress.md` 同步追踪

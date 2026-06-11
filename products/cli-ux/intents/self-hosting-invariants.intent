@@ -1,0 +1,22 @@
+// Product: cli-ux
+// Layer: L1 invariants（self-hosting binary provenance）
+// Status: PDR-002 / ADR-009
+// Last-Updated: 2026-06-10
+
+type WorkflowBinaryUse {
+  usedParentBinary: Bool
+  usedSystemBinary: Bool
+}
+
+safety WorkflowSmokeDoesNotDependOnParentBinary(u: WorkflowBinaryUse) {
+  invariant (!u.usedParentBinary')
+  invariant (!u.usedSystemBinary')
+}
+
+@source("PDR-002", section: "Intent Impact")
+@tobe
+intent SelfHostSmokeUsesCurrentWorkspaceBinary(u: WorkflowBinaryUse) {
+  require true
+  ensure u.usedParentBinary' == false
+  ensure u.usedSystemBinary' == false
+}

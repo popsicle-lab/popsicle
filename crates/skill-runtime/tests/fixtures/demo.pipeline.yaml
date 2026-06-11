@@ -1,0 +1,11 @@
+name: demo-pipeline
+description: Minimal fixture pipeline
+stages:
+  - name: init
+    skill: project-init
+    description: bootstrap
+    requires_approval: true
+  - name: facts
+    skill: fact-extractor
+    description: extract facts
+    depends_on: [init]

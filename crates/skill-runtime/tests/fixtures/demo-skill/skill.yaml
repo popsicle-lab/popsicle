@@ -1,0 +1,10 @@
+name: demo-skill
+description: Minimal fixture for loader tests
+version: "1.2.3"
+workflow:
+  initial: scoping
+  states:
+    scoping:
+      transitions:
+        - to: implementing
+          action: scoped

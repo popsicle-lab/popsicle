@@ -1,0 +1,147 @@
+// Product:        skill-runtime
+// Layer:          L2 acceptance（验收契约 — 单文件多 block，v0.2 任务图范式）
+// Status:         种子 — 由 prd-writer 产；下一步由 intent-spec-writer 收紧 + intent-consistency-check Z3 闸
+// Source PRD:     .popsicle/artifacts/<run>/skill-runtime-prd-6-tasks-across-5-journey-stages.prd.md
+// Source PDR:     PDR-002-skill-runtime-tasks-mvp.md
+// Last-Updated:   2026-06-08
+//
+// ⚠️ 能力边界（D2）：intent-lang 只验证逻辑一致性。
+//   任何「N 秒内 / P95 / 最终一致」等时间约束 **禁止** 写本文件
+//   —— 它们属于 task 文件「可观察成功标志」，由 e2e / benchmark 守护。
+//
+// 命名约定：intent 名 PascalCase；元数据注释块字段 task / pdr / journey_stage / source / query_anchors。
+
+// ---- 领域类型（合并时与 invariants/contracts 共享）----
+
+enum StageStatus { StageBlocked, StageReady, StageInProgress, StageCompleted, StageError }
+enum PipelineRunStatus { RunPending, RunInProgress, RunCompleted, RunBlocked }
+enum SkillStatus { Loaded, Active, Deprecated }
+
+type Skill {
+  name: String
+  pkgVersion: String        // ADR-002：原 version 拆为 pkgVersion + schemaVersion
+  schemaVersion: String
+  status: SkillStatus
+}
+
+type Stage {
+  name: String
+  status: StageStatus
+  requiresApproval: Bool
+  approvedAt: Int           // 0 = 未审批；> 0 = 审批时间戳
+}
+
+type PipelineRun {
+  id: String
+  status: PipelineRunStatus
+  currentStageIndex: Int
+  totalStages: Int
+}
+
+
+// ---- Block 1 ----
+// task:          T-0001
+// pdr:           PDR-002
+// journey_stage: onboarding
+// source:        prd § "Intent Mapping" › row 1
+// query_anchors:
+//   - "popsicle-new 第一次怎么开始用？"
+//   - "intent-coder 的 skill 包要怎么装到 popsicle？"
+//   - "migration-bootstrap pipeline 是什么？跑到哪里会停下来等我？"
+@source("PDR-002", section: "Intent Mapping row 1")
+@tobe
+intent PipelineBootstrapsToFirstPause(r: PipelineRun, s: Stage) {
+  require r.status == RunPending
+  require s.status == StageBlocked
+  ensure r.status' == RunInProgress
+  ensure s.status' == StageInProgress   // 首个 stage 进入 InProgress（停在 requires_approval 暂停点）
+  ensure r.currentStageIndex' == r.currentStageIndex   // frame（规则3）
+  ensure r.totalStages' == r.totalStages               // frame
+}
+
+
+// ---- Block 2 ----
+// task:          T-0002
+// pdr:           PDR-002
+// journey_stage: daily-ops
+// source:        prd § "Intent Mapping" › row 2
+// query_anchors:
+//   - "怎么把一个 stage 标记为 completed？"
+//   - "stage complete 一定要带 --confirm 吗？"
+//   - "审批点 requires_approval 没过会怎么样？"
+@source("PDR-002", section: "Intent Mapping row 2")
+@tobe
+intent StageAdvanceWithApproval(s: Stage) {
+  require s.status == StageInProgress
+  require !s.requiresApproval || s.approvedAt > 0    // 不需审批 OR 已审批
+  ensure s.status' == StageCompleted
+  ensure s.requiresApproval' == s.requiresApproval     // frame（规则3）
+  ensure s.approvedAt' == s.approvedAt                 // frame
+}
+
+
+// ---- Block 3 ----
+// task:          T-0004
+// pdr:           PDR-002
+// journey_stage: troubleshooting
+// source:        prd § "Intent Mapping" › row 3
+// query_anchors:
+//   - "stage 卡在 blocked 是什么意思？"
+//   - "popsicle pipeline unlock 在干嘛？什么时候用？"
+//   - "stage 失败后怎么重跑而不丢前面的产出？"
+@source("PDR-002", section: "Intent Mapping row 3")
+@tobe
+intent RecoveredPipelineCanAdvance(r: PipelineRun, s: Stage) {
+  require r.status == RunBlocked
+  require s.status == StageError
+  ensure r.status' == RunInProgress
+  ensure s.status' != StageError                          // 至少脱离 Error 态（Ready 或 InProgress）
+  ensure r.currentStageIndex' == r.currentStageIndex // frame：恢复不丢前面产出
+  ensure r.totalStages' == r.totalStages             // frame
+}
+
+
+// ---- Block 4 ----
+// task:          T-0006
+// pdr:           PDR-002
+// journey_stage: lifecycle
+// source:        prd § "Intent Mapping" › row 4
+// query_anchors:
+//   - "skill 怎么升级到新版本？老的 pipeline 会被自动用新版吗？"
+//   - "已经跑完的 run 用了旧版 skill —— 升级后那些 run 还可信吗？"
+//   - "in-progress 的 run 跨越 skill 升级会发生什么？"
+@source("PDR-002", section: "Intent Mapping row 4")
+@tobe
+intent UpgradeDoesNotAffectCompletedRuns(r: PipelineRun, skOld: Skill, skNew: Skill) {
+  require r.status == RunCompleted
+  require skOld.name == skNew.name
+  require skOld.pkgVersion != skNew.pkgVersion        // 包升级（ADR-002 双版本）
+  ensure r.status' == RunCompleted                      // 冻结：仍 Completed
+  ensure r.currentStageIndex' == r.currentStageIndex // 未被回退
+  ensure r.totalStages' == r.totalStages             // frame
+}
+
+
+// ============================================================
+// 一致性自检（prd-writer review 前必跑）
+// ============================================================
+//
+//   1. 本文件 intent 数 (4) == PRD § Intent Mapping 表中标 acceptance.intent 的行数 (4)
+//   2. 每个 intent 的 task: 都对应一个存在的 task 文件
+//   3. 每个 intent 的 journey_stage 与对应 task frontmatter 一致
+//   4. 每个 intent 的 query_anchors 至少 1 个出现在 PRD § User Intents Catalog
+//   5. 对应 task 文件 frontmatter 的 related_intents 反向引用本文件 intent 名
+//   6. 没有任何时间 / 性能 / 运行时约束泄漏进 ensure（D2 守住）
+//   7. 真能跑：intent check 本文件 → 全 verified / 合理 skipped
+//
+// T-0003 (read-only-commands) → 进 invariants.intent（不在本种子）
+// T-0005 (audit-trail-immutable) → 进 invariants.intent（不在本种子）
+// 上述两条交给 intent-spec-writer 阶段在 invariants.intent 落地。
+
+// ============================================================
+// 合并到 products/skill-runtime/intents/acceptance.intent（单文件）
+// ============================================================
+//
+//   本文件已在最终位置（products/skill-runtime/intents/acceptance.intent）；
+//   后续由 intent-spec-writer 阶段做字段规范、与已有 intent 去重、跑 intent check。
+//

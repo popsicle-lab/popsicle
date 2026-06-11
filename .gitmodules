@@ -1,0 +1,3 @@
+[submodule "legacy/popsicle"]
+	path = legacy/popsicle
+	url = https://github.com/popsicle-lab/popsicle.git

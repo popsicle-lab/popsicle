@@ -1,0 +1,128 @@
+// Product: cli-ux
+// Layer: L2 acceptance（验收契约 —— PROJ-6 / PDR-001）
+// Status: draft formal seed — 待 intent-spec-writer 收紧 / intent-check
+// Last-Updated: 2026-06-09
+// Source PDR: PDR-001-cli-ux-command-tree-redesign.md
+
+type InitResult {
+  workspaceReady: Bool
+  hasNextStep: Bool
+}
+
+type IssueStartResult {
+  runCreated: Bool
+  specLocked: Bool
+  hasRunId: Bool
+}
+
+type DocCreateResult {
+  artifactFileExists: Bool
+  documentRowExists: Bool
+  hasDocId: Bool
+}
+
+type StageAdvanceResult {
+  previousCompleted: Bool
+  downstreamReady: Bool
+  statusReflectsState: Bool
+}
+
+type ErrorResult {
+  hasCategory: Bool
+  hasObjectRef: Bool
+  hasNextStep: Bool
+}
+
+type AdminResult {
+  underAdminTree: Bool
+  explicitWorkspace: Bool
+}
+
+type WorkflowSmokeResult {
+  issueCreated: Bool
+  runStarted: Bool
+  nextSuggested: Bool
+  docCreated: Bool
+  stageCompleted: Bool
+  statusReadable: Bool
+}
+
+type BinaryProvenanceResult {
+  hasExecutablePath: Bool
+  hasWorkspaceRoot: Bool
+  hasExpectedWorkspaceBinary: Bool
+  currentWorkspaceBinaryMatch: Bool
+}
+
+@source("PDR-001", section: "Intent Mapping row 1")
+@tobe
+intent InitShowsNextStep(r: InitResult) {
+  require r.workspaceReady
+  ensure r.hasNextStep' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 2")
+@tobe
+intent IssueStartCreatesRun(r: IssueStartResult) {
+  require true
+  ensure r.runCreated' == true
+  ensure r.specLocked' == true
+  ensure r.hasRunId' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 3")
+@tobe
+intent DocCommandWritesArtifact(r: DocCreateResult) {
+  require true
+  ensure r.artifactFileExists' == true
+  ensure r.documentRowExists' == true
+  ensure r.hasDocId' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 4")
+@tobe
+intent StageAdvanceReflectsState(r: StageAdvanceResult) {
+  require true
+  ensure r.previousCompleted' == true
+  ensure r.downstreamReady' == true
+  ensure r.statusReflectsState' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 5")
+@tobe
+intent ErrorsAreActionable(r: ErrorResult) {
+  require true
+  ensure r.hasCategory' == true
+  ensure r.hasObjectRef' == true
+  ensure r.hasNextStep' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 6")
+@tobe
+intent AdminCommandsAreExplicit(r: AdminResult) {
+  require true
+  ensure r.underAdminTree' == true
+  ensure r.explicitWorkspace' == true
+}
+
+@source("PDR-002", section: "Intent Impact")
+@tobe
+intent SelfHostedWorkflowSmokePasses(r: WorkflowSmokeResult) {
+  require true
+  ensure r.issueCreated' == true
+  ensure r.runStarted' == true
+  ensure r.nextSuggested' == true
+  ensure r.docCreated' == true
+  ensure r.stageCompleted' == true
+  ensure r.statusReadable' == true
+}
+
+@source("PDR-002", section: "Intent Impact")
+@tobe
+intent BinaryProvenanceVisible(r: BinaryProvenanceResult) {
+  require true
+  ensure r.hasExecutablePath' == true
+  ensure r.hasWorkspaceRoot' == true
+  ensure r.hasExpectedWorkspaceBinary' == true
+  ensure r.currentWorkspaceBinaryMatch' == true
+}

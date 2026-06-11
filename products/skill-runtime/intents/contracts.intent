@@ -1,0 +1,39 @@
+// Product: skill-runtime
+// Layer: L4 contracts（模块 API / 跨模块契约的形式化描述）
+// Status: 已解锁 —— ADR-002 于 2026-06-08 Accepted；每个 goal 标 [ADR-002 Accepted 2026-06-08]。
+//         下一步由 intent-spec-writer 按 contracts-unlocked 工单收紧到 acceptance/invariants。
+// Source-RFC: rfc-002-skill-runtime-skillloadresult-契约--命令树重组.rfc.md
+// Last-Updated: 2026-06-08
+// 修订本文件遵循 docs/CHARTER.md 三层 Intent 体系：触发改动需对应一份 product 内部 ADR。
+//
+// ⚠️ 能力边界（D2）：skill load 时延等性能契约不进 goal 字段——它们是 NFR，
+//    由 benchmark 守护（见 RFC-002 § Quality Attributes）。
+
+// ------------------------------------------------------------
+// 内部模块契约（skill-runtime 对 AI agent 暴露的加载契约）
+// ------------------------------------------------------------
+
+// 接口（语义层，技术形式 [ADR-002 Accepted 2026-06-08]）：
+//   skill_load(pkg: String) -> SkillLoadResult{ name, pkg_version, schema_version, state_machine }
+// SLO（不进 Z3）：skill load 非热路径 —— 见 RFC-002 § Quality Attributes
+goal "skill load 暴露稳定的加载结果契约" {
+  rationale: "AI coding agent 依赖 skill load 返回结构来推进 pipeline；冻结 name/pkg_version/schema_version/state_machine 四字段，使 agent 调用在 skill 演进下保持稳定"
+  stakeholder: ["ai-coding-agent", "skill-author", "security"]
+  measure: "skill load 返回值始终含且仅含约定四字段；state_machine 仅含 {pending→in_progress→completed/blocked} 转移，无绕过路径"
+}
+
+// 接口（语义层，技术形式 [ADR-002 Accepted 2026-06-08]）：
+//   SkillLoadResult.schema_version 独立于 pkg_version；向后兼容变更时 schema_version 不变
+goal "state_machine schema 版本独立于包版本" {
+  rationale: "解耦「包升级」与「schema 兼容」——加字段不必 bump 包版本，agent 可凭 schema_version 判定向后兼容"
+  stakeholder: ["ai-coding-agent", "skill-author"]
+  measure: "存在 pkg_version 变化而 schema_version 不变的合法升级；schema_version 变化当且仅当 state_machine schema 发生不兼容变更"
+}
+
+// ============================================================
+// 自检：
+//   - 每个内部契约都有 goal（rationale/stakeholder/measure）且明确标 [ADR-002 Accepted 2026-06-08]
+//   - 无性能/时间数字进入 goal 字段（D2）—— 时延在 RFC § NFR
+//   - state_machine 不变量（HC-2）最终落 invariants.intent，由 intent-spec-writer 收紧
+//   - `intent check` 本文件 → 解析通过，0 VC，exit 0
+// ============================================================

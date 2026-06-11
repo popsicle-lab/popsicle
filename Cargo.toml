@@ -1,28 +1,22 @@
 [workspace]
 resolver = "2"
-members = [
-    "crates/popsicle-core",
-    "crates/popsicle-cli",
-    "crates/popsicle-sync",
-]
+
+# Member crates live at the workspace root under crates/<slice>/ (crate = slice),
+# per ADR-003 (workspace layout, Accepted 2026-06-08). The three slices
+# (skill-runtime / artifact-system / cli-ux) belong to the single popsicle product;
+# products/<slice>/ holds IDD docs in parallel. The glob is empty until the first
+# crate (crates/skill-runtime) lands during the in-shadow phase (see migration/progress.md).
+members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
-edition = "2024"
-license = "Apache-2.0"
-repository = "https://github.com/popsicle"
+edition = "2021"
+license = "MIT"
+authors = ["popsicle-lab"]
+repository = "https://github.com/popsicle-lab/popsicle-new"
 
 [workspace.dependencies]
-popsicle-core = { path = "crates/popsicle-core" }
-popsicle-sync = { path = "crates/popsicle-sync" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml_ng = "0.10"
-thiserror = "2"
-anyhow = "1"
-uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
-regex = "1"
-toml = "0.8"
-tokio = { version = "1", features = ["full"] }
+serde_yaml = "0.9"
+artifact-system = { path = "crates/artifact-system" }
+skill-runtime = { path = "crates/skill-runtime" }
+storage = { path = "crates/storage" }

@@ -1,0 +1,14 @@
+// Product: cli-ux
+// Layer: L4 contracts（模块 API / 跨模块契约的形式化描述）
+// Status: ADR-007 Accepted
+// Last-Updated: 2026-06-09
+
+// [ADR-007 Accepted 2026-06-09]
+// cli-ux is an IO shell: command handlers may parse argv, format output, and
+// call domain services, but must not own pipeline state-machine, document
+// parser, guard evaluator, or storage schema logic.
+goal "CLI shell delegates domain behavior to domain crates" {
+  rationale: "cli-ux keeps command handlers thin so pipeline/session semantics stay in skill-runtime, document/guard/context semantics stay in artifact-system, and persistence-facing behavior stays in storage"
+  stakeholder: ["ai-coding-agent", "maintainer", "migration"]
+  measure: "command handlers parse argv, call domain crates, format output, and produce actionable errors; they do not implement pipeline state-machine, document parser, guard evaluator, context assembly, extractor logic, or storage schema logic"
+}

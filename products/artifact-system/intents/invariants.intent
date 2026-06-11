@@ -1,0 +1,43 @@
+// Product: artifact-system
+// Layer: L1 invariants（product 自然律 —— 跨 acceptance 永真）
+// Status: 首批落地 —— 由 intent-spec-writer 从 ADR-004 contracts-unlocked 工单收紧；
+//         intent-check Z3 实测修正（见 intent-consistency-report § Failures）。
+// Last-Updated: 2026-06-09
+// Last-Decision-Ref: ADR-004（guard total）
+// 修订本文件遵循 docs/CHARTER.md 三层 Intent 体系：触发改动需对应一份 product 内部 PDR/ADR。
+//
+// ⚠️ 一文件一作用域（四规则#2）：本文件的 safety 会无条件附加到文件内**所有** intent（不限同类型参数）。
+//    intent-check Z3 实测证实：两个**不相交类型**的保持型 safety 同文件共存时，会互相 havoc 对方状态
+//    导致 false failure。故本文件只保留**单一**保持型不变量（GuardResultIsTotal）；
+//    TaskChunkRenamePreservesFields 移至 acceptance.intent（该文件无 safety，不产生 havoc），
+//    ContextOrderIndependentOfRegistration 因 intent-lang 无序列推理而剥离（见 intent-spec-report）。
+
+// ---- 领域类型（本文件自洽）----
+
+enum GOutcome { GPass, GFail, GInvalid }
+
+type GuardEval {
+  recognized: Bool       // guard 字符串是否属已知类型（has_sections/checklist_complete/upstream_approved）
+  outcome: GOutcome
+}
+
+// ---- 保持型不变量：GuardResultIsTotal（ADR-004 / contracts 契约 2）----
+// 任何未知 guard 字符串求值后，outcome 必为 GInvalid（确定性 InvalidSkillDef，绝不 panic / 绝不静默 pass）。
+// primed（规则1）：约束操作**之后**的状态。
+safety UnknownGuardIsInvalid(g: GuardEval) {
+  invariant (!g.recognized') ==> (g.outcome' == GInvalid)
+}
+
+// 绑定操作（使上述 safety 产生真实 VC；规则2/4）
+@source("ADR-004", section: "guard 与 extractor 对任意输入全函数、不 panic")
+@tobe
+intent EvaluateGuard(g: GuardEval) {
+  require true
+  ensure g.recognized' == g.recognized            // frame：识别性不被偷改
+  ensure (!g.recognized) ==> (g.outcome' == GInvalid)
+}
+
+// ============================================================
+// 验证：`intent check` → UnknownGuardIsInvalid × EvaluateGuard 产生 1 个真实 VC（非 trivial），verified。
+//   （intent-cli Z3 实跑见 intent-consistency-report。）
+// ============================================================

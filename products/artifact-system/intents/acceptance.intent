@@ -1,0 +1,129 @@
+// Product:        artifact-system
+// Layer:          L2 acceptance（验收契约 — 单文件多 block，v0.2 任务图范式）
+// Status:         已收紧 — intent-spec-writer 从 prd-writer 种子收紧（2026-06-09）；下一步 intent-consistency-check Z3 闸
+// Source PRD:     .popsicle/artifacts/49989451-d311-.../artifact-system-prd-6-个文档制品-task-跨-5-旅程阶段.prd.md
+// Source PDR:     PDR-001-artifact-system-tasks-mvp.md
+// Source Debate:  product-debate 5415991a（方案 C）
+// Last-Updated:   2026-06-09
+//
+// ⚠️ 能力边界（D2）：intent-lang 只验证逻辑一致性。
+//   任何「N 秒内 / P95」等时间约束禁止写本文件 —— 属 task 文件「可观察成功标志」，由 e2e/benchmark 守护。
+//
+// 命名约定：intent 名 PascalCase；元数据注释块字段 task / pdr / journey_stage / source / query_anchors。
+
+// ---- 领域类型（合并时与 invariants/contracts 共享）----
+
+enum Relevance { RelLow, RelMedium, RelHigh }
+enum ChunkKind { KindBug, KindStory, KindTestCase }
+enum GuardOutcome { GuardPass, GuardFail, GuardInvalid }
+
+type Document {
+  id: String
+  body: String
+  version: Int
+  parentId: String          // "" = 无父；非空 = 上一版 id
+  status: String            // "active" | "final"
+}
+
+type GuardCheck {
+  totalBoxes: Int
+  checkedBoxes: Int
+  hasPlaceholder: Bool
+  outcome: GuardOutcome
+}
+
+type ContextDoc {
+  relevance: Relevance
+  includedFullText: Bool    // true = 给全文；false = 给摘要
+}
+
+type ExtractItem {
+  kind: ChunkKind
+}
+
+
+// ---- Block 1 ----
+// task:          T-AS-0002
+// pdr:           PDR-001
+// journey_stage: daily-ops
+// source:        prd § "Intent Mapping" › row 1
+// query_anchors:
+//   - "我 doc create 后存盘再读能一字不差还原吗？"
+//   - "改一次文档版本号会自增、会链到上一版吗？"
+@source("PDR-001", section: "Intent Mapping row 1")
+@tobe
+intent DocumentRoundTrips(d: Document) {
+  require d.version >= 1
+  ensure d.body' == d.body          // to_file_content → from_file_content 还原 body 不变
+  ensure d.id' == d.id              // frame
+  ensure d.version' == d.version    // frame
+}
+
+// ---- Block 2 ----
+// task:          T-AS-0003
+// pdr:           PDR-001
+// journey_stage: daily-ops
+// source:        prd § "Intent Mapping" › row 2
+// query_anchors:
+//   - "checklist 还差几个没勾，guard 会判失败吗？"
+//   - "has_sections 和 checklist_complete 分别校验什么？"
+@source("PDR-001", section: "Intent Mapping row 2")
+@tobe
+intent GuardChecklistCompleteIffNoUnchecked(g: GuardCheck) {
+  require g.totalBoxes >= 0
+  require g.checkedBoxes >= 0
+  require g.checkedBoxes <= g.totalBoxes
+  ensure (g.outcome' == GuardPass) == (g.checkedBoxes == g.totalBoxes)   // 全勾才过
+}
+
+// ---- Block 3 ----
+// task:          T-AS-0004
+// pdr:           PDR-001
+// journey_stage: daily-ops
+// source:        prd § "Intent Mapping" › row 3
+// query_anchors:
+//   - "prompt 装配时最相关的文档会给全文吗？"
+//   - "context 的 Relevance 排序是怎么定的？"
+@source("PDR-001", section: "Intent Mapping row 3")
+@tobe
+intent ContextAssemblyOrdersByRelevance(c: ContextDoc) {
+  ensure (c.relevance == RelHigh) ==> (c.includedFullText' == true)    // High → 全文
+  ensure (c.relevance == RelLow)  ==> (c.includedFullText' == false)   // Low → 摘要
+}
+
+// ---- Block 4 ----
+// task:          T-AS-0005
+// pdr:           PDR-001
+// journey_stage: troubleshooting
+// source:        prd § "Intent Mapping" › row 4
+// query_anchors:
+//   - "doc extract 抽不到 story/bug/testcase 怎么排查？"
+//   - "extractor 的正则匹配失败时返回空还是崩？"
+@source("PDR-001", section: "Intent Mapping row 4")
+@tobe
+intent ExtractPreservesKind(e: ExtractItem) {
+  ensure e.kind' == e.kind   // 提取产物 kind 与提取函数对应，不被改写
+}
+
+// ---- Block 5（intent-check 重定位）----
+// task:          T-AS-0006
+// pdr:           PDR-001
+// journey_stage: lifecycle
+// source:        ADR-004 / PDR-001 work_item → task_chunk_entity 重命名保字段
+// 说明：原拟入 invariants.intent，但 intent-check Z3 实测两不相交类型 safety 同文件互相 havoc；
+//       本验收文件无 safety，故重定位至此作为操作级验收（保持型断言由 property test 兜底）。
+// query_anchors:
+//   - "work_item 改名 task_chunk 后我历史数据的 kind 会丢吗？"
+//   - "task_chunk 的 fields JSON blob 重命名后还在吗？"
+enum CKind { CBug, CStory, CTestCase }
+type TaskChunk {
+  kind: CKind
+  fieldsHash: Int        // JSON fields blob 内容指纹（重命名不得改变）
+}
+@source("PDR-001", section: "work_item → task_chunk_entity 重命名 + 字段保持")
+@tobe
+intent RenameWorkItemToTaskChunk(t: TaskChunk) {
+  require true
+  ensure t.kind' == t.kind            // 重命名后 kind 逐键相等
+  ensure t.fieldsHash' == t.fieldsHash // fields blob 指纹不变
+}

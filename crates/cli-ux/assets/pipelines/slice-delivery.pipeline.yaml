@@ -1,0 +1,48 @@
+name: slice-delivery
+description: >-
+  单个迁移 slice 的交付后半段：按 ADR File Manifest 做 in-shadow 实现、
+  legacy vs new golden 对账、切流 ADR + traceability，最后保活实现态文档。
+  前置条件：该 slice 的 spec 已完成（migration-bootstrap 或 slice-spec 的
+  intent-check 已通过）。不与 spec 链合并，避免 14 stage 过重。
+scale: full
+keywords:
+  - migration
+  - slice
+  - implementation
+  - equivalence
+  - golden
+  - cutover
+  - strangler-fig
+  - shadow
+
+stages:
+  - name: implement
+    skill: shadow-implementer
+    description: >-
+      读 products/<slice>/intents/* + ADR § File Manifest + 已有 crates/<slice>/，
+      实现/补齐 in-shadow 代码与 intent_properties 覆盖表。可多轮迭代。
+    depends_on: []
+
+  - name: equivalence
+    skill: equivalence-baseline
+    description: >-
+      从 LEGACY_PIN + api-contracts 生成/运行 golden 脚本，产出
+      docs/baseline/<date>/ 与 migration/traceability.md 行；登记已知 divergence。
+    depends_on: [implement]
+
+  - name: cutover
+    skill: cutover-author
+    description: >-
+      门禁：intent gate_ready≥3、≥5 golden pass（或 ADR 登记 divergence）、
+      cargo test 全绿。产出切流 ADR(Accepted)、更新 migration/progress.md。
+    depends_on: [equivalence]
+    requires_approval: true
+
+  - name: living-docs
+    skill: living-doc-author
+    description: >-
+      刷新 implementation-status / architecture-manifest / product-header；
+      回填 tasks/README「已实施」列。建议 --target
+      implementation-status,architecture-manifest,product-header。
+    depends_on: [cutover]
+    requires_approval: true

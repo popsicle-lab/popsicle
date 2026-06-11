@@ -1,0 +1,57 @@
+// Product: skill-runtime
+// Layer: L1 invariants（product 自然律 —— 跨 acceptance 永真）
+// Status: 首批落地 —— 由 intent-spec-writer 从 acceptance 种子 + ADR-002 contracts-unlocked 工单收紧。
+// Last-Updated: 2026-06-08
+// Last-Decision-Ref: PDR-002 / ADR-002（HC-2 状态机审批闸）
+// 修订本文件遵循 docs/CHARTER.md 三层 Intent 体系：触发改动需对应一份 product 内部 PDR/ADR。
+//
+// ⚠️ 一文件一作用域（四规则#2）：本文件的 safety 会无条件附加到文件内所有 intent。
+//    这里只放「跨操作永真的保持型不变量」+ 它们的绑定操作；与之 frame 冲突的操作（如 read-only）
+//    不放本文件（见 intent-spec-report § 分层归位）。
+
+// ---- 领域类型（与 acceptance.intent 合并去重，勿重复声明）----
+
+enum StageStatus { StageBlocked, StageReady, StageInProgress, StageCompleted, StageError }
+
+type Stage {
+  name: String
+  status: StageStatus
+  requiresApproval: Bool
+  approvedAt: Int           // 0 = 未审批；> 0 = 审批时间戳
+}
+
+// ---- 保持型不变量（safety + primed，真正产生 VC）----
+
+// HC-2 审批闸（ADR-002）：任何使 stage 落到 Completed 的操作，若该 stage 需要审批，
+// 则审批时间戳必须 > 0。这是「requires_approval 没过不得完成」的形式化。
+// primed（规则1）：约束的是操作**之后**的状态。
+safety ApprovedBeforeCompleted(s: Stage) {
+  invariant (s.status' == StageCompleted && s.requiresApproval') ==> s.approvedAt' > 0
+}
+
+// ---- 绑定操作（与本 safety 同作用域，使其产生真实 VC；规则2/4）----
+// 注：StageAdvanceWithApproval 在 acceptance.intent 亦有同名 trivial 规约副本；
+//     此处副本受 ApprovedBeforeCompleted 守护，是 HC-2 真正被验证之处。
+@source("ADR-002", section: "HC-2 状态机审批闸")
+@tobe
+intent StageAdvanceWithApproval(s: Stage) {
+  require s.status == StageInProgress
+  require !s.requiresApproval || s.approvedAt > 0
+  ensure s.status' == StageCompleted
+  ensure s.requiresApproval' == s.requiresApproval     // frame：审批要求不被偷改
+  ensure s.approvedAt' == s.approvedAt                 // frame：审批戳不被偷改
+}
+
+// ============================================================
+// 已声明但本批不落地（见 intent-spec-report § 分层归位）：
+//   - ReadOnlyCommandsDoNotMutate（T-0003）：属「操作 frame」类，做成全局 safety 会
+//     证伪所有 mutating 操作（规则2 冲突）→ 降级为 T-0003 task「可观察成功标志」 +
+//     可选 per-op trivial intent，不进本文件。
+//   - AuditTrailIsReconstructible（T-0005）：需对 artifact 序列做聚合/历史推理；
+//     intent-lang 无聚合（count/where）→ 只能写 struct-forall theorem，当前 `skipped`
+//     （仅声明意图，等 intent-lang 支持）。
+//
+// 验证：`intent check` 本文件 → ApprovedBeforeCompleted 对 StageAdvanceWithApproval
+//   产生 1 个真实 VC（非 trivial），应 verified、exit 0。
+//   （本环境无 intent 二进制，静态审查；实跑留 intent-consistency-check Z3 闸。）
+// ============================================================

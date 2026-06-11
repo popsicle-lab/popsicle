@@ -1,0 +1,25 @@
+// Product: cli-ux
+// Layer: L1 invariants（product 自然律）
+// Status: draft formal seed — PROJ-6 / PDR-001
+// Last-Updated: 2026-06-09
+
+type CommandSurface {
+  exposesChecklist: Bool
+  exposesItem: Bool
+  exposesSync: Bool
+}
+
+safety RemovedCommandsStayRemoved(c: CommandSurface) {
+  invariant (!c.exposesChecklist')
+  invariant (!c.exposesItem')
+  invariant (!c.exposesSync')
+}
+
+@source("PDR-001", section: "command disposition")
+@tobe
+intent RenderTopLevelHelp(c: CommandSurface) {
+  require true
+  ensure c.exposesChecklist' == false
+  ensure c.exposesItem' == false
+  ensure c.exposesSync' == false
+}
