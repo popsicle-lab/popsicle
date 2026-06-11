@@ -9,3 +9,4 @@ description = "Shared persistence row types (ADR-004 DocumentRow); in-shadow sta
 
 [dependencies]
 artifact-system = { workspace = true }
+rusqlite = { version = "0.32", features = ["bundled"] }

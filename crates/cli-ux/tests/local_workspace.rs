@@ -1,18 +1,23 @@
-//! Integration tests for the real TSV workspace backend (not mock helpers).
+//! Integration tests for the real local workspace backend (not mock helpers).
+//! Fresh temp workspaces exercise the SQLite Phase 2 default (PROJ-11);
+//! dedicated tests cover TSV legacy compatibility and migration.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use cli_ux::{TsvWorkspace, Workspace};
+use cli_ux::{LocalWorkspace, StateBackend, Workspace};
 use storage::WorkspaceStore;
 
 fn temp_workspace() -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static SEQ: AtomicU32 = AtomicU32::new(0);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let root = std::env::temp_dir().join(format!("popsicle-tsv-test-{nanos}"));
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!("popsicle-local-test-{nanos}-{seq}"));
     write_pipeline(
         &root,
         "test-open",
@@ -49,7 +54,7 @@ fn write_pipeline(root: &Path, name: &str, content: &str) {
 #[test]
 fn tsv_roundtrip_persists_issue_and_doc() {
     let root = temp_workspace();
-    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     store.init().expect("init");
 
     let issue = store
@@ -70,7 +75,7 @@ fn tsv_roundtrip_persists_issue_and_doc() {
         .expect("create doc");
 
     drop(store);
-    let reloaded = TsvWorkspace::open_at(root.clone()).expect("reload workspace");
+    let reloaded = LocalWorkspace::open_at(root.clone()).expect("reload workspace");
     let issues = reloaded.list_issues().expect("list issues");
     assert_eq!(issues.len(), 1);
     assert_eq!(issues[0].key, issue.key);
@@ -86,9 +91,81 @@ fn tsv_roundtrip_persists_issue_and_doc() {
 }
 
 #[test]
+fn fresh_workspace_defaults_to_sqlite_backend() {
+    let root = temp_workspace();
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+    assert_eq!(store.backend(), StateBackend::Sqlite);
+    store
+        .create_issue("bug", "sqlite native", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .expect("create issue");
+    assert!(root.join(".popsicle/self-host/state.db").is_file());
+    assert!(!root.join(".popsicle/self-host/state.tsv").is_file());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn legacy_tsv_workspace_still_loads_and_saves() {
+    let root = temp_workspace();
+    let dir = root.join(".popsicle/self-host");
+    fs::create_dir_all(&dir).expect("layout");
+    fs::write(
+        dir.join("state.tsv"),
+        "meta\tnext_issue_num\t2\nmeta\tnext_run_num\t1\nmeta\tnext_doc_num\t1\nissue\tPROJ-1\tbug\tmedium\topen\tlegacy issue\tslice-3-cli-ux\ttest-open\tdesc\n",
+    )
+    .expect("write tsv");
+
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+    assert_eq!(store.backend(), StateBackend::Tsv);
+    assert_eq!(store.get_issue("PROJ-1").expect("legacy issue").title, "legacy issue");
+
+    // Mutations keep writing TSV until an explicit migration.
+    store
+        .create_issue("bug", "tsv second", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .expect("create issue");
+    assert!(!root.join(".popsicle/self-host/state.db").is_file());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn migrate_to_sqlite_preserves_rows_and_is_idempotent() {
+    let root = temp_workspace();
+    let dir = root.join(".popsicle/self-host");
+    fs::create_dir_all(&dir).expect("layout");
+    fs::write(
+        dir.join("state.tsv"),
+        "meta\tnext_issue_num\t3\nmeta\tnext_run_num\t1\nmeta\tnext_doc_num\t1\nissue\tPROJ-1\tbug\tmedium\topen\tfirst\tslice-3-cli-ux\ttest-open\t\nissue\tPROJ-2\ttechnical\thigh\tdone\tsecond\tslice-3-cli-ux\t\t\n",
+    )
+    .expect("write tsv");
+
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+    assert!(store.migrate_to_sqlite().expect("migrate"));
+    assert_eq!(store.backend(), StateBackend::Sqlite);
+    assert!(root.join(".popsicle/self-host/state.db").is_file());
+    assert!(root.join(".popsicle/self-host/state.tsv.migrated").is_file());
+    assert!(!root.join(".popsicle/self-host/state.tsv").is_file());
+
+    drop(store);
+    let mut reloaded = LocalWorkspace::open_at(root.clone()).expect("reload");
+    assert_eq!(reloaded.backend(), StateBackend::Sqlite);
+    assert_eq!(reloaded.list_issues().expect("list").len(), 2);
+    assert_eq!(reloaded.get_issue("PROJ-2").expect("issue").status, "done");
+    // Counter preserved: next issue gets PROJ-3.
+    let next = reloaded
+        .create_issue("bug", "post-migration", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .expect("create issue");
+    assert_eq!(next.key, "PROJ-3");
+    // Idempotent: second migrate reports false.
+    assert!(!reloaded.migrate_to_sqlite().expect("re-migrate"));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn tsv_issue_close_requires_completed_run() {
     let root = temp_workspace();
-    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
         .create_issue("bug", "close me", "slice-3-cli-ux", Some("test-open"), "medium", "")
         .expect("create issue");
@@ -106,7 +183,7 @@ fn tsv_issue_close_requires_completed_run() {
     assert_eq!(closed.status, "done");
 
     drop(store);
-    let reloaded = TsvWorkspace::open_at(root.clone()).expect("reload");
+    let reloaded = LocalWorkspace::open_at(root.clone()).expect("reload");
     assert_eq!(reloaded.get_issue(&issue.key).expect("get").status, "done");
 
     let _ = fs::remove_dir_all(root);
@@ -115,7 +192,7 @@ fn tsv_issue_close_requires_completed_run() {
 #[test]
 fn tsv_doc_check_fails_stub_and_passes_filled_doc() {
     let root = temp_workspace();
-    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
         .create_issue("bug", "doc check", "slice-3-cli-ux", Some("test-open"), "medium", "")
         .expect("create issue");
@@ -160,7 +237,7 @@ fn tsv_doc_check_fails_stub_and_passes_filled_doc() {
 #[test]
 fn tsv_pipeline_status_uses_stable_status_strings() {
     let root = temp_workspace();
-    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
         .create_issue(
             "bug",
@@ -185,7 +262,7 @@ fn tsv_pipeline_status_uses_stable_status_strings() {
 #[test]
 fn tsv_gated_stage_requires_confirm_but_open_stage_does_not() {
     let root = temp_workspace();
-    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
 
     let open_issue = store
         .create_issue(
@@ -246,7 +323,7 @@ fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
     fs::create_dir_all(&root).expect("create fresh dir");
 
     let workspace = Workspace::at(root.clone());
-    let mut store = TsvWorkspace::open_at(root.clone()).expect("open fresh workspace");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open fresh workspace");
     store.init().expect("init fresh workspace");
     let installed = workspace
         .install_bundled_pipelines()
@@ -286,7 +363,7 @@ fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
 #[test]
 fn tsv_start_issue_rejects_duplicate_active_run_and_spec_mismatch() {
     let root = temp_workspace();
-    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
         .create_issue(
             "bug",
@@ -310,7 +387,7 @@ fn tsv_start_issue_rejects_duplicate_active_run_and_spec_mismatch() {
     assert!(duplicate.is_err());
     assert!(duplicate.unwrap_err().to_string().contains("active-run"));
 
-    let reloaded = TsvWorkspace::open_at(root.clone()).expect("reload");
+    let reloaded = LocalWorkspace::open_at(root.clone()).expect("reload");
     let shown = reloaded.get_issue(&issue.key).expect("get issue");
     assert_eq!(shown.status, "in_progress");
     assert_eq!(shown.spec_id, "slice-3-cli-ux");

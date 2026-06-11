@@ -2,7 +2,7 @@
 
 > **Status**: 活文档 —— 每个 slice 状态变化时同步刷新
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-012（self-host usability completion，PROJ-24）
+> **Last-Decision-Ref**: ADR-013（SQLite Phase 2 storage，PROJ-25 / closes PROJ-11）
 
 ## Slices 看板
 
@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|---|
 | 1 | `skill-runtime` | `crates/popsicle-core/src/{model,engine/hooks,registry,memory}/` 大部分 + `issue` 实体 + `model/pipeline.rs::PipelineRun` | **cutover-done** | `slice-1-skill-runtime` | PROJ-4 slice-delivery ✓ | ADR-005 Accepted · lib golden 6/6 · CLI 仍 legacy（cli-ux）|
 | 2 | `artifact-system` | `crates/popsicle-core/src/{model/document, engine/markdown,engine/guard,engine/context,engine/context_layer,engine/extractor}.rs` + `namespace` 实体 + `task_chunk_entity`（旧 `work_item` 重命名）+ doc/extract/summarize 命令族 | **cutover-done** | `slice-2-artifact-system` | PROJ-5 slice-delivery ✓ | ADR-006 Accepted · lib golden 6/6 · CLI 仍 legacy（cli-ux）|
-| 3 | `cli-ux` | `crates/popsicle-cli/` + `crates/popsicle-core/src/commands/` + `prompt/migrate/admin` 命令族 | **cutover-done** | `slice-3-cli-ux` | PROJ-24 usability ✓ | ADR-008 + ADR-010 + ADR-011 + **ADR-012**（doc check / issue close / bundled 默认管线 + bugfix 模板 / smoke 隔离）· 18/18 golden · **dogfood-usable** · Phase 2 SQLite → PROJ-11 |
+| 3 | `cli-ux` | `crates/popsicle-cli/` + `crates/popsicle-core/src/commands/` + `prompt/migrate/admin` 命令族 | **cutover-done** | `slice-3-cli-ux` | PROJ-25 SQLite ✓ | ADR-008/010/011/012 + **ADR-013**（SQLite Phase 2：state.db + 后端检测 + admin migrate 真迁移）· 23/23 golden · **dogfood-usable** · PROJ-11 closed |
 | 4 | ~~`sync-collab`~~ | ~~`crates/popsicle-sync/`~~ | **decided: dropped** | — | — | PDR-001 整砍 · 触发条件文档 = `docs/PROJECT_CONTEXT.md §未来 collab 触发条件`（待 living-doc）|
 
 ## 状态语义

@@ -2,7 +2,9 @@
 
 pub mod self_host;
 
-pub use self_host::{bundled_pipeline_names, SelfHostDomain, TsvWorkspace, Workspace};
+pub use self_host::{
+    bundled_pipeline_names, LocalWorkspace, SelfHostDomain, StateBackend, Workspace,
+};
 
 use std::collections::BTreeMap;
 
@@ -140,6 +142,8 @@ pub struct AdminResult {
     pub under_admin_tree: bool,
     pub explicit_workspace: bool,
     pub workspace: String,
+    /// Backend-specific extras (e.g. `migrated`, `storage_backend`).
+    pub details: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -865,6 +869,7 @@ fn admin_response(result: AdminResult) -> Result<CommandResponse, CliError> {
         result.explicit_workspace.to_string(),
     );
     fields.insert("workspace".into(), result.workspace);
+    fields.extend(result.details);
     Ok(CommandResponse {
         status: "ok",
         next_step: Some("popsicle pipeline status --run <run_id>".into()),

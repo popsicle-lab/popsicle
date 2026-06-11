@@ -138,8 +138,13 @@ removed (see below).
 ### Tool & Admin
 
 - `popsicle tool run intent-validate path=<dir> [format=<text|json>]` — Z3 intent check
-- `popsicle admin migrate [--workspace <path>]`
+- `popsicle admin migrate [--workspace <path>]` — migrate legacy TSV state to the SQLite backend (`.popsicle/self-host/state.db`); idempotent, keeps `state.tsv.migrated` for rollback
 - `popsicle admin reinit [--workspace <path>]`
+
+Storage (ADR-013): fresh workspaces use SQLite at `.popsicle/self-host/state.db`;
+legacy TSV workspaces keep working until `admin migrate`. `doctor` reports the
+active backend in `storage_backend`. Do NOT touch `.popsicle/popsicle.db` —
+that file belongs to the legacy binary.
 
 ## Deferred & Removed Commands
 

@@ -44,6 +44,16 @@ pub struct RunStartRow {
     pub spec_locked: bool,
 }
 
+/// Run index row persisted in workspace storage (issue ↔ pipeline run link).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunRow {
+    pub run_id: String,
+    pub issue_key: String,
+    pub pipeline_name: String,
+    pub spec_id: String,
+    pub spec_locked: bool,
+}
+
 /// Snapshot returned by `pipeline_status`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PipelineStatusRow {

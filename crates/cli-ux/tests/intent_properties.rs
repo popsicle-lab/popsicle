@@ -53,6 +53,7 @@ impl CliDomain for TestDomain {
             under_admin_tree: true,
             explicit_workspace: !workspace.is_empty(),
             workspace: workspace.to_string(),
+            details: Default::default(),
         })
     }
 
@@ -61,6 +62,7 @@ impl CliDomain for TestDomain {
             under_admin_tree: true,
             explicit_workspace: !workspace.is_empty(),
             workspace: workspace.to_string(),
+            details: Default::default(),
         })
     }
 }

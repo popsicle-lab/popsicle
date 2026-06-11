@@ -1,6 +1,10 @@
-//! File-backed TSV workspace store (ADR-009 Phase 1).
+//! Local workspace store: SQLite at `.popsicle/self-host/state.db` (ADR-009
+//! Phase 2, PROJ-11) with read compatibility for the Phase 1 TSV backend.
 //!
-//! Phase 2 replaces this with SQLite at `.popsicle/popsicle.db` (see PROJ-11).
+//! Backend is auto-detected at open: an existing `popsicle.db` wins, an
+//! existing legacy `state.tsv` keeps the TSV backend, and fresh workspaces
+//! default to SQLite. `admin migrate` performs the TSV → SQLite migration.
+//! Pipeline session working files stay as per-run JSON (ADR-013).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -14,12 +18,15 @@ use skill_runtime::loader::PipelineDef;
 use skill_runtime::pipeline_session::PipelineSession;
 use skill_runtime::{Issue, IssueType};
 use storage::{
-    DocCheckRow, DocCreateRow, DocumentRow, IssueRow, PipelineStatusRow, RunStartRow,
-    StageCompleteRow, WorkspaceError, WorkspaceStore,
+    DocCheckRow, DocCreateRow, DocumentRow, IssueRow, PipelineStatusRow, RunRow, RunStartRow,
+    SqliteStateDb, StageCompleteRow, StateSnapshot, WorkspaceError, WorkspaceStore,
 };
 
 const SELF_HOST_DIR: &str = ".popsicle/self-host";
 const STATE_FILE: &str = "state.tsv";
+// NOT `.popsicle/popsicle.db`: that path belongs to the legacy binary's
+// database (different schema). See ADR-013.
+const DB_FILE: &str = "state.db";
 const RUNS_DIR: &str = "runs";
 const PIPELINES_DIR: &str = ".popsicle/pipelines";
 
@@ -92,6 +99,10 @@ impl Workspace {
         self.self_host_dir().join(STATE_FILE)
     }
 
+    pub fn db_path(&self) -> PathBuf {
+        self.self_host_dir().join(DB_FILE)
+    }
+
     pub fn runs_dir(&self) -> PathBuf {
         self.self_host_dir().join(RUNS_DIR)
     }
@@ -147,21 +158,61 @@ fn find_workspace_root() -> Result<PathBuf, WorkspaceError> {
     ))
 }
 
-struct RunIndex {
-    run_id: String,
-    issue_key: String,
-    pipeline_name: String,
-    spec_id: String,
-    spec_locked: bool,
-}
-
 struct StoreState {
     next_issue_num: u32,
     next_run_num: u32,
     next_doc_num: u32,
     issues: BTreeMap<String, IssueRow>,
-    runs: BTreeMap<String, RunIndex>,
+    runs: BTreeMap<String, RunRow>,
     documents: BTreeMap<String, DocumentRow>,
+}
+
+impl StoreState {
+    fn to_snapshot(&self) -> StateSnapshot {
+        StateSnapshot {
+            next_issue_num: self.next_issue_num,
+            next_run_num: self.next_run_num,
+            next_doc_num: self.next_doc_num,
+            issues: self.issues.values().cloned().collect(),
+            runs: self.runs.values().cloned().collect(),
+            documents: self.documents.values().cloned().collect(),
+        }
+    }
+
+    fn from_snapshot(snap: StateSnapshot) -> Self {
+        Self {
+            next_issue_num: snap.next_issue_num,
+            next_run_num: snap.next_run_num,
+            next_doc_num: snap.next_doc_num,
+            issues: snap.issues.into_iter().map(|i| (i.key.clone(), i)).collect(),
+            runs: snap.runs.into_iter().map(|r| (r.run_id.clone(), r)).collect(),
+            documents: snap.documents.into_iter().map(|d| (d.id.clone(), d)).collect(),
+        }
+    }
+}
+
+/// Which on-disk format backs the indexed state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StateBackend {
+    /// Legacy ADR-009 Phase 1 `state.tsv`.
+    Tsv,
+    /// ADR-009 Phase 2 SQLite `.popsicle/popsicle.db` (PROJ-11).
+    Sqlite,
+}
+
+impl StateBackend {
+    pub fn describe(&self, workspace: &Workspace) -> String {
+        match self {
+            Self::Tsv => format!("tsv ({})", rel_display(workspace, &workspace.state_path())),
+            Self::Sqlite => format!("sqlite ({})", rel_display(workspace, &workspace.db_path())),
+        }
+    }
+}
+
+fn rel_display(workspace: &Workspace, path: &PathBuf) -> String {
+    path.strip_prefix(&workspace.root)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path.display().to_string())
 }
 
 impl Default for StoreState {
@@ -177,13 +228,15 @@ impl Default for StoreState {
     }
 }
 
-/// ADR-009 Phase 1 backend. Implements [`WorkspaceStore`].
-pub struct TsvWorkspace {
+/// Local workspace store (ADR-009): SQLite Phase 2 backend with TSV Phase 1
+/// read compatibility. Implements [`WorkspaceStore`].
+pub struct LocalWorkspace {
     pub workspace: Workspace,
+    backend: StateBackend,
     state: StoreState,
 }
 
-impl TsvWorkspace {
+impl LocalWorkspace {
     pub fn open() -> Result<Self, WorkspaceError> {
         let workspace = Workspace::discover()?;
         Self::open_at_workspace(workspace)
@@ -194,12 +247,47 @@ impl TsvWorkspace {
     }
 
     fn open_at_workspace(workspace: Workspace) -> Result<Self, WorkspaceError> {
-        let state = load_state(&workspace)?;
-        Ok(Self { workspace, state })
+        let backend = detect_backend(&workspace);
+        let state = load_state(&workspace, backend)?;
+        Ok(Self {
+            workspace,
+            backend,
+            state,
+        })
+    }
+
+    pub fn backend(&self) -> StateBackend {
+        self.backend
+    }
+
+    /// Migrate a legacy TSV workspace to the SQLite backend. Idempotent: an
+    /// already-SQLite workspace reports `migrated=false`. The TSV file is kept
+    /// as `state.tsv.migrated` for rollback/audit.
+    pub fn migrate_to_sqlite(&mut self) -> Result<bool, WorkspaceError> {
+        if self.backend == StateBackend::Sqlite {
+            return Ok(false);
+        }
+        self.backend = StateBackend::Sqlite;
+        self.save()?;
+        let tsv = self.workspace.state_path();
+        if tsv.is_file() {
+            fs::rename(&tsv, tsv.with_extension("tsv.migrated")).map_err(io_err)?;
+        }
+        Ok(true)
     }
 
     fn save(&self) -> Result<(), WorkspaceError> {
         self.workspace.ensure_layout()?;
+        match self.backend {
+            StateBackend::Sqlite => {
+                let mut db = SqliteStateDb::open(&self.workspace.db_path())?;
+                db.save(&self.state.to_snapshot())
+            }
+            StateBackend::Tsv => self.save_tsv(),
+        }
+    }
+
+    fn save_tsv(&self) -> Result<(), WorkspaceError> {
         let mut out = String::new();
         writeln!(out, "# self-host state (ADR-009 Phase 1; Phase 2 → PROJ-11 SQLite)")
             .map_err(io_err)?;
@@ -274,7 +362,7 @@ impl TsvWorkspace {
     }
 }
 
-impl WorkspaceStore for TsvWorkspace {
+impl WorkspaceStore for LocalWorkspace {
     fn init(&mut self) -> Result<(), WorkspaceError> {
         self.workspace.ensure_layout()?;
         self.save()
@@ -377,7 +465,7 @@ impl WorkspaceStore for TsvWorkspace {
         save_session(&self.workspace, &session)?;
         self.state.runs.insert(
             run_id.clone(),
-            RunIndex {
+            RunRow {
                 run_id: run_id.clone(),
                 issue_key: key.to_string(),
                 pipeline_name,
@@ -679,8 +767,33 @@ pub fn run_intent_validate(path: &str, format: &str) -> Result<i32, WorkspaceErr
     Ok(status.code().unwrap_or(1))
 }
 
-fn load_state(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
+/// Backend detection: an existing db wins; a legacy `state.tsv` keeps TSV;
+/// fresh workspaces default to SQLite (ADR-009 Phase 2).
+fn detect_backend(workspace: &Workspace) -> StateBackend {
+    if workspace.db_path().is_file() {
+        StateBackend::Sqlite
+    } else if workspace.state_path().is_file() {
+        StateBackend::Tsv
+    } else {
+        StateBackend::Sqlite
+    }
+}
+
+fn load_state(workspace: &Workspace, backend: StateBackend) -> Result<StoreState, WorkspaceError> {
     workspace.ensure_layout()?;
+    match backend {
+        StateBackend::Sqlite => {
+            if !workspace.db_path().is_file() {
+                return Ok(StoreState::default());
+            }
+            let db = SqliteStateDb::open(&workspace.db_path())?;
+            Ok(StoreState::from_snapshot(db.load()?))
+        }
+        StateBackend::Tsv => load_state_tsv(workspace),
+    }
+}
+
+fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
     let path = workspace.state_path();
     if !path.is_file() {
         return Ok(StoreState::default());
@@ -723,7 +836,7 @@ fn load_state(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
                 let run_id = cols[1].to_string();
                 state.runs.insert(
                     run_id.clone(),
-                    RunIndex {
+                    RunRow {
                         run_id,
                         issue_key: cols[2].into(),
                         pipeline_name: cols[3].into(),
@@ -1010,12 +1123,12 @@ fn ws_err(e: storage::WorkspaceError) -> crate::CliError {
 
 /// Binary entrypoint domain (ADR-009 Phase 1 TSV backend).
 pub struct SelfHostDomain {
-    store: TsvWorkspace,
+    store: LocalWorkspace,
 }
 
 impl SelfHostDomain {
     pub fn open() -> Result<Self, crate::CliError> {
-        TsvWorkspace::open()
+        LocalWorkspace::open()
             .map(|store| Self { store })
             .map_err(ws_err)
     }
@@ -1024,7 +1137,7 @@ impl SelfHostDomain {
     /// tree, bootstrap the current directory as a new workspace root.
     pub fn open_or_bootstrap() -> Result<Self, crate::CliError> {
         let workspace = Workspace::discover_or_current_dir().map_err(ws_err)?;
-        TsvWorkspace::open_at(workspace.root)
+        LocalWorkspace::open_at(workspace.root)
             .map(|store| Self { store })
             .map_err(ws_err)
     }
@@ -1280,7 +1393,7 @@ impl crate::CliDomain for SelfHostDomain {
             ("used_system_binary".into(), prov.used_system_binary.to_string()),
             (
                 "storage_backend".into(),
-                "tsv (.popsicle/self-host/state.tsv)".into(),
+                self.store.backend().describe(&self.store.workspace),
             ),
             ("phase_2_issue".into(), "PROJ-11".into()),
         ]);
@@ -1313,6 +1426,14 @@ impl crate::CliDomain for SelfHostDomain {
     }
 
     fn admin_migrate(&mut self, workspace: &str) -> Result<crate::AdminResult, crate::CliError> {
+        let migrated = self.store.migrate_to_sqlite().map_err(ws_err)?;
+        let details = BTreeMap::from([
+            ("migrated".into(), migrated.to_string()),
+            (
+                "storage_backend".into(),
+                self.store.backend().describe(&self.store.workspace),
+            ),
+        ]);
         Ok(crate::AdminResult {
             under_admin_tree: true,
             explicit_workspace: !workspace.is_empty(),
@@ -1321,6 +1442,7 @@ impl crate::CliDomain for SelfHostDomain {
             } else {
                 workspace.to_string()
             },
+            details,
         })
     }
 
