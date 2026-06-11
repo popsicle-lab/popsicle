@@ -1,7 +1,4 @@
-# Release (migrated from legacy/popsicle release.yml, ADR-014).
-# Differences from legacy: no UI bundle / node toolchain / Linux webkit deps;
-# the binary is crates/cli-ux (bin name `popsicle`). rusqlite is bundled, so
-# only a C compiler is needed (preinstalled on all runners).
+# Release: CLI tarballs/zip for 4 targets + macOS DMG (App + CLI).
 
 name: Release
 
@@ -46,6 +43,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "release-cli"
+          save-if: true
 
       - name: Build release binary
         run: cargo build --release --bin popsicle --target ${{ matrix.target }}
@@ -90,42 +90,27 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "release-dmg-${{ matrix.arch }}"
+          save-if: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install tauri-cli
-        run: cargo install tauri-cli --locked --version "^2.0.0"
-
       - name: Build DMG
-        run: |
-          export CARGO_BUILD_TARGET=${{ matrix.rust_target }}
-          bash packaging/macos/generate-icons.sh
-          cd ui && npm ci && npm run build
-          cargo build --release --features ui -p cli-ux --target ${{ matrix.rust_target }}
-          cd crates/cli-ux && cargo tauri build --features ui --bundles app --target ${{ matrix.rust_target }}
-          APP="target/${{ matrix.rust_target }}/release/bundle/macos/Popsicle.app"
-          CLI="target/${{ matrix.rust_target }}/release/popsicle"
-          STAGING="$(mktemp -d)"
-          cp -R "$APP" "$STAGING/Popsicle.app"
-          cp "$CLI" "$STAGING/popsicle"
-          chmod +x "$STAGING/popsicle"
-          cp "packaging/macos/Install CLI.command" "$STAGING/"
-          chmod +x "$STAGING/Install CLI.command"
-          ln -s /Applications "$STAGING/Applications"
-          VERSION="$(awk -F'"' '/^version = / {print $2; exit}' crates/cli-ux/Cargo.toml)"
-          OUT="Popsicle_${VERSION}_${{ matrix.arch }}.dmg"
-          mkdir -p dist
-          hdiutil create -volname "Popsicle" -srcfolder "$STAGING" -ov -format UDZO "dist/$OUT"
-          rm -rf "$STAGING"
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.rust_target }}
+          POPSICLE_DMG_ARCH: ${{ matrix.arch }}
+          POPSICLE_DMG_OUT_DIR: ${{ github.workspace }}/dist
+        run: bash packaging/macos/build-dmg.sh
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: popsicle-dmg-${{ matrix.arch }}
-          path: dist/*.dmg
+          path: dist/Popsicle_*.dmg
 
   release:
     name: Create GitHub Release
@@ -135,9 +120,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+          path: dist
+
+      - name: List release assets
+        run: ls -lah dist/
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: popsicle-*
+          files: |
+            dist/popsicle-*
+            dist/Popsicle_*.dmg
           generate_release_notes: true
