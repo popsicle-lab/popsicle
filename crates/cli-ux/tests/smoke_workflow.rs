@@ -1,23 +1,48 @@
 //! End-to-end self-hosting workflow smoke (PDR-002 / T-CU-0008 / PROJ-10).
+//!
+//! PROJ-24 (O-102): the mutating workflow runs in an isolated temp workspace
+//! so `cargo test` never accretes smoke issues/runs in the real repository.
+//! Only the read-only doctor provenance check runs against the repo workspace.
 
+use std::path::PathBuf;
 use std::process::Command;
 
 fn bin() -> &'static str {
     option_env!("CARGO_BIN_EXE_popsicle").unwrap_or("./target/debug/popsicle")
 }
 
-fn popsicle(args: &[&str]) -> String {
+fn temp_workspace() -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("popsicle-smoke-{nanos}"));
+    std::fs::create_dir_all(&root).expect("create temp workspace");
+    root
+}
+
+fn popsicle_in(dir: &PathBuf, args: &[&str]) -> (String, String, i32) {
     let output = Command::new(bin())
         .args(args)
+        .current_dir(dir)
         .output()
         .expect("run popsicle binary");
-    assert!(
-        output.status.success(),
-        "command failed: popsicle {} — stderr: {}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stderr)
+    (
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+        output.status.code().unwrap_or(-1),
+    )
+}
+
+fn ok_in(dir: &PathBuf, args: &[&str]) -> String {
+    let (stdout, stderr, code) = popsicle_in(dir, args);
+    assert_eq!(
+        code,
+        0,
+        "command failed: popsicle {} — stderr: {stderr}",
+        args.join(" ")
     );
-    String::from_utf8_lossy(&output.stdout).into_owned()
+    stdout
 }
 
 fn field(stdout: &str, key: &str) -> String {
@@ -30,77 +55,82 @@ fn field(stdout: &str, key: &str) -> String {
 
 #[test]
 fn self_host_workflow_smoke_passes() {
-    let doctor = popsicle(&["doctor", "--format", "json"]);
+    // Read-only provenance check against the real repo workspace.
+    let repo = std::env::current_dir().expect("cwd");
+    let doctor = ok_in(&repo, &["doctor", "--format", "json"]);
     assert!(doctor.contains("\"current_workspace_binary_match\":\"true\""));
     assert!(doctor.contains("storage_backend"));
     assert!(doctor.contains("PROJ-11"));
-    assert!(!doctor.contains("\"json\":"));
 
-    let created = popsicle(&[
-        "issue",
-        "create",
-        "--type",
-        "bug",
-        "--title",
-        "PROJ-10 smoke",
-        "--spec",
-        "slice-3-cli-ux",
-        "--pipeline",
-        "tech-decision",
-    ]);
+    // Everything mutating happens in an isolated temp workspace.
+    let ws = temp_workspace();
+    ok_in(&ws, &["init"]);
+
+    // `--type bug` exercises the bundled default pipeline mapping (D-101):
+    // no --pipeline flag anywhere below.
+    let created = ok_in(
+        &ws,
+        &[
+            "issue", "create", "--type", "bug", "--title", "smoke bug", "--spec", "smoke-spec",
+        ],
+    );
     let key = field(&created, "key");
 
-    let started = popsicle(&[
-        "issue",
-        "start",
-        &key,
-        "--spec",
-        "slice-3-cli-ux",
-        "--pipeline",
-        "tech-decision",
-    ]);
+    let started = ok_in(&ws, &["issue", "start", &key]);
     let run_id = field(&started, "run_id");
     assert_eq!(field(&started, "run_created"), "true");
 
-    let next = popsicle(&["pipeline", "next", "--run", &run_id]);
+    // Closing while a run is active must fail actionably.
+    let (_, close_err, close_code) = popsicle_in(&ws, &["issue", "close", &key]);
+    assert_ne!(close_code, 0);
+    assert!(close_err.contains("active"), "stderr: {close_err}");
+
+    let next = ok_in(&ws, &["pipeline", "next", "--run", &run_id]);
     assert!(next.contains("next:"));
 
-    popsicle(&[
-        "doc",
-        "create",
-        "shadow-implementer",
-        "--title",
-        "smoke artifact",
-        "--run",
-        &run_id,
-    ]);
-
-    let stage = field(
-        &popsicle(&["pipeline", "status", "--run", &run_id]),
-        "current_stage",
+    let doc = ok_in(
+        &ws,
+        &[
+            "doc",
+            "create",
+            "shadow-implementer",
+            "--title",
+            "smoke artifact",
+            "--run",
+            &run_id,
+        ],
     );
-    let complete = if next.contains("--confirm") {
-        vec![
-            "pipeline",
-            "stage",
-            "complete",
-            &stage,
-            "--run",
-            &run_id,
-            "--confirm",
-        ]
-    } else {
-        vec![
-            "pipeline",
-            "stage",
-            "complete",
-            &stage,
-            "--run",
-            &run_id,
-        ]
-    };
-    popsicle(&complete);
+    let doc_id = field(&doc, "id");
+    let doc_path = field(&doc, "file_path");
 
-    popsicle(&["pipeline", "status", "--run", &run_id]);
-    popsicle(&["issue", "show", &key]);
+    // Fresh stub must fail `doc check`, filled doc must pass.
+    let (check_out, _, check_code) = popsicle_in(&ws, &["doc", "check", &doc_id]);
+    assert_eq!(check_code, 1, "stub doc should fail check:\n{check_out}");
+    assert_eq!(field(&check_out, "body_filled"), "false");
+
+    let abs = ws.join(&doc_path);
+    let mut content = std::fs::read_to_string(&abs).expect("read doc");
+    content.push_str("\n## Fix\n\nReproduced, fixed, regression test added.\n\n- [x] regression test\n");
+    std::fs::write(&abs, content).expect("fill doc");
+    let check_ok = ok_in(&ws, &["doc", "check", &doc_id]);
+    assert_eq!(field(&check_ok, "passed"), "true");
+    assert_eq!(field(&check_ok, "checkboxes_checked"), "1");
+
+    // bugfix pipeline: implement → verify, no approvals.
+    ok_in(
+        &ws,
+        &["pipeline", "stage", "complete", "implement", "--run", &run_id],
+    );
+    ok_in(
+        &ws,
+        &["pipeline", "stage", "complete", "verify", "--run", &run_id],
+    );
+    let status = ok_in(&ws, &["pipeline", "status", "--run", &run_id]);
+    assert_eq!(field(&status, "run_status"), "completed");
+
+    // Run completed → issue close now succeeds.
+    let closed = ok_in(&ws, &["issue", "close", &key]);
+    assert_eq!(field(&closed, "issue_status"), "done");
+
+    let _ = std::fs::remove_dir_all(&ws);
 }

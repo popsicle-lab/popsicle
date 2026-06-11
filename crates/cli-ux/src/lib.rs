@@ -2,7 +2,7 @@
 
 pub mod self_host;
 
-pub use self_host::{SelfHostDomain, TsvWorkspace, Workspace};
+pub use self_host::{bundled_pipeline_names, SelfHostDomain, TsvWorkspace, Workspace};
 
 use std::collections::BTreeMap;
 
@@ -55,6 +55,7 @@ pub enum Command {
     },
     IssueList,
     IssueShow { key: String },
+    IssueClose { key: String },
     IssueStart {
         key: String,
         spec_id: String,
@@ -67,6 +68,7 @@ pub enum Command {
     },
     DocList { run_id: Option<String> },
     DocShow { doc_id: String },
+    DocCheck { doc_id: String },
     PipelineStatus { run_id: String },
     PipelineNext { run_id: String },
     StageComplete {
@@ -208,6 +210,10 @@ pub trait CliDomain {
         let _ = key;
         Err(not_self_host("issue show"))
     }
+    fn close_issue(&mut self, key: &str) -> Result<BTreeMap<String, String>, CliError> {
+        let _ = key;
+        Err(not_self_host("issue close"))
+    }
     fn start_issue(
         &mut self,
         key: &str,
@@ -227,6 +233,10 @@ pub trait CliDomain {
     fn show_doc(&self, doc_id: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = doc_id;
         Err(not_self_host("doc show"))
+    }
+    fn check_doc(&self, doc_id: &str) -> Result<BTreeMap<String, String>, CliError> {
+        let _ = doc_id;
+        Err(not_self_host("doc check"))
     }
     fn pipeline_status(&self, run_id: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = run_id;
@@ -320,6 +330,12 @@ where
             let key = args.get(2).ok_or_else(|| missing("issue-key", "issue show"))?;
             Ok(Command::IssueShow { key: key.clone() })
         }
+        "issue" if args.get(1).map(String::as_str) == Some("close") => {
+            let key = args
+                .get(2)
+                .ok_or_else(|| missing("issue-key", "issue close"))?;
+            Ok(Command::IssueClose { key: key.clone() })
+        }
         "issue" if args.get(1).map(String::as_str) == Some("start") => {
             let key = args
                 .get(2)
@@ -344,6 +360,12 @@ where
         "doc" if args.get(1).map(String::as_str) == Some("show") => {
             let doc_id = args.get(2).ok_or_else(|| missing("doc-id", "doc show"))?;
             Ok(Command::DocShow {
+                doc_id: doc_id.clone(),
+            })
+        }
+        "doc" if args.get(1).map(String::as_str) == Some("check") => {
+            let doc_id = args.get(2).ok_or_else(|| missing("doc-id", "doc check"))?;
+            Ok(Command::DocCheck {
                 doc_id: doc_id.clone(),
             })
         }
@@ -532,6 +554,21 @@ pub fn run_command<D: CliDomain>(
             next_step: None,
             fields: domain.show_doc(&doc_id)?,
         }),
+        Command::DocCheck { doc_id } => {
+            let fields = domain.check_doc(&doc_id)?;
+            let passed = fields.get("passed").map(String::as_str) == Some("true");
+            Ok(CommandResponse {
+                status: if passed { "ok" } else { "failed" },
+                next_step: if passed {
+                    None
+                } else {
+                    Some(format!(
+                        "fill real content into the document and rerun `popsicle doc check {doc_id}`"
+                    ))
+                },
+                fields,
+            })
+        }
         Command::PipelineStatus { run_id } => Ok(CommandResponse {
             status: "ok",
             next_step: Some("popsicle pipeline next --run <run_id>".into()),
@@ -569,6 +606,14 @@ pub fn run_command<D: CliDomain>(
             Ok(CommandResponse {
                 status: "ok",
                 next_step: Some(format!("popsicle pipeline status --run {run_id}")),
+                fields,
+            })
+        }
+        Command::IssueClose { key } => {
+            let fields = domain.close_issue(&key)?;
+            Ok(CommandResponse {
+                status: "ok",
+                next_step: Some("popsicle issue list".into()),
                 fields,
             })
         }
@@ -777,12 +822,14 @@ pub const COMMAND_USAGE: &[&str] = &[
     "issue list",
     "issue show <key>",
     "issue start <key> [--spec <spec-id>] [--pipeline <name>]",
+    "issue close <key>",
     "pipeline status --run <run_id>",
     "pipeline next --run <run_id>",
     "pipeline stage complete <stage> --run <run_id> [--confirm]",
     "doc create <skill> --title <t> --run <run_id>",
     "doc list [--run <run_id>]",
     "doc show <doc_id>",
+    "doc check <doc_id>",
     "tool run intent-validate path=<dir> [format=<text|json>]",
     "admin migrate [--workspace <path>]",
     "admin reinit [--workspace <path>]",

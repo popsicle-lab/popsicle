@@ -71,6 +71,20 @@ pub struct DocCreateRow {
     pub artifact_file_exists: bool,
 }
 
+/// Result of `doc check` (PDR-001: the checklist replacement).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocCheckRow {
+    pub doc_id: String,
+    pub file_path: String,
+    pub file_exists: bool,
+    pub frontmatter_complete: bool,
+    pub body_filled: bool,
+    pub placeholder_count: u32,
+    pub checkboxes_total: u32,
+    pub checkboxes_checked: u32,
+    pub passed: bool,
+}
+
 /// Phase 1 (TSV) and Phase 2 (SQLite) backends implement this trait.
 pub trait WorkspaceStore {
     fn init(&mut self) -> Result<(), WorkspaceError>;
@@ -89,6 +103,9 @@ pub trait WorkspaceStore {
 
     fn get_issue(&self, key: &str) -> Result<IssueRow, WorkspaceError>;
 
+    /// Close an issue. Fails while the issue still has an active (incomplete) run.
+    fn close_issue(&mut self, key: &str) -> Result<IssueRow, WorkspaceError>;
+
     fn start_issue(
         &mut self,
         key: &str,
@@ -106,6 +123,9 @@ pub trait WorkspaceStore {
     fn list_docs(&self, run_id: Option<&str>) -> Result<Vec<DocumentRow>, WorkspaceError>;
 
     fn get_doc(&self, doc_id: &str) -> Result<DocumentRow, WorkspaceError>;
+
+    /// Validate a document artifact: frontmatter, filled body, placeholders, checkboxes.
+    fn check_doc(&self, doc_id: &str) -> Result<DocCheckRow, WorkspaceError>;
 
     fn pipeline_status(&self, run_id: &str) -> Result<PipelineStatusRow, WorkspaceError>;
 

@@ -11,6 +11,6 @@ mod workspace;
 pub use document_row::DocumentRow;
 pub use memory_store::{MemoryDocumentStore, StoreError};
 pub use workspace::{
-    DocCreateRow, IssueRow, PipelineStatusRow, RunStartRow, StageCompleteRow, WorkspaceError,
-    WorkspaceStore,
+    DocCheckRow, DocCreateRow, IssueRow, PipelineStatusRow, RunStartRow, StageCompleteRow,
+    WorkspaceError, WorkspaceStore,
 };

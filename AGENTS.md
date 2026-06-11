@@ -67,20 +67,21 @@ popsicle issue create --type <product|technical|bug|idea> \
   --description "<what and why>" --format json
 ```
 
-**ALWAYS pass `--pipeline` explicitly.** The bundled pipeline templates are:
+The bundled pipeline templates are:
 
-| Pipeline | Use for |
-|---|---|
-| `greenfield-product-spec` | new product/module with no legacy code |
-| `slice-spec` | spec chain for a migration slice (facts → debate → prd → arch → rfc → adr → intent) |
-| `slice-delivery` | implement → equivalence → cutover → living-docs for a decided slice |
-| `tech-decision` | architecture decision only (arch-debate → rfc → adr) |
-| `migration-bootstrap` | first-time migration bootstrap |
+| Pipeline | Use for | Default for `--type` |
+|---|---|---|
+| `greenfield-product-spec` | new product/module with no legacy code | `product` |
+| `slice-spec` | spec chain for a migration slice (facts → debate → prd → arch → rfc → adr → intent) | — |
+| `slice-delivery` | implement → equivalence → cutover → living-docs for a decided slice | — |
+| `tech-decision` | architecture/technical decision (arch-debate → rfc → adr) | `technical`, `idea` |
+| `bugfix` | minimal fix loop (implement → verify, no approvals) | `bug` |
+| `migration-bootstrap` | first-time migration bootstrap | — |
 
-Do NOT rely on the issue-type default mapping (`full-sdlc` / `tech-sdlc` /
-`test-only` / `design-only`) — those templates are not bundled in this
-workspace and `issue start` will fail with a "pipeline not found" error
-listing the available templates.
+If `--pipeline` is omitted, the issue type's default (last column) is used
+(ADR-012). Pass `--pipeline` explicitly when the default doesn't fit. Missing
+templates self-heal: bundled definitions are installed on demand, and a
+"pipeline not found" error lists all available templates.
 
 Show the created issue key to the user before proceeding.
 
@@ -119,6 +120,7 @@ removed (see below).
 - `popsicle issue list`
 - `popsicle issue show <key>`
 - `popsicle issue start <key> [--spec <spec-id>] [--pipeline <name>]`
+- `popsicle issue close <key>` — close after the run completes (fails actionably while a run is active)
 
 ### Pipeline
 
@@ -131,6 +133,7 @@ removed (see below).
 - `popsicle doc create <skill> --title "<t>" --run <run_id>` — create a stage artifact under `.popsicle/artifacts/<run_id>/`; `<skill>` is an intent-coder skill name (see Skill Catalog)
 - `popsicle doc list [--run <run_id>]`
 - `popsicle doc show <doc_id>`
+- `popsicle doc check <doc_id>` — validate frontmatter, filled body, placeholders (`[TBD`, `{{`), checkbox counts; exits 1 with `status: failed` until the document has real content. Run it after filling every stage document.
 
 ### Tool & Admin
 
@@ -154,8 +157,8 @@ Replacement practices until these are re-adjudicated:
 | `context search` | use `rg` over `products/`, `docs/`, `.popsicle/artifacts/` |
 | `doc summarize` | write a `## Summary` section directly in the artifact document |
 | `git link` | reference the run id and doc ids in the commit message body |
-| `checklist check` | edit checkbox lines (`- [ ]` → `- [x]`) directly in the document |
-| `pipeline verify` | `pipeline status --run <run_id> --format json` must show every stage `completed` and `run_status: completed` |
+| `checklist check` | `popsicle doc check <doc_id>` validates content/checkboxes; check items off by editing `- [ ]` → `- [x]` in the document |
+| `pipeline verify` | `pipeline status --run <run_id> --format json` must show every stage `completed` and `run_status: completed`; then `issue close <key>` |
 | spec/namespace creation | specs are plain identifiers recorded on issues; reuse existing spec ids or introduce a new one in the issue and document it in `migration/traceability.md` |
 
 ## Workflow Rules
@@ -170,6 +173,7 @@ Replacement practices until these are re-adjudicated:
 8. Documents live under `.popsicle/artifacts/<run_id>/`; decision records are promoted into `products/<product>/decisions/` at their stage's completion
 9. **NEVER report a task as "complete" unless `pipeline status` shows all stages completed.** If stages remain, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
 10. Run `popsicle tool run intent-validate path=products` before completing implementation/cutover stages when intents changed
+11. Run `popsicle doc check <doc_id>` on every stage document after filling it; complete the run, then `popsicle issue close <key>` to close the loop
 
 ---
 

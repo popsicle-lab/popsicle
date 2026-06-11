@@ -100,6 +100,43 @@ fn golden_008_format_flag_is_global() {
 }
 
 #[test]
+fn golden_010_issue_type_default_pipelines_are_bundled() {
+    use skill_runtime::IssueType;
+    let bundled = cli_ux::bundled_pipeline_names();
+    for issue_type in [
+        IssueType::Product,
+        IssueType::Technical,
+        IssueType::Bug,
+        IssueType::Idea,
+    ] {
+        let default = issue_type
+            .default_pipeline()
+            .expect("every issue type needs a default pipeline");
+        assert!(
+            bundled.contains(&default),
+            "default pipeline `{default}` for {issue_type:?} is not bundled"
+        );
+    }
+}
+
+#[test]
+fn golden_011_doc_check_and_issue_close_parse() {
+    use cli_ux::Command;
+    assert_eq!(
+        parse_args(["doc", "check", "doc-1"]).unwrap(),
+        Command::DocCheck {
+            doc_id: "doc-1".into()
+        }
+    );
+    assert_eq!(
+        parse_args(["issue", "close", "PROJ-1"]).unwrap(),
+        Command::IssueClose {
+            key: "PROJ-1".into()
+        }
+    );
+}
+
+#[test]
 fn golden_009_help_advertises_only_implemented_commands() {
     let help = top_level_help();
     for deferred in cli_ux::DEFERRED_TOP_LEVEL_COMMANDS {

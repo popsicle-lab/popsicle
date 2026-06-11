@@ -1,6 +1,6 @@
 //! Minimal `issue` entity (PDR-001: PipelineRun 启动入口归 skill-runtime).
 
-/// Issue type — maps to default pipeline templates in legacy popsicle.
+/// Issue type — maps to bundled default pipeline templates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IssueType {
     Product,
@@ -10,12 +10,15 @@ pub enum IssueType {
 }
 
 impl IssueType {
+    /// Default pipeline per issue type. Every name must exist in the bundled
+    /// templates (ADR-012 closes D-101: the legacy `full-sdlc`/`tech-sdlc`/
+    /// `test-only`/`design-only` names were never shipped).
     pub fn default_pipeline(&self) -> Option<&'static str> {
         match self {
-            Self::Product => Some("full-sdlc"),
-            Self::Technical => Some("tech-sdlc"),
-            Self::Bug => Some("test-only"),
-            Self::Idea => Some("design-only"),
+            Self::Product => Some("greenfield-product-spec"),
+            Self::Technical => Some("tech-decision"),
+            Self::Bug => Some("bugfix"),
+            Self::Idea => Some("tech-decision"),
         }
     }
 

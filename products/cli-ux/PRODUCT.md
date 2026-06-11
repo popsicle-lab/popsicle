@@ -2,9 +2,9 @@
 
 > **Layer**: L2（用户可见行为）
 > **Audience**: PM、销售、客户成功、AI Copilot
-> **Status**: cutover-done + self-host Phase 1 + 命令面对齐（ADR-011 Accepted 2026-06-11）
+> **Status**: cutover-done + self-host Phase 1 + 命令面对齐 + 可用性闭环（ADR-012 Accepted 2026-06-11）
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-011（command surface realignment）
+> **Last-Decision-Ref**: ADR-012（self-host usability completion）
 
 ## 一行用途
 
@@ -13,11 +13,11 @@
 ## 用户视角的入口（实现面 = 宣传面，ADR-011）
 
 - `popsicle init` / `doctor`：准备 workspace 并校验二进制/工作区来源。
-- `popsicle issue` / `pipeline`：启动并推进 IDD 工作流（create/list/show/start · status/next/stage complete）。
-- `popsicle doc`：生产与召回 stage artifact（create/list/show）。
-- `popsicle tool run intent-validate`：Z3 intent 校验。
+- `popsicle issue` / `pipeline`：完整生命周期（create/list/show/start/**close** · status/next/stage complete）；issue 类型默认管线全部 bundled（含最小 `bugfix` 模板，ADR-012）。
+- `popsicle doc`：生产、召回与**校验** stage artifact（create/list/show/**check**——frontmatter/实文/占位符/checkbox）。
+- `popsicle tool run intent-validate`：Z3 intent 校验（仓库内严格解析）。
 - `popsicle admin`：低频维护（migrate/reinit），不污染主路径。
-- 全命令支持 `--format json`；错误同样 JSON 化并携带 actionable next-step。
+- 全命令支持 `--format json`；错误同样 JSON 化并携带 actionable next-step；`failed` 响应统一非零退出。
 
 **Deferred**（不在 help 宣传，调用返回结构化 `deferred` 错误）：`module` / `skill` /
 `spec` / `namespace` / `prompt` / `git` / `memory` / `context` / `registry` /
@@ -48,6 +48,7 @@
 - ADR-008：`crates/cli-ux` binary `popsicle` 切为 semantic shell 主路径，不追求 legacy byte parity。
 - ADR-010：self-host Phase 1（TSV workspace + IDD workflow + doctor provenance）。
 - ADR-011：命令面对齐——help 收敛到实现面、`--format json` 全局化、工具解析仓库内严格化、根 AGENTS.md 与实现面绑定。
+- ADR-012：可用性闭环——`doc check` / `issue close` 落地、默认管线 bundled 化（D-101）+ 模板自愈、smoke 隔离与残留清理（O-102）。
 
 ## Open Questions
 

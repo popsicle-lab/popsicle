@@ -89,9 +89,13 @@ fn main() {
             } else {
                 None
             };
+            let failed = response.status == "failed";
             print_response(response, format);
             if let Some(code) = tool_exit_code {
                 std::process::exit(code);
+            }
+            if failed {
+                std::process::exit(1);
             }
         }
         Err(err) => {

@@ -86,6 +86,78 @@ fn tsv_roundtrip_persists_issue_and_doc() {
 }
 
 #[test]
+fn tsv_issue_close_requires_completed_run() {
+    let root = temp_workspace();
+    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let issue = store
+        .create_issue("bug", "close me", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .expect("create issue");
+    let run = store
+        .start_issue(&issue.key, "", "test-open")
+        .expect("start issue");
+
+    let err = store.close_issue(&issue.key).unwrap_err();
+    assert!(format!("{err}").contains("active-run"));
+
+    store
+        .complete_stage("implement", &run.run_id, false)
+        .expect("complete stage");
+    let closed = store.close_issue(&issue.key).expect("close issue");
+    assert_eq!(closed.status, "done");
+
+    drop(store);
+    let reloaded = TsvWorkspace::open_at(root.clone()).expect("reload");
+    assert_eq!(reloaded.get_issue(&issue.key).expect("get").status, "done");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn tsv_doc_check_fails_stub_and_passes_filled_doc() {
+    let root = temp_workspace();
+    let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");
+    let issue = store
+        .create_issue("bug", "doc check", "slice-3-cli-ux", Some("test-open"), "medium", "")
+        .expect("create issue");
+    let run = store
+        .start_issue(&issue.key, "", "test-open")
+        .expect("start issue");
+    let doc = store
+        .create_doc("shadow-implementer", "artifact", &run.run_id)
+        .expect("create doc");
+
+    // Fresh stub: frontmatter ok, body is just the heading.
+    let stub = store.check_doc(&doc.doc_id).expect("check stub");
+    assert!(stub.file_exists);
+    assert!(stub.frontmatter_complete);
+    assert!(!stub.body_filled);
+    assert!(!stub.passed);
+
+    // Placeholders keep the check failing even with prose.
+    let abs = root.join(&doc.file_path);
+    let content = fs::read_to_string(&abs).expect("read doc");
+    fs::write(&abs, format!("{content}\nSome prose. [TBD: fill]\n")).expect("write");
+    let with_placeholder = store.check_doc(&doc.doc_id).expect("check placeholder");
+    assert!(with_placeholder.body_filled);
+    assert_eq!(with_placeholder.placeholder_count, 1);
+    assert!(!with_placeholder.passed);
+
+    // Real content with checkboxes passes and reports counts.
+    let content = fs::read_to_string(&abs).expect("read doc");
+    fs::write(
+        &abs,
+        content.replace("[TBD: fill]", "done.\n\n- [x] fixed\n- [ ] follow-up"),
+    )
+    .expect("write");
+    let filled = store.check_doc(&doc.doc_id).expect("check filled");
+    assert!(filled.passed);
+    assert_eq!(filled.checkboxes_total, 2);
+    assert_eq!(filled.checkboxes_checked, 1);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn tsv_pipeline_status_uses_stable_status_strings() {
     let root = temp_workspace();
     let mut store = TsvWorkspace::open_at(root.clone()).expect("open workspace");

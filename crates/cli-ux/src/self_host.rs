@@ -14,8 +14,8 @@ use skill_runtime::loader::PipelineDef;
 use skill_runtime::pipeline_session::PipelineSession;
 use skill_runtime::{Issue, IssueType};
 use storage::{
-    DocCreateRow, DocumentRow, IssueRow, PipelineStatusRow, RunStartRow, StageCompleteRow,
-    WorkspaceError, WorkspaceStore,
+    DocCheckRow, DocCreateRow, DocumentRow, IssueRow, PipelineStatusRow, RunStartRow,
+    StageCompleteRow, WorkspaceError, WorkspaceStore,
 };
 
 const SELF_HOST_DIR: &str = ".popsicle/self-host";
@@ -46,7 +46,16 @@ const BUNDLED_PIPELINES: &[(&str, &str)] = &[
         "tech-decision",
         include_str!("../assets/pipelines/tech-decision.pipeline.yaml"),
     ),
+    (
+        "bugfix",
+        include_str!("../assets/pipelines/bugfix.pipeline.yaml"),
+    ),
 ];
+
+/// Names of all pipelines bundled into the binary.
+pub fn bundled_pipeline_names() -> Vec<&'static str> {
+    BUNDLED_PIPELINES.iter().map(|(name, _)| *name).collect()
+}
 
 /// Resolved workspace root (directory containing `.popsicle/`).
 #[derive(Debug, Clone)]
@@ -310,6 +319,24 @@ impl WorkspaceStore for TsvWorkspace {
             .ok_or_else(|| WorkspaceError::NotFound(key.into()))
     }
 
+    fn close_issue(&mut self, key: &str) -> Result<IssueRow, WorkspaceError> {
+        let _ = self.get_issue(key)?;
+        if let Some(active) = self.active_run_id(key)? {
+            return Err(WorkspaceError::InvalidState(format!(
+                "active-run:{active}:complete all stages of the active run before closing"
+            )));
+        }
+        let row = self
+            .state
+            .issues
+            .get_mut(key)
+            .ok_or_else(|| WorkspaceError::NotFound(key.into()))?;
+        row.status = "done".into();
+        let row = row.clone();
+        self.save()?;
+        Ok(row)
+    }
+
     fn start_issue(
         &mut self,
         key: &str,
@@ -421,6 +448,55 @@ impl WorkspaceStore for TsvWorkspace {
             .get(doc_id)
             .cloned()
             .ok_or_else(|| WorkspaceError::NotFound(doc_id.into()))
+    }
+
+    fn check_doc(&self, doc_id: &str) -> Result<DocCheckRow, WorkspaceError> {
+        let row = self.get_doc(doc_id)?;
+        let abs_path = self.workspace.root.join(&row.file_path);
+        let file_exists = abs_path.is_file();
+        let content = if file_exists {
+            fs::read_to_string(&abs_path).map_err(io_err)?
+        } else {
+            String::new()
+        };
+
+        // Frontmatter: a leading `---` block carrying at least id/doc_type/title.
+        let mut frontmatter_complete = false;
+        let mut body = content.as_str();
+        if let Some(rest) = content.strip_prefix("---") {
+            if let Some(end) = rest.find("\n---") {
+                let frontmatter = &rest[..end];
+                frontmatter_complete = ["id:", "doc_type:", "title:"]
+                    .iter()
+                    .all(|key| frontmatter.lines().any(|l| l.trim_start().starts_with(key)));
+                body = rest[end + 4..].trim_start_matches('\n');
+            }
+        }
+
+        // Body counts as filled when it has prose beyond the `# title` heading.
+        let body_filled = body
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .any(|l| !l.trim_start().starts_with('#'));
+
+        let placeholder_count =
+            (count_occurrences(body, "[TBD") + count_occurrences(body, "{{")) as u32;
+        let checkboxes_checked = (count_occurrences(body, "- [x]")
+            + count_occurrences(body, "- [X]")) as u32;
+        let checkboxes_total = checkboxes_checked + count_occurrences(body, "- [ ]") as u32;
+
+        let passed = file_exists && frontmatter_complete && body_filled && placeholder_count == 0;
+        Ok(DocCheckRow {
+            doc_id: row.id,
+            file_path: row.file_path,
+            file_exists,
+            frontmatter_complete,
+            body_filled,
+            placeholder_count,
+            checkboxes_total,
+            checkboxes_checked,
+            passed,
+        })
     }
 
     fn pipeline_status(&self, run_id: &str) -> Result<PipelineStatusRow, WorkspaceError> {
@@ -702,6 +778,10 @@ fn parse_issue_type(raw: &str) -> Result<(), WorkspaceError> {
     }
 }
 
+fn count_occurrences(haystack: &str, needle: &str) -> usize {
+    haystack.matches(needle).count()
+}
+
 fn issue_row_to_domain(row: &IssueRow) -> Issue {
     let issue_type = match row.issue_type.as_str() {
         "technical" => IssueType::Technical,
@@ -732,6 +812,15 @@ fn load_pipeline_def(workspace: &Workspace, name: &str) -> Result<PipelineDef, W
             return PipelineDef::load(&path).map_err(|e| WorkspaceError::Io(e.to_string()));
         }
     }
+    // Self-heal: workspaces bootstrapped by older binaries miss newer bundled
+    // templates; install on demand instead of failing.
+    if let Some((_, content)) = BUNDLED_PIPELINES.iter().find(|(n, _)| *n == name) {
+        let dir = workspace.pipelines_dir();
+        fs::create_dir_all(&dir).map_err(io_err)?;
+        let path = dir.join(format!("{name}.pipeline.yaml"));
+        fs::write(&path, content).map_err(io_err)?;
+        return PipelineDef::load(&path).map_err(|e| WorkspaceError::Io(e.to_string()));
+    }
     let mut available: Vec<String> = dirs
         .iter()
         .filter_map(|dir| fs::read_dir(dir).ok())
@@ -744,6 +833,7 @@ fn load_pipeline_def(workspace: &Workspace, name: &str) -> Result<PipelineDef, W
                 .strip_suffix(".pipeline.yaml")
                 .map(str::to_string)
         })
+        .chain(bundled_pipeline_names().into_iter().map(str::to_string))
         .collect();
     available.sort();
     available.dedup();
@@ -1028,6 +1118,15 @@ impl crate::CliDomain for SelfHostDomain {
         Ok(fields)
     }
 
+    fn close_issue(&mut self, key: &str) -> Result<BTreeMap<String, String>, crate::CliError> {
+        let issue = self.store.close_issue(key).map_err(ws_err)?;
+        Ok(BTreeMap::from([
+            ("key".into(), issue.key),
+            ("issue_status".into(), issue.status),
+            ("title".into(), issue.title),
+        ]))
+    }
+
     fn start_issue(
         &mut self,
         key: &str,
@@ -1085,6 +1184,30 @@ impl crate::CliDomain for SelfHostDomain {
             ("doc_type".into(), doc.doc_type),
             ("status".into(), doc.status),
             ("file_path".into(), doc.file_path),
+        ]))
+    }
+
+    fn check_doc(&self, doc_id: &str) -> Result<BTreeMap<String, String>, crate::CliError> {
+        let check = self.store.check_doc(doc_id).map_err(ws_err)?;
+        Ok(BTreeMap::from([
+            ("doc_id".into(), check.doc_id),
+            ("file_path".into(), check.file_path),
+            ("file_exists".into(), check.file_exists.to_string()),
+            (
+                "frontmatter_complete".into(),
+                check.frontmatter_complete.to_string(),
+            ),
+            ("body_filled".into(), check.body_filled.to_string()),
+            (
+                "placeholder_count".into(),
+                check.placeholder_count.to_string(),
+            ),
+            ("checkboxes_total".into(), check.checkboxes_total.to_string()),
+            (
+                "checkboxes_checked".into(),
+                check.checkboxes_checked.to_string(),
+            ),
+            ("passed".into(), check.passed.to_string()),
         ]))
     }
 
