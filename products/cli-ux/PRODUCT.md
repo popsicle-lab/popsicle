@@ -2,9 +2,9 @@
 
 > **Layer**: L2（用户可见行为）
 > **Audience**: PM、销售、客户成功、AI Copilot
-> **Status**: cutover-done + self-host Phase 2 存储 + 可用性闭环 + DevOps 工具链（ADR-014 Accepted 2026-06-11）
+> **Status**: cutover-done + 多项目/UI/DMG + 嵌入 intent-coder（ADR-014–017 Accepted 2026-06-11）
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-014（devops tooling migration）
+> **Last-Decision-Ref**: PDR-003（PROJ-35 retro spec）
 
 ## 一行用途
 
@@ -27,8 +27,8 @@
 
 > 5 个旅程阶段的入口（v0.2 任务图）。具体 task 文件由 prd-writer 写到 `tasks/<stage>/` 下。
 
-- [Onboarding](tasks/onboarding/) — 首次初始化并看到下一步（1 task）
-- [Daily-Ops](tasks/daily-ops/) — 创建 issue/run、doc、stage 推进（3 task）
+- [Onboarding](tasks/onboarding/) — 初始化、DMG 安装、UI 选项目、嵌入 intent-coder（4 task）
+- [Daily-Ops](tasks/daily-ops/) — 创建 issue/run、doc、stage 推进、多项目切换（4 task）
 - [Troubleshooting](tasks/troubleshooting/) — guard/lock/not-found 错误诊断（1 task）
 - [Admin](tasks/admin/) — 低频维护命令（1 task）
 - [Lifecycle](tasks/lifecycle/) — 旧命令裁剪与迁出确认（1 task）
@@ -37,7 +37,7 @@
 
 ## Intents Catalog
 
-- [`intents/acceptance.intent`](intents/acceptance.intent) — 命令树验收契约（7 VC verified，ADR-008 gate_ready=true）
+- [`intents/acceptance.intent`](intents/acceptance.intent) — 命令树 + 多项目/UI/模块验收（12 block，PDR-001/002/003）
 - [`intents/invariants.intent`](intents/invariants.intent) — CLI shell 自然律（`RenderTopLevelHelp` verified）
 - [`intents/contracts.intent`](intents/contracts.intent) — CLI shell 对 runtime/artifact/storage 的端口契约（ADR-007 Accepted）
 
@@ -51,10 +51,12 @@
 - ADR-012：可用性闭环——`doc check` / `issue close` 落地、默认管线 bundled 化（D-101）+ 模板自愈、smoke 隔离与残留清理（O-102）。
 - ADR-013：SQLite Phase 2 存储——`.popsicle/self-host/state.db`（避开 legacy popsicle.db）、后端自动检测 + TSV 兼容、`admin migrate` 真迁移（幂等留底）、doctor 后端动态报告。PROJ-11 关闭。
 - ADR-014：DevOps 工具链迁移——Makefile（check/golden/intent）、install.sh（裁剪 UI/completions）、pre-commit hook、CI/Release workflows（纯 Rust 矩阵）；fmt/clippy 欠账清零。
+- ADR-015：Tauri 2 桌面 UI（MVP+）— `popsicle ui`，Cargo feature `ui`，直连 `SelfHostDomain`。
+- ADR-016：UI 项目切换器 + MRU，桥接 `global.json`；`.app` 零参数启动 UI。
+- ADR-017：intent-coder 编译期嵌入，`init` 解压到 `.popsicle/modules/intent-coder/`（DMG 无独立 module 目录）。
+- PDR-003：多项目注册表、UI shell、嵌入模块、DMG 安装路径的 retro task/intent（PROJ-35）。
 
 ## Open Questions
-
-- **ADR-015**：Tauri 2 桌面 UI（MVP+）— `popsicle ui`，Cargo feature `ui`，直连 `SelfHostDomain`；Issues/Pipeline/文档 + Task/Intent/Mermaid 图。
 - `sync` 不进 IDD 主路径；是否 hibernate 或独立 product 另开 PDR。
 
 ---

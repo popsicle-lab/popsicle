@@ -1,8 +1,8 @@
 // Product: cli-ux
-// Layer: L2 acceptance（验收契约 —— PROJ-6 / PDR-001）
+// Layer: L2 acceptance（验收契约 —— PDR-001 + PDR-002 + PDR-003 retro）
 // Status: draft formal seed — 待 intent-spec-writer 收紧 / intent-check
-// Last-Updated: 2026-06-09
-// Source PDR: PDR-001-cli-ux-command-tree-redesign.md
+// Last-Updated: 2026-06-11
+// Source PDR: PDR-001, PDR-002, PDR-003（PROJ-35）
 
 type InitResult {
   workspaceReady: Bool
@@ -52,6 +52,31 @@ type BinaryProvenanceResult {
   hasWorkspaceRoot: Bool
   hasExpectedWorkspaceBinary: Bool
   currentWorkspaceBinaryMatch: Bool
+}
+
+type ProjectRegistryResult {
+  addSucceeded: Bool
+  useSetsDefault: Bool
+  projectFlagResolves: Bool
+}
+
+type UiProjectOpenResult {
+  globalConfigWritten: Bool
+  lastOpenedAtSet: Bool
+  recentsIncludeProject: Bool
+}
+
+type IntentCoderInitResult {
+  moduleDirExists: Bool
+  skillsTreePresent: Bool
+  intentValidateToolPresent: Bool
+  doctorReportsModuleVersion: Bool
+}
+
+type MacosDmgInstallResult {
+  cliOnPath: Bool
+  doctorOk: Bool
+  initWorksInFreshDir: Bool
 }
 
 @source("PDR-001", section: "Intent Mapping row 1")
@@ -125,4 +150,77 @@ intent BinaryProvenanceVisible(r: BinaryProvenanceResult) {
   ensure r.hasWorkspaceRoot' == true
   ensure r.hasExpectedWorkspaceBinary' == true
   ensure r.currentWorkspaceBinaryMatch' == true
+}
+
+// ---- Block 9 ----
+// task:          T-CU-0009
+// pdr:           PDR-003
+// journey_stage: daily-ops
+// source:        PDR-003 § Intent Impact row 1
+// query_anchors:
+//   - "我有好几个 popsicle 项目，怎么登记并切换？"
+//   - "popsicle issue list 读的是哪个目录？"
+//   - "能不能只对某次命令指定另一个项目路径？"
+@source("PDR-003", section: "Intent Impact row 1")
+@tobe
+intent ProjectRegistryOverridesWorkspace(r: ProjectRegistryResult) {
+  require true
+  ensure r.addSucceeded' == true
+  ensure r.useSetsDefault' == true
+  ensure r.projectFlagResolves' == true
+}
+
+// ---- Block 10 ----
+// task:          T-CU-0010
+// pdr:           PDR-003
+// journey_stage: onboarding
+// source:        PDR-003 § Intent Impact row 2
+// query_anchors:
+//   - "双击 Popsicle.app 怎么进界面？"
+//   - "桌面版怎么选项目、看最近打开过的仓库？"
+//   - "UI 里换项目后 global.json 会不会一起更新？"
+@source("PDR-003", section: "Intent Impact row 2")
+@tobe
+intent UiProjectOpenPersistsRecents(r: UiProjectOpenResult) {
+  require true
+  ensure r.globalConfigWritten' == true
+  ensure r.lastOpenedAtSet' == true
+  ensure r.recentsIncludeProject' == true
+}
+
+// ---- Block 11 ----
+// task:          T-CU-0011
+// pdr:           PDR-003
+// journey_stage: onboarding
+// source:        PDR-003 § Intent Impact row 3
+// query_anchors:
+//   - "DMG 装完 popsicle，新项目还要单独 clone intent-coder 吗？"
+//   - "popsicle init 会把 skill 装到哪？"
+//   - "module add 不能用，怎么更新模块？"
+@source("PDR-003", section: "Intent Impact row 3")
+@tobe
+intent InitInstallsEmbeddedIntentCoder(r: IntentCoderInitResult) {
+  require true
+  ensure r.moduleDirExists' == true
+  ensure r.skillsTreePresent' == true
+  ensure r.intentValidateToolPresent' == true
+  ensure r.doctorReportsModuleVersion' == true
+}
+
+// ---- Block 12 ----
+// task:          T-CU-0012
+// pdr:           PDR-003
+// journey_stage: onboarding
+// source:        PDR-003 § Intent Impact row 4
+// query_anchors:
+//   - "Popsicle DMG 里有什么？"
+//   - "Install CLI.command 做了什么？"
+//   - "装完后终端找不到 popsicle 怎么办？"
+@source("PDR-003", section: "Intent Impact row 4")
+@tobe
+intent MacosDmgInstallExposesCli(r: MacosDmgInstallResult) {
+  require true
+  ensure r.cliOnPath' == true
+  ensure r.doctorOk' == true
+  ensure r.initWorksInFreshDir' == true
 }

@@ -1,14 +1,14 @@
 # cli-ux — Tasks 索引
 
-> **Status**: 8/8 task 已实现（T-CU-0008 self-host Phase 1 ✓ ADR-010）
+> **Status**: 12/12 task 已实现（T-CU-0009–0012 retro spec ✓ PDR-003 / PROJ-35）
 > **Last-Updated**: 2026-06-11
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
 
 | 旅程阶段 | 任务数 | 已实施 | 健康度 |
 |---|---|---|---|
-| `onboarding/` | 1 | 1 | 🟢 implemented |
-| `daily-ops/` | 3 | 3 | 🟢 implemented |
+| `onboarding/` | 4 | 4 | 🟢 implemented |
+| `daily-ops/` | 4 | 4 | 🟢 implemented |
 | `troubleshooting/` | 1 | 1 | 🟢 implemented |
 | `admin/` | 1 | 1 | 🟢 implemented |
 | `lifecycle/` | 2 | 2 | 🟢 implemented |
@@ -25,6 +25,10 @@
 | T-CU-0006 | admin | 执行低频 admin migrate/reinit | AdminCommandsAreExplicit |
 | T-CU-0007 | lifecycle | 确认旧命令 disposition | RemovedCommandsStayRemoved |
 | T-CU-0008 | lifecycle | 自举运行 workflow 并确认 binary provenance | SelfHostedWorkflowSmokePasses / BinaryProvenanceVisible |
+| T-CU-0009 | daily-ops | 在多个已注册项目之间切换 | ProjectRegistryOverridesWorkspace |
+| T-CU-0010 | onboarding | 用桌面 UI 打开项目并看最近列表 | UiProjectOpenPersistsRecents |
+| T-CU-0011 | onboarding | 全新目录 init 后获得 intent-coder 模块 | InitInstallsEmbeddedIntentCoder |
+| T-CU-0012 | onboarding | macOS DMG 安装 CLI 并加入 PATH | MacosDmgInstallExposesCli |
 
 ## 命名约定
 

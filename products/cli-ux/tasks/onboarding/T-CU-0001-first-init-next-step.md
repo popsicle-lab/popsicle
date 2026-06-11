@@ -9,7 +9,7 @@ decision_ref: PDR-001
 last_updated: 2026-06-09
 last_verified: ~
 intent_kind: produce
-involved_features: ["init", "module", "context"]
+involved_features: ["init", "intent-coder", "pipelines"]
 prerequisites:
   - "空仓库或未初始化 workspace"
 limits:
@@ -27,7 +27,7 @@ fact_cite:
 ## 本 task 可解答
 
 - "我第一次跑 popsicle init 后下一步是什么？"
-- "module/tool/skill registry 是怎么进入 workspace 的？"
+- "intent-coder 模块是怎么进入 workspace 的？"
 - "AI agent 怎么知道接下来跑哪个 pipeline？"
 
 ## 前提与限制
@@ -37,13 +37,13 @@ fact_cite:
 ## 完成路径
 
 1. 运行 `popsicle init` 初始化 `.popsicle/`。
-2. 安装或确认 `intent-coder` module 可被 `popsicle module list` 看到。
-3. 运行 `popsicle pipeline list` 看到 `migration-bootstrap` / `slice-spec` / `slice-delivery`。
-4. CLI 输出下一步建议，指向创建 spec/issue 或启动 pipeline。
+2. 确认 `.popsicle/modules/intent-coder/` 已安装（嵌入 bundle 或 dogfood 工作区覆盖，ADR-017）。
+3. 运行 `popsicle doctor --format json` 查看 `intent_coder_module` 与 bundled pipelines。
+4. CLI 输出下一步建议，指向 `intent-coder/guides/pipeline-selection.md` 与 `issue create`。
 
 ## 可观察的成功标志
 
-初始化后 CLI 返回非空 next step，且 `module/tool/skill/pipeline` 命令能读取 workspace 状态。
+初始化后 CLI 返回非空 next step，且 `pipeline` / `tool run intent-validate` 能读取 workspace 状态。
 
 ## Related Next Tasks
 
