@@ -115,7 +115,7 @@ jobs:
           cp "packaging/macos/Install CLI.command" "$STAGING/"
           chmod +x "$STAGING/Install CLI.command"
           ln -s /Applications "$STAGING/Applications"
-          VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' crates/cli-ux/Cargo.toml)"
+          VERSION="$(awk -F'"' '/^version = / {print $2; exit}' crates/cli-ux/Cargo.toml)"
           OUT="Popsicle_${VERSION}_${{ matrix.arch }}.dmg"
           mkdir -p dist
           hdiutil create -volname "Popsicle" -srcfolder "$STAGING" -ov -format UDZO "dist/$OUT"

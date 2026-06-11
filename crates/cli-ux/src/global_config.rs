@@ -20,7 +20,11 @@ pub struct GlobalConfig {
 pub struct ProjectEntry {
     pub name: String,
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_opened_at: Option<u64>,
 }
+
+const MAX_RECENT: usize = 12;
 
 /// How the active workspace root was chosen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,19 +103,17 @@ pub fn validate_workspace_root(path: &Path) -> Result<PathBuf, WorkspaceError> {
     Ok(canon)
 }
 
-fn find_workspace_root_from_cwd() -> Result<PathBuf, WorkspaceError> {
-    let mut dir = std::env::current_dir().map_err(|e| io_err(e.to_string()))?;
+fn try_find_workspace_root_from_cwd() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
     loop {
         if dir.join(".popsicle").is_dir() {
-            return Ok(dir);
+            return Some(dir);
         }
         if !dir.pop() {
             break;
         }
     }
-    Err(WorkspaceError::InvalidState(
-        "no .popsicle workspace root found".into(),
-    ))
+    None
 }
 
 /// Resolve workspace root for normal commands (not init bootstrap).
@@ -134,6 +136,14 @@ pub fn resolve_workspace_root(
             });
         }
     }
+    // Prefer the workspace enclosing cwd over global default so nested/temp
+    // workspaces (smoke tests, `cd other-repo`) are not hijacked by default_project.
+    if let Some(root) = try_find_workspace_root_from_cwd() {
+        return Ok(ResolvedWorkspace {
+            root,
+            source: WorkspaceSource::CwdWalk,
+        });
+    }
     if let Ok(cfg) = load_global_config() {
         if let Some(p) = cfg.default_project {
             if !p.is_empty() {
@@ -146,11 +156,9 @@ pub fn resolve_workspace_root(
             }
         }
     }
-    let root = find_workspace_root_from_cwd()?;
-    Ok(ResolvedWorkspace {
-        root,
-        source: WorkspaceSource::CwdWalk,
-    })
+    Err(WorkspaceError::InvalidState(
+        "no .popsicle workspace root found".into(),
+    ))
 }
 
 /// Resolve for `popsicle init`: explicit project or cwd bootstrap.
@@ -177,34 +185,116 @@ pub fn derive_project_name(path: &Path) -> String {
         .unwrap_or_else(|| "project".to_string())
 }
 
-pub fn add_project(path: &str, name: Option<&str>) -> Result<ProjectEntry, WorkspaceError> {
-    let canon = validate_workspace_root(Path::new(path))?;
+fn now_unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+pub fn is_valid_workspace_path(path: &str) -> bool {
+    Path::new(path).join(".popsicle").is_dir()
+}
+
+pub fn upsert_project_entry(
+    cfg: &mut GlobalConfig,
+    canon: &Path,
+    name: Option<&str>,
+    touch_opened: bool,
+) -> ProjectEntry {
     let entry_name = name
         .map(str::to_string)
-        .unwrap_or_else(|| derive_project_name(&canon));
+        .unwrap_or_else(|| derive_project_name(canon));
+    let path = canon.display().to_string();
+    let opened_at = touch_opened.then_some(now_unix_secs());
+    if let Some(idx) = cfg
+        .projects
+        .iter()
+        .position(|p| p.path == path || p.name == entry_name)
+    {
+        let existing = &mut cfg.projects[idx];
+        existing.name = entry_name;
+        existing.path = path.clone();
+        if touch_opened {
+            existing.last_opened_at = opened_at;
+        }
+        return existing.clone();
+    }
     let entry = ProjectEntry {
         name: entry_name,
-        path: canon.display().to_string(),
+        path,
+        last_opened_at: opened_at,
     };
+    cfg.projects.push(entry.clone());
+    entry
+}
+
+pub fn add_project(path: &str, name: Option<&str>) -> Result<ProjectEntry, WorkspaceError> {
+    let canon = validate_workspace_root(Path::new(path))?;
     let mut cfg = load_global_config()?;
-    if let Some(idx) = cfg.projects.iter().position(|p| p.name == entry.name) {
-        cfg.projects[idx] = entry.clone();
-    } else {
-        cfg.projects.push(entry.clone());
-    }
+    let entry = upsert_project_entry(&mut cfg, &canon, name, false);
     cfg.projects.sort_by(|a, b| a.name.cmp(&b.name));
     save_global_config(&cfg)?;
     Ok(entry)
 }
 
+/// Register, mark as recently opened, and set as the global default workspace.
+pub fn open_project(path: &str, name: Option<&str>) -> Result<ProjectEntry, WorkspaceError> {
+    let canon = validate_workspace_root(Path::new(path))?;
+    let mut cfg = load_global_config()?;
+    let entry = upsert_project_entry(&mut cfg, &canon, name, true);
+    cfg.default_project = Some(entry.path.clone());
+    save_global_config(&cfg)?;
+    Ok(entry)
+}
+
+pub fn list_recent_projects(limit: usize) -> Result<Vec<ProjectEntry>, WorkspaceError> {
+    let cfg = load_global_config()?;
+    let mut recent: Vec<ProjectEntry> = cfg
+        .projects
+        .into_iter()
+        .filter(|p| p.last_opened_at.is_some() && is_valid_workspace_path(&p.path))
+        .collect();
+    recent.sort_by(|a, b| b.last_opened_at.cmp(&a.last_opened_at));
+    recent.truncate(limit.min(MAX_RECENT));
+    Ok(recent)
+}
+
+/// Best workspace to open on UI startup: explicit CLI path, global default, then MRU.
+pub fn resolve_ui_startup_root(
+    cli_project: Option<&Path>,
+) -> Result<Option<PathBuf>, WorkspaceError> {
+    if let Some(p) = cli_project {
+        if p.join(".popsicle").is_dir() {
+            return Ok(Some(
+                fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
+            ));
+        }
+    }
+    let cfg = load_global_config()?;
+    if let Some(p) = cfg.default_project {
+        if is_valid_workspace_path(&p) {
+            return Ok(Some(PathBuf::from(p)));
+        }
+    }
+    if let Some(entry) = list_recent_projects(1)?.into_iter().next() {
+        return Ok(Some(PathBuf::from(entry.path)));
+    }
+    let cwd = std::env::current_dir().map_err(|e| io_err(e.to_string()))?;
+    if cwd.join(".popsicle").is_dir() {
+        return Ok(Some(cwd));
+    }
+    Ok(None)
+}
+
 pub fn remove_project(name: &str) -> Result<(), WorkspaceError> {
     let mut cfg = load_global_config()?;
-    let before = cfg.projects.len();
-    cfg.projects.retain(|p| p.name != name);
-    if cfg.projects.len() == before {
+    let removed = cfg.projects.iter().find(|p| p.name == name).cloned();
+    let Some(removed) = removed else {
         return Err(WorkspaceError::NotFound(format!("project {name}")));
-    }
-    if cfg.default_project.as_deref() == Some(name) {
+    };
+    cfg.projects.retain(|p| p.name != name);
+    if cfg.default_project.as_deref() == Some(removed.path.as_str()) {
         cfg.default_project = None;
     }
     save_global_config(&cfg)
@@ -218,14 +308,8 @@ pub fn set_default_project(target: &str) -> Result<ProjectEntry, WorkspaceError>
         return Ok(entry);
     }
     let root = validate_workspace_root(Path::new(target))?;
-    let entry = ProjectEntry {
-        name: derive_project_name(&root),
-        path: root.display().to_string(),
-    };
-    if !cfg.projects.iter().any(|p| p.path == entry.path) {
-        cfg.projects.push(entry.clone());
-        cfg.projects.sort_by(|a, b| a.name.cmp(&b.name));
-    }
+    let entry = upsert_project_entry(&mut cfg, &root, None, false);
+    cfg.projects.sort_by(|a, b| a.name.cmp(&b.name));
     cfg.default_project = Some(entry.path.clone());
     save_global_config(&cfg)?;
     Ok(entry)

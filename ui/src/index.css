@@ -20,9 +20,49 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family:
+    "SF Pro Text",
     system-ui,
     -apple-system,
+    BlinkMacSystemFont,
     sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.welcome-shell {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(56, 189, 248, 0.18), transparent),
+    var(--bg-primary);
+}
+
+.welcome-panel {
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--bg-secondary) 85%, transparent);
+  padding: 2rem;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+}
+
+.welcome-logo {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(167, 139, 250, 0.2));
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.project-card {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.sidebar {
+  backdrop-filter: blur(12px);
+}
+
+.main-content {
+  background:
+    radial-gradient(ellipse 100% 80% at 100% 0%, rgba(56, 189, 248, 0.06), transparent),
+    var(--bg-primary);
+}
+
+.app-header {
+  backdrop-filter: blur(8px);
 }
 
 .prose {

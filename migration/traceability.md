@@ -28,6 +28,8 @@
 | `legacy/popsicle/ui/`（14 页 Tauri SPA）| `ui/`（MVP+：Issues/Pipeline/Document/Task/Intent）| slice-4-ui | ADR-015 | `docs/baseline/2026-06-11/cli-ux-ui/` | cutover-done |
 | `legacy/popsicle/crates/popsicle-cli/src/ui/commands.rs` | `crates/cli-ux/src/ui/commands.rs` | slice-4-ui | ADR-015 | G-002/G-003 | cutover-done |
 | `legacy/popsicle/crates/popsicle-core`（IndexDb Tauri IPC）| `LocalWorkspace` + `.popsicle/self-host/state.db` | slice-4-ui | ADR-015 D-501 | — | cutover-done |
+| `legacy/popsicle` 多项目 / 最近打开（无 global.json）| `global_config.rs` + UI `ProjectSwitcher` | slice-4-ui | ADR-016 | `docs/baseline/2026-06-11/cli-ux-project-ui/` | cutover-done |
+| `popsicle project *` CLI 注册表 | Tauri `open_project_cmd` / `list_registered_projects` | slice-4-ui | ADR-016 | `docs/baseline/2026-06-11/cli-ux-global/` | cutover-done |
 
 ## 规则
 

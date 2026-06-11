@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use storage::WorkspaceStore;
 use tauri::State;
 
-use crate::global_config::WorkspaceSource;
+use crate::global_config::{
+    global_config_path, is_valid_workspace_path, list_projects, open_project, remove_project,
+    WorkspaceSource,
+};
 use crate::self_host::{binary_provenance_for, load_pipeline_def, Workspace};
 use crate::workspace_readers::{
     guidance_for_issue, intent_fallback_mermaid, list_products, read_intent_file, read_task,
@@ -31,15 +34,111 @@ pub fn get_initial_dir(state: State<AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn set_project_dir(path: String, state: State<AppState>) -> Result<(), String> {
-    let root = PathBuf::from(&path);
-    if !root.join(".popsicle").is_dir() {
-        return Err(format!(
-            "{path} is not a popsicle workspace (missing .popsicle/)"
-        ));
+pub fn get_active_project(state: State<AppState>) -> Result<Option<ProjectInfo>, String> {
+    let dir = state.project_dir.lock().map_err(|e| e.to_string())?.clone();
+    let Some(dir) = dir else {
+        return Ok(None);
+    };
+    let path = dir.display().to_string();
+    let cfg = list_projects().map_err(|e| e.to_string())?;
+    let entry = cfg.projects.into_iter().find(|p| p.path == path);
+    Ok(entry.map(|e| project_info_from_entry(e, cfg.default_project.as_deref())))
+}
+
+fn project_info_from_entry(
+    entry: crate::global_config::ProjectEntry,
+    default_path: Option<&str>,
+) -> ProjectInfo {
+    let is_default = default_path == Some(entry.path.as_str());
+    let is_valid = is_valid_workspace_path(&entry.path);
+    ProjectInfo {
+        name: entry.name,
+        path: entry.path,
+        last_opened_at: entry.last_opened_at,
+        is_default,
+        is_valid,
     }
-    *state.project_dir.lock().map_err(|e| e.to_string())? = Some(root);
-    Ok(())
+}
+
+fn apply_project_dir(state: &State<AppState>, path: &str) -> Result<PathBuf, String> {
+    let entry = open_project(path, None).map_err(|e| e.to_string())?;
+    let root = PathBuf::from(&entry.path);
+    *state.project_dir.lock().map_err(|e| e.to_string())? = Some(root.clone());
+    Ok(root)
+}
+
+#[tauri::command]
+pub fn set_project_dir(path: String, state: State<AppState>) -> Result<ProjectInfo, String> {
+    let root = apply_project_dir(&state, &path)?;
+    let cfg = list_projects().map_err(|e| e.to_string())?;
+    let entry = cfg
+        .projects
+        .into_iter()
+        .find(|p| p.path == root.display().to_string())
+        .ok_or_else(|| "project not registered".to_string())?;
+    Ok(project_info_from_entry(
+        entry,
+        cfg.default_project.as_deref(),
+    ))
+}
+
+#[tauri::command]
+pub fn open_project_cmd(path: String, state: State<AppState>) -> Result<ProjectInfo, String> {
+    let root = apply_project_dir(&state, &path)?;
+    let cfg = list_projects().map_err(|e| e.to_string())?;
+    let entry = cfg
+        .projects
+        .into_iter()
+        .find(|p| p.path == root.display().to_string())
+        .ok_or_else(|| "project not registered".to_string())?;
+    Ok(project_info_from_entry(
+        entry,
+        cfg.default_project.as_deref(),
+    ))
+}
+
+#[tauri::command]
+pub fn list_registered_projects() -> Result<ProjectsList, String> {
+    let cfg = list_projects().map_err(|e| e.to_string())?;
+    let default = cfg.default_project.clone();
+    let mut projects: Vec<ProjectInfo> = cfg
+        .projects
+        .into_iter()
+        .map(|e| project_info_from_entry(e, default.as_deref()))
+        .collect();
+    projects.sort_by(|a, b| {
+        b.last_opened_at
+            .cmp(&a.last_opened_at)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    Ok(ProjectsList {
+        projects,
+        default_path: default,
+        global_config_path: global_config_path()
+            .map(|p| p.display().to_string())
+            .map_err(|e| e.to_string())?,
+    })
+}
+
+#[tauri::command]
+pub fn remove_registered_project(name: String) -> Result<(), String> {
+    remove_project(&name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pick_project_directory() -> Option<String> {
+    rfd::FileDialog::new()
+        .set_title("Open Popsicle Project")
+        .pick_folder()
+        .map(|p| p.display().to_string())
+}
+
+#[tauri::command]
+pub fn resolve_startup_project(cli_project: Option<String>) -> Result<Option<String>, String> {
+    let path = cli_project.map(PathBuf::from);
+    crate::global_config::resolve_ui_startup_root(path.as_deref())
+        .map(|opt| opt.map(|p| p.display().to_string()))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -48,8 +147,20 @@ pub fn get_workspace_info(state: State<AppState>) -> Result<WorkspaceInfo, Strin
     let store = LocalWorkspace::open_at(dir.clone()).map_err(|e| e.to_string())?;
     let prov = binary_provenance_for(&Workspace::at(dir.clone()), WorkspaceSource::CliFlag)
         .map_err(|e| e.to_string())?;
+    let cfg = list_projects().unwrap_or_default();
+    let project_name = cfg
+        .projects
+        .iter()
+        .find(|p| p.path == dir.display().to_string())
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| {
+            dir.file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "project".to_string())
+        });
     Ok(WorkspaceInfo {
         root: dir.display().to_string(),
+        project_name,
         storage_backend: store.backend().describe(store.workspace()),
         binary_match: prov.current_workspace_binary_match,
         executable_path: prov.executable_path,

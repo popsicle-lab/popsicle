@@ -9,6 +9,8 @@ use tauri::Manager;
 
 pub use dto::*;
 
+use crate::global_config::resolve_ui_startup_root;
+
 use state::AppState;
 
 pub fn run(project: Option<String>) {
@@ -16,17 +18,26 @@ pub fn run(project: Option<String>) {
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
 
-    let initial_project = project.map(std::path::PathBuf::from);
+    let cli_project = project.map(std::path::PathBuf::from);
+    let initial_project = resolve_ui_startup_root(cli_project.as_deref())
+        .ok()
+        .flatten();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            project_dir: Mutex::new(initial_project.filter(|p| p.join(".popsicle").is_dir())),
+            project_dir: Mutex::new(initial_project),
             initial_dir,
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_initial_dir,
             commands::set_project_dir,
+            commands::open_project_cmd,
+            commands::list_registered_projects,
+            commands::remove_registered_project,
+            commands::pick_project_directory,
+            commands::resolve_startup_project,
+            commands::get_active_project,
             commands::get_workspace_info,
             commands::list_issues,
             commands::get_issue,

@@ -19,10 +19,13 @@ Requires: macOS, Xcode CLI tools (`sips`, `iconutil`, `hdiutil`), Node 18+, Rust
 
 ## First open (unsigned)
 
-1. Mount the DMG.
-2. Drag **Popsicle.app** to **Applications**.
-3. Double-click **Install CLI.command** (may need Right-click → Open once).
-4. For the app: System Settings → Privacy & Security → Open Anyway, if Gatekeeper blocks.
+The DMG is a **folder image**, not a wizard installer — mount it, then:
+
+1. Drag **Popsicle.app** into **Applications** (do not run the app from inside the DMG).
+2. Open **Popsicle** from Applications. If macOS blocks the unsigned app: **Right-click → Open** once, or System Settings → Privacy & Security → **Open Anyway**.
+3. Double-click **Install CLI.command** on the mounted volume (Right-click → Open if blocked). This copies `popsicle` to `~/.local/bin`.
+
+Terminal CLI remains `popsicle ui` (or any other subcommand); double-clicking the `.app` opens the desktop UI directly.
 
 ## Multi-project
 

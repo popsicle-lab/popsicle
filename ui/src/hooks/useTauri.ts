@@ -4,9 +4,24 @@ import { useCallback, useEffect, useState } from "react";
 
 export interface WorkspaceInfo {
   root: string;
+  project_name: string;
   storage_backend: string;
   binary_match: boolean;
   executable_path: string;
+}
+
+export interface ProjectInfo {
+  name: string;
+  path: string;
+  last_opened_at: number | null;
+  is_default: boolean;
+  is_valid: boolean;
+}
+
+export interface ProjectsList {
+  projects: ProjectInfo[];
+  default_path: string | null;
+  global_config_path: string;
 }
 
 export interface IssueInfo {
@@ -100,15 +115,57 @@ export async function getInitialDir(): Promise<string> {
   return invoke("get_initial_dir");
 }
 
-export function useProjectDir() {
-  const [dir, setDir] = useState<string | null>(null);
+export async function getActiveProject(): Promise<ProjectInfo | null> {
+  return invoke("get_active_project");
+}
 
-  const setProjectDir = useCallback(async (path: string) => {
-    await invoke("set_project_dir", { path });
-    setDir(path);
+export async function resolveStartupProject(
+  cliProject?: string
+): Promise<string | null> {
+  return invoke("resolve_startup_project", { cliProject: cliProject ?? null });
+}
+
+export async function openProject(path: string): Promise<ProjectInfo> {
+  return invoke("open_project_cmd", { path });
+}
+
+export async function listRegisteredProjects(): Promise<ProjectsList> {
+  return invoke("list_registered_projects");
+}
+
+export async function removeRegisteredProject(name: string): Promise<void> {
+  return invoke("remove_registered_project", { name });
+}
+
+export async function pickProjectDirectory(): Promise<string | null> {
+  return invoke("pick_project_directory");
+}
+
+export function useProjectSession() {
+  const [project, setProject] = useState<ProjectInfo | null>(null);
+
+  const syncProject = useCallback(async (info: ProjectInfo) => {
+    setProject(info);
   }, []);
 
-  return { dir, setProjectDir };
+  const openProjectDir = useCallback(async (path: string) => {
+    const info = await openProject(path);
+    setProject(info);
+    return info;
+  }, []);
+
+  const closeProject = useCallback(() => {
+    setProject(null);
+  }, []);
+
+  return {
+    project,
+    dir: project?.path ?? null,
+    projectName: project?.name ?? null,
+    syncProject,
+    openProjectDir,
+    closeProject,
+  };
 }
 
 export async function getWorkspaceInfo(): Promise<WorkspaceInfo> {

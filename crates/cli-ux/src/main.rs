@@ -47,6 +47,13 @@ fn print_error(err: &CliError, format: OutputFormat) {
     }
 }
 
+#[cfg(feature = "ui")]
+fn launched_from_app_bundle() -> bool {
+    std::env::current_exe()
+        .ok()
+        .is_some_and(|path| path.to_string_lossy().contains(".app/Contents/MacOS/"))
+}
+
 fn needs_workspace(command: &Command) -> bool {
     matches!(
         command,
@@ -72,6 +79,13 @@ fn needs_workspace(command: &Command) -> bool {
 
 fn main() {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
+
+    // Double-clicking Popsicle.app invokes the binary with no argv; open the UI instead of help.
+    #[cfg(feature = "ui")]
+    if raw_args.is_empty() && launched_from_app_bundle() {
+        cli_ux::ui::run(None);
+        return;
+    }
 
     let parsed = match parse_cli(raw_args) {
         Ok(p) => p,

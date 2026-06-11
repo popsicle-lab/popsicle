@@ -46,7 +46,7 @@ cp "packaging/macos/Install CLI.command" "$STAGING/Install CLI.command"
 chmod +x "$STAGING/Install CLI.command"
 ln -s /Applications "$STAGING/Applications"
 
-VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' crates/cli-ux/Cargo.toml)"
+VERSION="$(awk -F'"' '/^version = / {print $2; exit}' crates/cli-ux/Cargo.toml)"
 ARCH="$(uname -m)"
 OUT="$ROOT/target/release/bundle/dmg/Popsicle_${VERSION}_${ARCH}.dmg"
 mkdir -p "$(dirname "$OUT")"

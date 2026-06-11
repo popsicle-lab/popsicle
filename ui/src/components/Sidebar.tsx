@@ -1,9 +1,14 @@
 import { ClipboardList, Package } from "lucide-react";
 import type { Page } from "../App";
+import type { ProjectInfo } from "../hooks/useTauri";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 
 interface Props {
   page: Page;
   setPage: (p: Page) => void;
+  project: ProjectInfo;
+  onSwitchProject: (path: string) => Promise<void>;
+  onBrowseOther: () => void;
 }
 
 const navItems: {
@@ -15,7 +20,13 @@ const navItems: {
   { kind: "products", label: "Products", icon: Package },
 ];
 
-export function Sidebar({ page, setPage }: Props) {
+export function Sidebar({
+  page,
+  setPage,
+  project,
+  onSwitchProject,
+  onBrowseOther,
+}: Props) {
   const isActive = (kind: Page["kind"]) => {
     if (kind === "issues") {
       return (
@@ -36,22 +47,25 @@ export function Sidebar({ page, setPage }: Props) {
   };
 
   return (
-    <aside className="w-56 bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col">
-      <div className="p-4 border-b border-[var(--border)]">
-        <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">
+    <aside className="sidebar flex w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]/80">
+      <div className="border-b border-[var(--border)] p-4">
+        <h1 className="mb-3 flex items-center gap-2 text-lg font-bold tracking-tight">
           <span className="text-2xl">🐕</span> Popsicle
         </h1>
-        <p className="text-xs text-[var(--text-secondary)] mt-1">
-          Spec-Driven Dev
-        </p>
+        <ProjectSwitcher
+          current={project}
+          onSwitch={onSwitchProject}
+          onBrowseOther={onBrowseOther}
+        />
       </div>
 
-      <nav className="flex-1 p-2 space-y-1">
+      <nav className="flex-1 space-y-1 p-3">
         {navItems.map((item) => {
           const active = isActive(item.kind);
           return (
             <button
               key={item.kind}
+              type="button"
               onClick={() => {
                 if (item.kind === "products") {
                   setPage({ kind: "products", tab: "tasks" });
@@ -59,10 +73,10 @@ export function Sidebar({ page, setPage }: Props) {
                   setPage({ kind: "issues" });
                 }
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
                 active
-                  ? "bg-[var(--accent)]/15 text-[var(--accent)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                  ? "bg-[var(--accent)]/15 font-medium text-[var(--accent)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]/50 hover:text-[var(--text-primary)]"
               }`}
             >
               <item.icon size={18} />
@@ -72,8 +86,8 @@ export function Sidebar({ page, setPage }: Props) {
         })}
       </nav>
 
-      <div className="p-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]">
-        MVP+ UI
+      <div className="border-t border-[var(--border)] p-3 text-[11px] text-[var(--text-secondary)]">
+        Spec-driven development
       </div>
     </aside>
   );

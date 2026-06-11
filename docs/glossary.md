@@ -17,7 +17,7 @@
 | **slice / 切片** | 一个完整迁移单元的 product 范围，对应一次完整的 `migration-bootstrap` pipeline run | `migration/progress.md` |
 | **Z3 闸** | `intent check` 调用 Z3 SMT 求解器对 `.intent` 做形式化一致性验证；observe 模式 + CI 硬闸两层 | `intent-coder/skills/intent-consistency-check/` |
 | **playbook（首切片）** | 首切片完成后形成的端到端样板，后续 slice 抄它做剪裁 | `intent-coder/skills/project-init/guide.md` |
-| **全局项目注册表** | `~/.popsicle/global.json` 记录多台机器/多个仓库的 popsicle 工作区路径与默认项；配合 `popsicle project` 与 `--project` | `crates/cli-ux/src/global_config.rs` |
+| **全局项目注册表** | `~/.popsicle/global.json` 记录多台机器/多个仓库的 popsicle 工作区路径、默认项与 `last_opened_at`（最近打开）；CLI `popsicle project`、UI 切换器与 `--project` 共用 | `crates/cli-ux/src/global_config.rs` · ADR-016 |
 | _[TBD: 其它术语]_ | _按需追加，不要预先填充_ | n/a |
 
 ## 红线

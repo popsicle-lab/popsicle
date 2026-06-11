@@ -3,9 +3,26 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkspaceInfo {
     pub root: String,
+    pub project_name: String,
     pub storage_backend: String,
     pub binary_match: bool,
     pub executable_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectInfo {
+    pub name: String,
+    pub path: String,
+    pub last_opened_at: Option<u64>,
+    pub is_default: bool,
+    pub is_valid: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectsList {
+    pub projects: Vec<ProjectInfo>,
+    pub default_path: Option<String>,
+    pub global_config_path: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

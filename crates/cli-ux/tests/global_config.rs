@@ -12,7 +12,8 @@ fn env_lock() -> MutexGuard<'static, ()> {
 }
 
 use cli_ux::global_config::{
-    add_project, load_global_config, resolve_workspace_root, set_default_project, WorkspaceSource,
+    add_project, list_recent_projects, load_global_config, open_project, resolve_workspace_root,
+    set_default_project, WorkspaceSource,
 };
 use cli_ux::self_host::{binary_provenance_for, Workspace};
 use cli_ux::{parse_cli, run_command_stateless, SelfHostDomain};
@@ -51,7 +52,10 @@ fn project_add_use_and_default_resolution() {
     add_project(&proj_b.display().to_string(), Some("b")).unwrap();
     set_default_project("a").unwrap();
 
+    let prev_cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&home).unwrap();
     let resolved = resolve_workspace_root(None).unwrap();
+    std::env::set_current_dir(prev_cwd).unwrap();
     assert_eq!(resolved.source, WorkspaceSource::GlobalDefault);
     assert!(resolved.root.ends_with("proj-a"));
 
@@ -125,6 +129,39 @@ fn project_list_stateless_without_cwd_workspace() {
 }
 
 #[test]
+fn open_project_records_recent_and_default() {
+    let _lock = env_lock();
+    let home = isolated_home();
+    let proj = home.join("recent-proj");
+    write_workspace(&proj);
+
+    let prev_home = std::env::var("POPSICLE_HOME").ok();
+    std::env::set_var("POPSICLE_HOME", &home);
+
+    open_project(&proj.display().to_string(), Some("recent")).unwrap();
+    let cfg = load_global_config().unwrap();
+    assert!(
+        cfg.default_project
+            .as_deref()
+            .is_some_and(|p| p.ends_with("recent-proj")),
+        "default should point at recent-proj, got {:?}",
+        cfg.default_project
+    );
+    let entry = cfg.projects.iter().find(|p| p.name == "recent").unwrap();
+    assert!(entry.last_opened_at.is_some());
+
+    let recent = list_recent_projects(5).unwrap();
+    assert_eq!(recent.len(), 1);
+    assert_eq!(recent[0].name, "recent");
+
+    if let Some(h) = prev_home {
+        std::env::set_var("POPSICLE_HOME", h);
+    } else {
+        std::env::remove_var("POPSICLE_HOME");
+    }
+}
+
+#[test]
 fn doctor_reports_workspace_source() {
     let _lock = env_lock();
     let home = isolated_home();
@@ -136,7 +173,10 @@ fn doctor_reports_workspace_source() {
     add_project(&proj.display().to_string(), None).unwrap();
     set_default_project("dogfood").unwrap();
 
+    let prev_cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&home).unwrap();
     let domain = SelfHostDomain::open_with(None).unwrap();
+    std::env::set_current_dir(prev_cwd).unwrap();
     let prov = binary_provenance_for(
         &Workspace::at(domain.workspace_root().to_path_buf()),
         domain.workspace_source(),
