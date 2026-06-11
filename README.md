@@ -97,7 +97,6 @@ flowchart TB
 | [`skill-runtime`](products/skill-runtime/) | Pipeline/Skill 引擎灵魂 | lib 已切流 |
 | [`artifact-system`](products/artifact-system/) | 文档与 guard 引擎 | 已切流 |
 | [`cli-ux`](products/cli-ux/) | CLI + 桌面 UI 用户面 | 已切流（ADR-008~015）|
-| [`saas-billing-module`](products/saas-billing-module/) | 示例 / 待裁决 product | pending-decision |
 
 迁移看板：[`migration/progress.md`](migration/progress.md)
 
