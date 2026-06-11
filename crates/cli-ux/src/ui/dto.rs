@@ -30,7 +30,8 @@ pub struct CreateIssueFormOptions {
 pub struct ProjectConfigDto {
     pub language: String,
     pub products_dir: String,
-    pub default_spec: String,
+    pub default_product: String,
+    pub product_options: Vec<String>,
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
     pub approval_mode: String,

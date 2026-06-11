@@ -57,8 +57,9 @@ pub struct AgentConfig {
 pub struct PathConfig {
     #[serde(default = "default_products_dir")]
     pub products_dir: String,
-    #[serde(default)]
-    pub default_spec: String,
+    /// Default product for new issues (`products/<name>/`). Legacy yaml key: `default_spec`.
+    #[serde(default, alias = "default_spec")]
+    pub default_product: String,
 }
 
 /// Pipeline stage completion policy for `requires_approval` gates.
@@ -87,10 +88,19 @@ impl ApprovalMode {
     }
 
     pub fn label_zh(self) -> &'static str {
-        match self {
-            Self::Manual => "必须人工审批",
-            Self::Auto => "全自动",
-            Self::DelegateDangerous => "危险操作需审批（其余代批）",
+        self.label(AgentLanguage::ZhCn)
+    }
+
+    pub fn label(self, lang: AgentLanguage) -> &'static str {
+        match (self, lang) {
+            (Self::Manual, AgentLanguage::ZhCn) => "必须人工审批",
+            (Self::Auto, AgentLanguage::ZhCn) => "全自动",
+            (Self::DelegateDangerous, AgentLanguage::ZhCn) => "危险操作需审批（其余代批）",
+            (Self::Manual, AgentLanguage::En) => "Manual approval required",
+            (Self::Auto, AgentLanguage::En) => "Fully automatic",
+            (Self::DelegateDangerous, AgentLanguage::En) => {
+                "Dangerous stages need approval (delegate others)"
+            }
         }
     }
 
@@ -172,7 +182,7 @@ impl Default for PathConfig {
     fn default() -> Self {
         Self {
             products_dir: default_products_dir(),
-            default_spec: String::new(),
+            default_product: String::new(),
         }
     }
 }
@@ -261,19 +271,31 @@ pub fn ensure_project_config(workspace_root: &Path) -> Result<ProjectConfig, Wor
     Ok(config)
 }
 
-pub fn approval_mode_guidance(mode: ApprovalMode) -> &'static str {
-    match mode {
-        ApprovalMode::Manual => {
+pub fn approval_mode_guidance(mode: ApprovalMode, lang: AgentLanguage) -> &'static str {
+    match (mode, lang) {
+        (ApprovalMode::Manual, AgentLanguage::En) => {
             "STOP after each stage; wait for the user before `pipeline stage complete`. \
              `requires_approval` stages need human `--confirm`."
         }
-        ApprovalMode::Auto => {
+        (ApprovalMode::Auto, AgentLanguage::En) => {
             "After `doc check` passes, you may run `pipeline stage complete` without waiting; \
              `--confirm` is implied for `requires_approval` stages."
         }
-        ApprovalMode::DelegateDangerous => {
+        (ApprovalMode::DelegateDangerous, AgentLanguage::En) => {
             "You may auto-complete non-dangerous `requires_approval` stages. \
              Dangerous stages (`cutover`, `living-docs`) still need explicit human `--confirm`."
+        }
+        (ApprovalMode::Manual, AgentLanguage::ZhCn) => {
+            "每完成一个 stage 的文档后暂停，向用户汇报并等待确认后再执行 `pipeline stage complete`；\
+             带 `requires_approval` 的阶段必须由用户亲自 `--confirm`。"
+        }
+        (ApprovalMode::Auto, AgentLanguage::ZhCn) => {
+            "文档通过 `doc check` 后可直接 `pipeline stage complete`；\
+             `requires_approval` 阶段由系统自动代批（无需 `--confirm`）。"
+        }
+        (ApprovalMode::DelegateDangerous, AgentLanguage::ZhCn) => {
+            "非危险 `requires_approval` 阶段可由 agent 代批完成；\
+             危险阶段（`cutover`、`living-docs`）仍需用户显式 `--confirm`。"
         }
     }
 }
@@ -281,56 +303,79 @@ pub fn approval_mode_guidance(mode: ApprovalMode) -> &'static str {
 pub fn prompt_context_block(config: &ProjectConfig) -> String {
     let lang = config.agent.language;
     let mode = config.workflow.approval_mode;
-    let spec_line = if config.paths.default_spec.is_empty() {
+    let product_line = if config.paths.default_product.is_empty() {
         String::new()
     } else {
-        format!("\n- Default spec: `{}`", config.paths.default_spec)
+        match lang {
+            AgentLanguage::ZhCn => {
+                format!("\n- 默认产品：`{}`", config.paths.default_product)
+            }
+            AgentLanguage::En => {
+                format!("\n- Default product: `{}`", config.paths.default_product)
+            }
+        }
     };
-    format!(
-        "[Project preferences]\n- Respond in: {}\n- Products directory: `{}/`\n- ADRs: `{}/<product>/decisions/adr/`\n- PDRs: `{}/<product>/decisions/pdr/`\n- Pipeline approval: {} ({}){spec_line}\n- {}",
-        lang.label(),
-        config.paths.products_dir,
-        config.paths.products_dir,
-        config.paths.products_dir,
-        mode.as_str(),
-        mode.label_zh(),
-        approval_mode_guidance(mode),
-    )
+    match lang {
+        AgentLanguage::ZhCn => format!(
+            "[Project preferences]\n- 界面 / Agent 语言：{}\n- 产品目录：`{}/`\n- ADR：`{}/<product>/decisions/adr/`\n- PDR：`{}/<product>/decisions/pdr/`\n- Pipeline 审批：{}（{}）{product_line}\n- {}",
+            lang.label(),
+            config.paths.products_dir,
+            config.paths.products_dir,
+            config.paths.products_dir,
+            mode.as_str(),
+            mode.label(lang),
+            approval_mode_guidance(mode, lang),
+        ),
+        AgentLanguage::En => format!(
+            "[Project preferences]\n- UI / agent language: {}\n- Products directory: `{}/`\n- ADRs: `{}/<product>/decisions/adr/`\n- PDRs: `{}/<product>/decisions/pdr/`\n- Pipeline approval: {} ({}){product_line}\n- {}",
+            lang.label(),
+            config.paths.products_dir,
+            config.paths.products_dir,
+            config.paths.products_dir,
+            mode.as_str(),
+            mode.label(lang),
+            approval_mode_guidance(mode, lang),
+        ),
+    }
 }
 
 pub fn agents_md_section(config: &ProjectConfig) -> String {
     let lang = config.agent.language;
-    let spec_line = if config.paths.default_spec.is_empty() {
+    let product_line = if config.paths.default_product.is_empty() {
         String::new()
     } else {
-        format!("\n- **默认 spec**：`{}`", config.paths.default_spec)
+        match lang {
+            AgentLanguage::ZhCn => {
+                format!("\n- **默认产品**：`{}`", config.paths.default_product)
+            }
+            AgentLanguage::En => {
+                format!(
+                    "\n- **Default product**: `{}`",
+                    config.paths.default_product
+                )
+            }
+        }
     };
     let mode = config.workflow.approval_mode;
-    format!(
-        "{MARKER_START}\n## 本项目 Agent 偏好\n\n- **回复语言**：{}\n- **产品文档目录**：`{}/`\n- **决策记录**：`{}/<product>/decisions/{{adr,pdr}}/`{spec_line}\n- **Pipeline 审批模式**：`{}`（{}）\n\n### 阶段完成策略\n\n{}\n{MARKER_END}",
-        lang.label(),
-        config.paths.products_dir,
-        config.paths.products_dir,
-        mode.as_str(),
-        mode.label_zh(),
-        approval_mode_guidance_zh(mode),
-    )
-}
-
-fn approval_mode_guidance_zh(mode: ApprovalMode) -> &'static str {
-    match mode {
-        ApprovalMode::Manual => {
-            "每完成一个 stage 的文档后 **暂停**，向用户汇报并等待确认后再执行 `pipeline stage complete`。\
-             带 `requires_approval` 的阶段必须由用户亲自 `--confirm`。"
-        }
-        ApprovalMode::Auto => {
-            "文档通过 `doc check` 后可直接 `pipeline stage complete`；\
-             `requires_approval` 阶段由系统自动代批（无需 `--confirm`）。"
-        }
-        ApprovalMode::DelegateDangerous => {
-            "非危险 `requires_approval` 阶段可由 agent 代批完成；\
-             **危险阶段**（`cutover`、`living-docs`）仍需用户显式 `--confirm`。"
-        }
+    match lang {
+        AgentLanguage::ZhCn => format!(
+            "{MARKER_START}\n## 本项目偏好\n\n- **界面 / Agent 语言**：{}\n- **产品文档目录**：`{}/`\n- **决策记录**：`{}/<product>/decisions/{{adr,pdr}}/`{product_line}\n- **Pipeline 审批模式**：`{}`（{}）\n\n### 阶段完成策略\n\n{}\n{MARKER_END}",
+            lang.label(),
+            config.paths.products_dir,
+            config.paths.products_dir,
+            mode.as_str(),
+            mode.label(lang),
+            approval_mode_guidance(mode, lang),
+        ),
+        AgentLanguage::En => format!(
+            "{MARKER_START}\n## Project preferences\n\n- **UI / agent language**: {}\n- **Products directory**: `{}/`\n- **Decisions**: `{}/<product>/decisions/{{adr,pdr}}/`{product_line}\n- **Pipeline approval**: `{}` ({})\n\n### Stage completion\n\n{}\n{MARKER_END}",
+            lang.label(),
+            config.paths.products_dir,
+            config.paths.products_dir,
+            mode.as_str(),
+            mode.label(lang),
+            approval_mode_guidance(mode, lang),
+        ),
     }
 }
 

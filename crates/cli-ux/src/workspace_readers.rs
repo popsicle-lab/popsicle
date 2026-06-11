@@ -249,6 +249,19 @@ pub fn backfill_issue_products(
     *spec_id = product_id.clone();
 }
 
+/// Resolve configured default product id (accepts legacy spec-style values).
+pub fn resolve_default_product(workspace_root: &Path, raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let products = list_products(workspace_root).ok()?;
+    if products.iter().any(|p| p == trimmed) {
+        return Some(trimmed.to_string());
+    }
+    product_for_spec(trimmed, &products)
+}
+
 /// Map legacy issue `spec_id` to a `products/<name>/` directory.
 pub fn product_for_spec(spec_id: &str, products: &[String]) -> Option<String> {
     if products.iter().any(|p| p == spec_id) {

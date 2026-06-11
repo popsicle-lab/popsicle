@@ -249,14 +249,14 @@ names with `popsicle doc create <skill>`.
 | `shadow-implementer` | implementation-coverage | adr-writer, rfc-writer, intent-consistency-check | review → completed → verifying → implementing → scoping |
 
 <!-- popsicle:project-config:start -->
-## 本项目 Agent 偏好
+## 本项目偏好
 
-- **回复语言**：简体中文
+- **界面 / Agent 语言**：简体中文
 - **产品文档目录**：`products/`
 - **决策记录**：`products/<product>/decisions/{adr,pdr}/`
-- **Pipeline 审批模式**：`manual`（必须人工审批）
+- **Pipeline 审批模式**：`delegate-dangerous`（危险操作需审批（其余代批））
 
 ### 阶段完成策略
 
-每完成一个 stage 的文档后 **暂停**，向用户汇报并等待确认后再执行 `pipeline stage complete`。带 `requires_approval` 的阶段必须由用户亲自 `--confirm`。
+非危险 `requires_approval` 阶段可由 agent 代批完成；危险阶段（`cutover`、`living-docs`）仍需用户显式 `--confirm`。
 <!-- popsicle:project-config:end -->

@@ -1,6 +1,7 @@
 //! Thin IO shell for the `cli-ux` slice (ADR-007 / ADR-009 Phase 1).
 
 pub mod global_config;
+pub mod i18n;
 mod intent_coder_bundle;
 pub mod project_config;
 pub mod self_host;
@@ -1092,20 +1093,22 @@ pub const COMMAND_USAGE: &[&str] = &[
 ];
 
 pub fn help_response() -> CommandResponse {
+    help_response_for(project_config::detect_default_language())
+}
+
+pub fn help_response_for(lang: project_config::AgentLanguage) -> CommandResponse {
     let mut fields = BTreeMap::new();
     fields.insert("commands".into(), top_level_help());
-    fields.insert("usage".into(), COMMAND_USAGE.join("\n"));
-    fields.insert(
-        "global_flags".into(),
-        "--format json | --project <path> (any command); env POPSICLE_PROJECT".into(),
-    );
+    fields.insert("usage".into(), i18n::command_usage(lang).join("\n"));
+    fields.insert("global_flags".into(), i18n::global_flags(lang).into());
+    fields.insert("locale".into(), lang.as_str().into());
     fields.insert(
         "deferred_commands".into(),
         DEFERRED_TOP_LEVEL_COMMANDS.join(", "),
     );
     CommandResponse {
         status: "ok",
-        next_step: Some("popsicle doctor --format json".into()),
+        next_step: Some(i18n::help_next(lang).into()),
         fields,
     }
 }

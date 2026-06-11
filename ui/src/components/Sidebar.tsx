@@ -1,6 +1,7 @@
 import { ClipboardList, Layers, Package, Settings } from "lucide-react";
 import type { Page } from "../App";
 import type { ProjectInfo } from "../hooks/useTauri";
+import { useLocale } from "../i18n/LocaleContext";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 
 interface Props {
@@ -12,16 +13,6 @@ interface Props {
   onBrowseOther: () => void;
 }
 
-const navItems: {
-  kind: Page["kind"];
-  label: string;
-  icon: typeof ClipboardList;
-}[] = [
-  { kind: "issues", label: "Issues", icon: ClipboardList },
-  { kind: "products", label: "Products", icon: Package },
-  { kind: "settings", label: "Settings", icon: Settings },
-];
-
 export function Sidebar({
   page,
   setPage,
@@ -30,6 +21,17 @@ export function Sidebar({
   onSwitchProject,
   onBrowseOther,
 }: Props) {
+  const { m } = useLocale();
+  const navItems: {
+    kind: Page["kind"];
+    label: string;
+    icon: typeof ClipboardList;
+  }[] = [
+    { kind: "issues", label: m.nav.issues, icon: ClipboardList },
+    { kind: "products", label: m.nav.products, icon: Package },
+    { kind: "settings", label: m.nav.settings, icon: Settings },
+  ];
+
   const isActive = (kind: Page["kind"]) => {
     if (kind === "issues") {
       return (
@@ -68,7 +70,7 @@ export function Sidebar({
           {!collapsed && (
             <div className="min-w-0">
               <h1 className="text-sm font-semibold tracking-tight">Popsicle</h1>
-              <p className="text-[11px] text-[var(--text-muted)]">Spec workspace</p>
+              <p className="text-[11px] text-[var(--text-muted)]">{m.nav.tagline}</p>
             </div>
           )}
         </div>
@@ -126,7 +128,7 @@ export function Sidebar({
 
       {!collapsed && (
         <div className="border-t border-[var(--border)] px-4 py-3 text-[11px] text-[var(--text-muted)]">
-          Spec-driven development
+          {m.nav.footer}
         </div>
       )}
     </aside>

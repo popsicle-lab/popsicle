@@ -120,7 +120,12 @@ fn main() {
     }
 
     if matches!(command, Command::Help) {
-        print_response(cli_ux::help_response(), format);
+        let lang = if let Ok(domain) = SelfHostDomain::open_with(cli_project.as_deref()) {
+            domain.project_language()
+        } else {
+            cli_ux::project_config::detect_default_language()
+        };
+        print_response(cli_ux::help_response_for(lang), format);
         return;
     }
 

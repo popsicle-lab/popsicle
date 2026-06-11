@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, PanelLeft } from "lucide-react";
 import type { Page } from "../App";
 import type { WorkspaceInfo } from "../hooks/useTauri";
+import { useLocale } from "../i18n/LocaleContext";
 import { pageBack, pageCrumbs } from "../lib/navigation";
 
 interface Props {
@@ -18,7 +19,8 @@ export function AppHeader({
   onToggleSidebar,
   onNavigate,
 }: Props) {
-  const crumbs = pageCrumbs(page);
+  const { m } = useLocale();
+  const crumbs = pageCrumbs(page, m.crumbs);
   const back = pageBack(page);
 
   return (
@@ -27,8 +29,12 @@ export function AppHeader({
         type="button"
         onClick={onToggleSidebar}
         className="btn btn-ghost shrink-0 p-2"
-        title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={
+          sidebarCollapsed ? m.header.expandSidebar : m.header.collapseSidebar
+        }
+        aria-label={
+          sidebarCollapsed ? m.header.expandSidebar : m.header.collapseSidebar
+        }
       >
         <PanelLeft size={16} />
       </button>
@@ -40,7 +46,7 @@ export function AppHeader({
           className="btn btn-ghost shrink-0 gap-1 px-2"
         >
           <ChevronLeft size={16} />
-          <span className="hidden sm:inline">Back</span>
+          <span className="hidden sm:inline">{m.header.back}</span>
         </button>
       )}
 
@@ -80,7 +86,7 @@ export function AppHeader({
 
       <div className="flex shrink-0 items-center gap-2">
         {workspace && !workspace.binary_match && (
-          <span className="badge badge-warning">Binary mismatch</span>
+          <span className="badge badge-warning">{m.header.binaryMismatch}</span>
         )}
         {workspace && (
           <span className="hidden max-w-[12rem] truncate text-[11px] text-[var(--text-muted)] md:inline">

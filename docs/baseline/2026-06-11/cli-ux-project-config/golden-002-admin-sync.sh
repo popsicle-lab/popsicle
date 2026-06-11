@@ -14,7 +14,7 @@ agent:
   language: en
 paths:
   products_dir: products
-  default_spec: slice-4-ui
+  default_product: cli-ux
 workflow:
   sync_agents_md: true
   inject_on_run: true
@@ -23,6 +23,6 @@ EOF
 cd "$ROOT"
 "$BIN" admin sync-project-config --format json | grep -q '"synced":"true"'
 grep -q 'English' AGENTS.md
-grep -q 'slice-4-ui' AGENTS.md
+grep -q 'cli-ux' AGENTS.md
 
 echo "golden-002 ok (admin sync-project-config)"

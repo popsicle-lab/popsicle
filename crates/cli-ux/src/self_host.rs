@@ -1428,6 +1428,12 @@ impl SelfHostDomain {
     pub fn workspace_source(&self) -> WorkspaceSource {
         self.store.workspace_source
     }
+
+    pub fn project_language(&self) -> crate::project_config::AgentLanguage {
+        load_project_config(&self.store.workspace.root)
+            .map(|c| c.agent.language)
+            .unwrap_or_else(|_| crate::project_config::detect_default_language())
+    }
 }
 
 impl crate::CliDomain for SelfHostDomain {
@@ -1798,8 +1804,8 @@ impl crate::CliDomain for SelfHostDomain {
                 "approval_mode".into(),
                 cfg.workflow.approval_mode.as_str().to_string(),
             );
-            if !cfg.paths.default_spec.is_empty() {
-                fields.insert("default_spec".into(), cfg.paths.default_spec.clone());
+            if !cfg.paths.default_product.is_empty() {
+                fields.insert("default_product".into(), cfg.paths.default_product.clone());
             }
         }
         Ok(crate::CommandResponse {

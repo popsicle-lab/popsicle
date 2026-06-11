@@ -18,6 +18,12 @@ import { ProductExplorerView } from "./pages/ProductExplorerView";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { IntentDetailPage } from "./pages/IntentDetailPage";
 import { SettingsView } from "./pages/SettingsView";
+import {
+  LocaleProvider,
+  normalizeLocale,
+  type Locale,
+} from "./i18n/LocaleContext";
+import { getProjectConfig } from "./hooks/useTauri";
 
 export type Page =
   | { kind: "issues"; selectedKey?: string }
@@ -49,6 +55,7 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [locale, setLocale] = useState<Locale>("zh-CN");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("popsicle.sidebarCollapsed") === "1";
@@ -96,6 +103,9 @@ export default function App() {
     getWorkspaceInfo()
       .then(setWorkspace)
       .catch(() => setWorkspace(null));
+    getProjectConfig()
+      .then((cfg) => setLocale(normalizeLocale(cfg.language)))
+      .catch(() => {});
   }, [project, refreshKey]);
 
   const handleSwitchProject = useCallback(
@@ -145,6 +155,7 @@ export default function App() {
   }
 
   return (
+    <LocaleProvider locale={locale} onLocaleChange={setLocale}>
     <div className="flex h-screen flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1">
         <Sidebar
@@ -232,5 +243,6 @@ export default function App() {
         </div>
       </div>
     </div>
+    </LocaleProvider>
   );
 }

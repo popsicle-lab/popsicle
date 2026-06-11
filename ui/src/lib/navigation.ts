@@ -5,45 +5,53 @@ export interface Crumb {
   page?: Page;
 }
 
-function issueCrumbs(issueKey: string): Crumb[] {
+export interface CrumbLabels {
+  issues: string;
+  settings: string;
+  products: string;
+  pipeline: string;
+  document: string;
+}
+
+function issueCrumbs(issueKey: string, labels: CrumbLabels): Crumb[] {
   return [
-    { label: "Issues", page: { kind: "issues" } },
+    { label: labels.issues, page: { kind: "issues" } },
     { label: issueKey, page: { kind: "issue", issueKey } },
   ];
 }
 
-export function pageCrumbs(page: Page): Crumb[] {
+export function pageCrumbs(page: Page, labels: CrumbLabels): Crumb[] {
   switch (page.kind) {
     case "settings":
-      return [{ label: "Settings" }];
+      return [{ label: labels.settings }];
     case "issues":
       return page.selectedKey
         ? [
-            { label: "Issues", page: { kind: "issues" } },
+            { label: labels.issues, page: { kind: "issues" } },
             { label: page.selectedKey },
           ]
-        : [{ label: "Issues" }];
+        : [{ label: labels.issues }];
     case "issue":
-      return issueCrumbs(page.issueKey);
+      return issueCrumbs(page.issueKey, labels);
     case "pipeline":
       return [
-        { label: "Issues", page: { kind: "issues" } },
-        { label: "Pipeline" },
+        { label: labels.issues, page: { kind: "issues" } },
+        { label: labels.pipeline },
       ];
     case "document":
       return [
-        { label: "Issues", page: { kind: "issues" } },
-        { label: "Document" },
+        { label: labels.issues, page: { kind: "issues" } },
+        { label: labels.document },
       ];
     case "products":
       return [
-        { label: "Products", page: { kind: "products", tab: "tasks" } },
+        { label: labels.products, page: { kind: "products", tab: "tasks" } },
         ...(page.product ? [{ label: page.product }] : []),
       ];
     case "task": {
       if (page.returnTo?.kind === "issue") {
         return [
-          ...issueCrumbs(page.returnTo.issueKey),
+          ...issueCrumbs(page.returnTo.issueKey, labels),
           { label: page.taskId },
         ];
       }
@@ -52,7 +60,7 @@ export function pageCrumbs(page: Page): Crumb[] {
         page.returnTo.selectedKey
       ) {
         return [
-          { label: "Issues", page: { kind: "issues" } },
+          { label: labels.issues, page: { kind: "issues" } },
           {
             label: page.returnTo.selectedKey,
             page: {
@@ -64,7 +72,7 @@ export function pageCrumbs(page: Page): Crumb[] {
         ];
       }
       return [
-        { label: "Products", page: { kind: "products", tab: "tasks" } },
+        { label: labels.products, page: { kind: "products", tab: "tasks" } },
         {
           label: page.product,
           page: { kind: "products", product: page.product, tab: "tasks" },
@@ -75,7 +83,7 @@ export function pageCrumbs(page: Page): Crumb[] {
     case "intent": {
       if (page.returnTo?.kind === "issue") {
         return [
-          ...issueCrumbs(page.returnTo.issueKey),
+          ...issueCrumbs(page.returnTo.issueKey, labels),
           { label: page.block ?? page.file },
         ];
       }
@@ -84,7 +92,7 @@ export function pageCrumbs(page: Page): Crumb[] {
         page.returnTo.selectedKey
       ) {
         return [
-          { label: "Issues", page: { kind: "issues" } },
+          { label: labels.issues, page: { kind: "issues" } },
           {
             label: page.returnTo.selectedKey,
             page: {
@@ -96,7 +104,7 @@ export function pageCrumbs(page: Page): Crumb[] {
         ];
       }
       return [
-        { label: "Products", page: { kind: "products", tab: "intents" } },
+        { label: labels.products, page: { kind: "products", tab: "intents" } },
         {
           label: page.product,
           page: { kind: "products", product: page.product, tab: "intents" },

@@ -237,19 +237,10 @@ pub fn get_create_issue_form_options(
         }
         product_options.sort();
         product_options.dedup();
-        let default_product = {
-            let mapped = if !cfg.paths.default_spec.is_empty() {
-                crate::workspace_readers::product_for_spec(
-                    &cfg.paths.default_spec,
-                    &product_options,
-                )
-            } else {
-                None
-            };
-            mapped
+        let default_product =
+            crate::workspace_readers::resolve_default_product(&root, &cfg.paths.default_product)
                 .or_else(|| product_options.first().cloned())
-                .unwrap_or_else(|| "cli-ux".into())
-        };
+                .unwrap_or_else(|| "cli-ux".into());
         let pipeline_options = list_installed_pipeline_names(store.workspace());
         let default_pipeline_by_type = [
             (IssueType::Product.as_str(), "greenfield-product-spec"),
@@ -533,10 +524,15 @@ pub fn get_issue_guidance(
 }
 
 fn config_to_dto(root: &std::path::Path, cfg: &ProjectConfig) -> ProjectConfigDto {
+    let product_options = list_products(root).unwrap_or_default();
+    let default_product =
+        crate::workspace_readers::resolve_default_product(root, &cfg.paths.default_product)
+            .unwrap_or_default();
     ProjectConfigDto {
         language: cfg.agent.language.as_str().to_string(),
         products_dir: cfg.paths.products_dir.clone(),
-        default_spec: cfg.paths.default_spec.clone(),
+        default_product,
+        product_options,
         sync_agents_md: cfg.workflow.sync_agents_md,
         inject_on_run: cfg.workflow.inject_on_run,
         approval_mode: cfg.workflow.approval_mode.as_str().to_string(),
@@ -559,7 +555,7 @@ pub fn get_project_config(state: State<AppState>) -> Result<ProjectConfigDto, St
 pub struct SaveProjectConfigInput {
     pub language: String,
     pub products_dir: String,
-    pub default_spec: String,
+    pub default_product: String,
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
     pub approval_mode: String,
@@ -575,6 +571,11 @@ pub fn save_project_config_cmd(
     if products_dir.is_empty() || products_dir.contains("..") {
         return Err("products_dir must be a non-empty relative path".into());
     }
+    let default_product = input.default_product.trim();
+    if !default_product.is_empty() {
+        crate::workspace_readers::resolve_product_id(&dir, default_product)
+            .map_err(|e| e.to_string())?;
+    }
     let cfg = ProjectConfig {
         version: 1,
         agent: crate::project_config::AgentConfig {
@@ -582,7 +583,7 @@ pub fn save_project_config_cmd(
         },
         paths: crate::project_config::PathConfig {
             products_dir: products_dir.to_string(),
-            default_spec: input.default_spec.trim().to_string(),
+            default_product: default_product.to_string(),
         },
         workflow: crate::project_config::WorkflowConfig {
             sync_agents_md: input.sync_agents_md,

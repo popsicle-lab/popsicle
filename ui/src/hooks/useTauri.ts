@@ -29,7 +29,8 @@ export type ApprovalMode = "manual" | "auto" | "delegate-dangerous";
 export interface ProjectConfigDto {
   language: string;
   products_dir: string;
-  default_spec: string;
+  default_product: string;
+  product_options: string[];
   sync_agents_md: boolean;
   inject_on_run: boolean;
   approval_mode: ApprovalMode;
@@ -46,7 +47,7 @@ export interface CreateIssueFormOptions {
 export interface SaveProjectConfigInput {
   language: string;
   products_dir: string;
-  default_spec: string;
+  default_product: string;
   sync_agents_md: boolean;
   inject_on_run: boolean;
   approval_mode: ApprovalMode;

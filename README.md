@@ -47,6 +47,49 @@ git checkout backup-v0.5
 
 ---
 
+## 与 Legacy Popsicle（`backup-v0.5`）的设计差异
+
+`main` 不是旧版的小修小补，而是按 IDD 迁移目标**重划边界**。若你熟悉 legacy 单体（`popsicle-core` + SQLite `.popsicle/popsicle.db`），下面几条是行为与心智模型上最重要的差别。
+
+### 审批工作流与文档 Guard 分离
+
+| | Legacy（`backup-v0.5`） | 新架构（`main`） |
+|---|---|---|
+| **阶段能否推进** | 强依赖 **文档 Guard**：`has_sections` / `checklist_complete` / `upstream_approved` 等必须在**当前 artifact** 上即时通过，状态机与文档内容绑在一起 | **Pipeline 审批**（`requires_approval` + `stage complete [--confirm]`）与 **文档质量检查**（`doc check`）分开；审批模式可在 `.popsicle/project.yaml` 配置（人工 / 全自动 / 危险阶段代批） |
+| **谁拦你** | Guard 失败 → stage 无法 complete，改文档是唯一出路 | 先按工作流推进阶段；文档占位符、空 checkbox 由 `doc check` 在提交前拦截，不与审批闸混为一谈 |
+
+Legacy 里「能不能过这一关」≈「这篇 Markdown 现在够不够格」。新架构里「能不能过这一关」≈「工作流策略是否允许推进」；文档是否达标是另一条检查线。
+
+### 文档固化在仓库，而不只躺在 `.popsicle/artifacts/`
+
+| | Legacy | 新架构 |
+|---|---|---|
+| **长期真相源** | 大量内容在 `.popsicle/artifacts/<run_id>/` 与 DB 行中，与 Git 仓库弱绑定 | **`products/<product>/`** 下的活文档（`PRODUCT.md`、`ARCHITECTURE.md`、`tasks/`、`intents/`、`decisions/`）是产品边界内的**持久真相** |
+| **Run artifact** | 往往是主交付物 | **阶段工作草稿**（debate、PRD 草案等），经 living-docs / 人工整理后**晋升**进 `products/` |
+| **灵活性** | 改 spec 常意味着改 DB/artifact 路径 | 同一 Git 仓库可挂多个 product 目录；每个 product 自洽维护自己的任务图与 intent，不共用一套 checklist 模板 |
+
+`.popsicle/` 仍保存 Issue、Run、阶段 session 与**过程性** artifact；但「产品是什么、任务怎么串、intent 约束什么」以 **`products/` + Git** 为准，而不是以某次 run 的临时文件为准。
+
+### 验证节奏：先实现工作流，再对账
+
+Legacy 倾向在**每次 stage complete 时**用 Guard 把文档扣死。新架构采用 **implement → reconcile** 两段式：
+
+1. **交付环**：按 pipeline 产出 stage 文档、完成实现（`shadow-implementer` 等），`doc check` 保证 artifact 无占位符。
+2. **对账环**：`equivalence-baseline` / `intent-validate` / `living-doc-author` 把实现、intent 与 `products/` 活文档**再次对齐**——差异在切片结束时收敛，而不是在每个 Guard 上卡死。
+
+这与 Strangler Fig 迁移一致：先让新运行时跑通闭环，再用 golden + Z3 + living-docs 证明与 legacy 语义等价或有意偏离（ADR 记录）。
+
+### 路线：同一仓库、多种产品模型（规划中）
+
+当前每个 product 已按 IDD **4 件套**组织（`PRODUCT` / `ARCHITECTURE` / `intents` / `decisions` + `tasks/`）。**规划中**进一步支持：
+
+- **一仓多 product**，且各 product 可选用**不同的产品框架**（不限于同一套 PRD/任务模板）——例如用户旅程地图、能力地图、纯技术 RFC 链等。
+- Product 元数据（框架类型、目录约定）将挂在 product 级配置，由 Products 浏览器与 pipeline 路由识别；**不**强迫所有 product 共用 legacy 那套「debate → PRD → arch-debate → RFC」单一路径。
+
+若你正在从 legacy 迁移，建议：用 `backup-v0.5` + golden 对账理解旧行为，在 `main` 上把**活文档写进 `products/`**、把**过程文档留在 artifact**、把**审批与 Guard 分开想**。
+
+---
+
 ## 架构一览
 
 ```mermaid
@@ -110,7 +153,7 @@ flowchart TB
 |---|---|
 | `popsicle init` / `doctor` | 初始化 `.popsicle/` 工作区；校验二进制与工作区来源 |
 | `popsicle issue` | create / list / show / start / **close** |
-| `popsicle pipeline` | status / next / stage complete（gated stage 需 `--confirm`）|
+| `popsicle pipeline` | status / next / stage complete（`requires_approval` 阶段按 `project.yaml` 审批模式处理）|
 | `popsicle doc` | create / list / show / **check**（拒绝占位符与空 checkbox）|
 | `popsicle tool run intent-validate` | 对 `products/` 跑 Z3 intent 校验 |
 | `popsicle admin` | migrate（TSV→SQLite）/ reinit |
@@ -198,7 +241,7 @@ popsicle doctor --format json # current_workspace_binary_match 应为 true
 ```bash
 popsicle issue list --format json
 
-popsicle issue create --type technical --title "My change" --spec slice-4-ui \
+popsicle issue create --type technical --title "My change" --product cli-ux \
   --description "What and why" --format json
 
 popsicle issue start PROJ-NN --format json    # 返回 run_id

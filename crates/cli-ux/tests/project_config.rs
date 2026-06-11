@@ -27,7 +27,12 @@ fn ensure_writes_default_yaml_and_agents_md() {
     assert!(project_config_path(&root).is_file());
     let agents = fs::read_to_string(root.join("AGENTS.md")).unwrap();
     assert!(agents.contains("popsicle:project-config:start"));
-    assert!(agents.contains("产品文档目录"));
+    assert!(agents.contains("products/"));
+    let localized = match cfg.agent.language {
+        AgentLanguage::ZhCn => agents.contains("产品文档目录"),
+        AgentLanguage::En => agents.contains("Products directory"),
+    };
+    assert!(localized);
 }
 
 #[test]
@@ -46,6 +51,18 @@ fn sync_replaces_marker_block() {
     assert!(agents.contains("English"));
     assert!(!agents.contains("old"));
     assert!(agents.contains("# Existing"));
+}
+
+#[test]
+fn default_spec_alias_deserializes_as_default_product() {
+    let root = temp_workspace();
+    fs::write(
+        root.join(".popsicle/project.yaml"),
+        "paths:\n  default_spec: cli-ux\n",
+    )
+    .unwrap();
+    let cfg = load_project_config(&root).unwrap();
+    assert_eq!(cfg.paths.default_product, "cli-ux");
 }
 
 #[test]

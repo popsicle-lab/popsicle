@@ -19,6 +19,7 @@ import {
   type IssueSortKey,
 } from "../lib/issueSort";
 import { IssueDetailView } from "./IssueDetailView";
+import { useLocale } from "../i18n/LocaleContext";
 import type { Page } from "../App";
 
 interface Props {
@@ -43,6 +44,7 @@ const STATUS_OPTIONS = [
 ];
 
 export function IssuesView({ setPage, initialSelectedKey }: Props) {
+  const { m } = useLocale();
   const wide = useWideLayout();
   const [allIssues, setAllIssues] = useState<IssueInfo[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(
@@ -267,11 +269,10 @@ export function IssuesView({ setPage, initialSelectedKey }: Props) {
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
               <p className="text-[13px] font-medium text-[var(--text-secondary)]">
-                Select an issue
+                {m.issues.selectIssue}
               </p>
               <p className="max-w-xs text-[12px] text-[var(--text-muted)]">
-                Use filters above, then pick a row to preview details and
-                guidance.
+                {m.issues.selectHint}
               </p>
             </div>
           )}
