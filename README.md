@@ -214,9 +214,9 @@ popsicle/
 ### macOS 安装（DMG，推荐）
 
 1. 从 [GitHub Releases](https://github.com/popsicle-lab/popsicle/releases) 下载 `Popsicle_*_aarch64.dmg` 或 `x86_64.dmg`。
-2. 挂载 DMG，将 **Popsicle.app** 拖入 **Applications**。
-3. 双击 **Install CLI.command**（首次可能需右键 → 打开），CLI 安装到 `~/.local/bin`。
-4. 重启终端，运行 `popsicle doctor --format json`。
+2. 挂载 DMG，将 **Popsicle.app** 拖入 **Applications**，从 Applications **首次打开** Popsicle（会静默把 CLI 安装到 `~/.local/bin` 并创建 `~/.popsicle/`）。
+3. 重启终端（或 `source ~/.zshrc`），运行 `popsicle doctor --format json`。
+4. *(可选)* 若暂不打开 App，可双击 DMG 内的 **Install CLI.command** 手动安装 CLI。
 
 未签名 DMG 首次打开需在系统设置中放行。详见 [`packaging/macos/README.md`](packaging/macos/README.md)。
 

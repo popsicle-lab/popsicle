@@ -23,6 +23,5 @@ elif [[ ! -f "$ZSHRC" ]]; then
   printf '# ~/.zshrc\n%s\n' "$PATH_LINE" >"$ZSHRC"
 fi
 
-osascript -e "display notification \"Installed to $DEST_DIR/popsicle\" with title \"Popsicle CLI\""
 echo "Installed popsicle to $DEST_DIR/popsicle"
 echo "Restart your terminal or run: source ~/.zshrc"

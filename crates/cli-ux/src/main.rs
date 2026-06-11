@@ -47,13 +47,6 @@ fn print_error(err: &CliError, format: OutputFormat) {
     }
 }
 
-#[cfg(feature = "ui")]
-fn launched_from_app_bundle() -> bool {
-    std::env::current_exe()
-        .ok()
-        .is_some_and(|path| path.to_string_lossy().contains(".app/Contents/MacOS/"))
-}
-
 fn needs_workspace(command: &Command) -> bool {
     matches!(
         command,
@@ -82,7 +75,8 @@ fn main() {
 
     // Double-clicking Popsicle.app invokes the binary with no argv; open the UI instead of help.
     #[cfg(feature = "ui")]
-    if raw_args.is_empty() && launched_from_app_bundle() {
+    if raw_args.is_empty() && cli_ux::cli_install::launched_from_app_bundle() {
+        cli_ux::cli_install::ensure_silent_if_app_bundle();
         cli_ux::ui::run(None);
         return;
     }

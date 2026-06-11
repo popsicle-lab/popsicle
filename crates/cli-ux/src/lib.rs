@@ -1,5 +1,6 @@
 //! Thin IO shell for the `cli-ux` slice (ADR-007 / ADR-009 Phase 1).
 
+pub mod cli_install;
 pub mod global_config;
 pub mod i18n;
 mod intent_coder_bundle;
