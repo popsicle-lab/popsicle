@@ -169,7 +169,16 @@ popsicle/
 - Rust stable（`cargo` / `rustc`）
 - 构建 UI 时另需 Node.js 18+
 
-### 安装 CLI
+### macOS 安装（DMG，推荐）
+
+1. 从 [GitHub Releases](https://github.com/popsicle-lab/popsicle/releases) 下载 `Popsicle_*_aarch64.dmg` 或 `x86_64.dmg`。
+2. 挂载 DMG，将 **Popsicle.app** 拖入 **Applications**。
+3. 双击 **Install CLI.command**（首次可能需右键 → 打开），CLI 安装到 `~/.local/bin`。
+4. 重启终端，运行 `popsicle doctor --format json`。
+
+未签名 DMG 首次打开需在系统设置中放行。详见 [`packaging/macos/README.md`](packaging/macos/README.md)。
+
+### 从源码安装 CLI（开发者）
 
 ```bash
 git clone https://github.com/popsicle-lab/popsicle.git
@@ -182,6 +191,8 @@ scripts/install.sh            # 安装 popsicle 到 ~/.cargo/bin
 popsicle init
 popsicle doctor --format json # current_workspace_binary_match 应为 true
 ```
+
+本地打 DMG：`make build-dmg`（仅 macOS）。
 
 ### 跑一次 IDD 工作流
 
@@ -203,6 +214,27 @@ popsicle tool run intent-validate path=products
 
 Bundled pipeline 模板：`greenfield-product-spec` · `slice-spec` · `slice-delivery` · `tech-decision` · `bugfix` · `migration-bootstrap`（详见 `AGENTS.md`）。
 
+### 多项目（全局 CLI）
+
+注册表位于 `~/.popsicle/global.json`（可用 `POPSICLE_HOME` 覆盖目录）。
+
+```bash
+cd ~/project-a && popsicle init
+cd ~/project-b && popsicle init
+
+popsicle project add ~/project-a --name a
+popsicle project add ~/project-b --name b
+popsicle project use a              # 设置默认项目
+popsicle issue list                 # 操作 project-a
+
+popsicle issue list --project ~/project-b   # 单次覆盖
+export POPSICLE_PROJECT=~/project-b         # 或环境变量
+popsicle project list
+popsicle project current
+```
+
+工作区解析优先级：`--project` → `POPSICLE_PROJECT` → 默认项目 → 当前目录向上扫描。
+
 ### 桌面 UI
 
 ```bash
@@ -223,9 +255,10 @@ make ui-dev                   # 另开终端运行 popsicle ui
 | `make golden` | golden-baseline 全链（legacy vs new 对账）|
 | `make intent` | Z3 intent 校验 |
 | `make build-ui` / `make ui-dev` | Tauri UI 构建 / 开发 |
+| `make build-dmg` | macOS DMG（App + CLI + 安装脚本）|
 | `make install-hooks` | pre-commit（fmt/clippy/test）|
 
-发布：推送 `v*` tag → [`.github/workflows/release.yml`](.github/workflows/release.yml) 构建 4 目标。
+发布：推送 `v*` tag → [`.github/workflows/release.yml`](.github/workflows/release.yml) 构建 CLI 包（4 目标）+ macOS DMG（aarch64 / x86_64）。
 
 ---
 

@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use storage::WorkspaceStore;
 use tauri::State;
 
-use crate::self_host::{binary_provenance, load_pipeline_def};
+use crate::global_config::WorkspaceSource;
+use crate::self_host::{binary_provenance_for, load_pipeline_def, Workspace};
 use crate::workspace_readers::{
     guidance_for_issue, intent_fallback_mermaid, list_products, read_intent_file, read_task,
     resolve_intent_ref, scan_intents, scan_product_tasks, scan_tasks, task_graph_mermaid,
@@ -45,7 +46,8 @@ pub fn set_project_dir(path: String, state: State<AppState>) -> Result<(), Strin
 pub fn get_workspace_info(state: State<AppState>) -> Result<WorkspaceInfo, String> {
     let dir = get_dir(&state)?;
     let store = LocalWorkspace::open_at(dir.clone()).map_err(|e| e.to_string())?;
-    let prov = binary_provenance().map_err(|e| e.to_string())?;
+    let prov = binary_provenance_for(&Workspace::at(dir.clone()), WorkspaceSource::CliFlag)
+        .map_err(|e| e.to_string())?;
     Ok(WorkspaceInfo {
         root: dir.display().to_string(),
         storage_backend: store.backend().describe(store.workspace()),

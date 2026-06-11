@@ -2,8 +2,8 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 
 use cli_ux::{
-    parse_args, parse_format_flag, run_command, CliError, Command, CommandResponse, OutputFormat,
-    SelfHostDomain,
+    parse_cli, run_command, run_command_stateless, CliError, Command, CommandResponse,
+    OutputFormat, SelfHostDomain,
 };
 
 fn print_response(response: CommandResponse, format: OutputFormat) {
@@ -27,7 +27,6 @@ fn print_response(response: CommandResponse, format: OutputFormat) {
             let _ = writeln!(buf, "next: {next_step}");
         }
     }
-    // Exit quietly when the downstream pipe closes early (e.g. `popsicle help | head`).
     if std::io::stdout().write_all(buf.as_bytes()).is_err() {
         std::process::exit(0);
     }
@@ -48,21 +47,50 @@ fn print_error(err: &CliError, format: OutputFormat) {
     }
 }
 
+fn needs_workspace(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Doctor { .. }
+            | Command::Init
+            | Command::IssueCreate { .. }
+            | Command::IssueList
+            | Command::IssueShow { .. }
+            | Command::IssueClose { .. }
+            | Command::IssueStart { .. }
+            | Command::DocCreate { .. }
+            | Command::DocList { .. }
+            | Command::DocShow { .. }
+            | Command::DocCheck { .. }
+            | Command::PipelineStatus { .. }
+            | Command::PipelineNext { .. }
+            | Command::StageComplete { .. }
+            | Command::ToolRun { .. }
+            | Command::Admin(_)
+            | Command::ProjectCurrent
+    )
+}
+
 fn main() {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
-    let format = parse_format_flag(&raw_args);
 
-    let command = match parse_args(raw_args) {
-        Ok(command) => command,
+    let parsed = match parse_cli(raw_args) {
+        Ok(p) => p,
         Err(err) => {
-            print_error(&err, format);
+            print_error(&err, OutputFormat::default());
             std::process::exit(2);
         }
     };
+    let format = parsed.globals.format;
+    let cli_project = parsed.globals.project.clone();
+    let command = parsed.command;
 
     #[cfg(feature = "ui")]
-    if let Command::Ui { project } = command {
-        cli_ux::ui::run(project);
+    if let Command::Ui { project } = &command {
+        let ui_project = cli_project
+            .as_deref()
+            .or(project.as_deref())
+            .map(str::to_string);
+        cli_ux::ui::run(ui_project);
         return;
     }
     #[cfg(not(feature = "ui"))]
@@ -77,16 +105,20 @@ fn main() {
         std::process::exit(2);
     }
 
+    if matches!(command, Command::Help) {
+        print_response(cli_ux::help_response(), format);
+        return;
+    }
+
     let is_tool_run = matches!(command, Command::ToolRun { .. });
 
-    // `help` needs no workspace; `init` may bootstrap a brand-new one.
-    let domain_result = match command {
-        Command::Help => {
-            print_response(cli_ux::help_response(), format);
-            return;
-        }
-        Command::Init => SelfHostDomain::open_or_bootstrap(),
-        _ => SelfHostDomain::open(),
+    if !needs_workspace(&command) {
+        return dispatch_stateless(command, format);
+    }
+
+    let domain_result = match &command {
+        Command::Init => SelfHostDomain::open_or_bootstrap_with(cli_project.as_deref()),
+        _ => SelfHostDomain::open_with(cli_project.as_deref()),
     };
     let mut domain = match domain_result {
         Ok(domain) => domain,
@@ -96,7 +128,26 @@ fn main() {
         }
     };
 
-    match run_command(&mut domain, command) {
+    dispatch(&mut domain, command, format, is_tool_run);
+}
+
+fn dispatch_stateless(command: Command, format: OutputFormat) {
+    match run_command_stateless(command) {
+        Ok(response) => print_response(response, format),
+        Err(err) => {
+            print_error(&err, format);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn dispatch(
+    domain: &mut SelfHostDomain,
+    command: Command,
+    format: OutputFormat,
+    is_tool_run: bool,
+) {
+    match run_command(domain, command) {
         Ok(response) => {
             let tool_exit_code = if is_tool_run {
                 response

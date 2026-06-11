@@ -122,6 +122,12 @@ if ! echo ":${PATH}:" | grep -q ":${INSTALL_DIR}:"; then
   warn "Add the line above to put popsicle on your PATH, then restart your shell."
 fi
 
+# ----- macOS end-user note ----------------------------------------------------
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  info "macOS end users: prefer the release DMG (Popsicle.app + Install CLI.command)."
+  info "See packaging/macos/README.md"
+fi
+
 # ----- workspace provenance note ----------------------------------------------
 warn "Inside the popsicle dev workspace itself, prefer ./target/debug/popsicle"
 warn "(doctor provenance guards against stale/system binaries — see AGENTS.md)."

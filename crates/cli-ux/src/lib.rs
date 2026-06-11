@@ -1,13 +1,16 @@
 //! Thin IO shell for the `cli-ux` slice (ADR-007 / ADR-009 Phase 1).
 
+pub mod global_config;
 pub mod self_host;
 pub mod workspace_readers;
 
 #[cfg(feature = "ui")]
 pub mod ui;
 
+pub use global_config::WorkspaceSource;
 pub use self_host::{
-    bundled_pipeline_names, LocalWorkspace, SelfHostDomain, StateBackend, Workspace,
+    binary_provenance_for, bundled_pipeline_names, LocalWorkspace, SelfHostDomain, StateBackend,
+    Workspace,
 };
 
 use std::collections::BTreeMap;
@@ -19,7 +22,7 @@ use storage::{DocumentRow, MemoryDocumentStore};
 /// The implemented self-host command surface (PROJ-17 re-adjudication of
 /// PDR-001). Help must only advertise commands that `parse_args` accepts.
 pub const TOP_LEVEL_COMMANDS: &[&str] = &[
-    "init", "doctor", "issue", "pipeline", "doc", "tool", "admin", "ui",
+    "init", "doctor", "issue", "pipeline", "doc", "tool", "admin", "project", "ui",
 ];
 
 /// Legacy commands PDR-001 marked "preserve" but that are not part of the
@@ -97,9 +100,33 @@ pub enum Command {
         args: BTreeMap<String, String>,
     },
     Admin(AdminCommand),
+    ProjectList,
+    ProjectAdd {
+        path: String,
+        name: Option<String>,
+    },
+    ProjectUse {
+        target: String,
+    },
+    ProjectRemove {
+        name: String,
+    },
+    ProjectCurrent,
     Ui {
         project: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GlobalArgs {
+    pub format: OutputFormat,
+    pub project: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedCli {
+    pub globals: GlobalArgs,
+    pub command: Command,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -283,6 +310,9 @@ pub trait CliDomain {
     }
     fn admin_migrate(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
     fn admin_reinit(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
+    fn current_workspace(&self) -> Result<BTreeMap<String, String>, CliError> {
+        Err(not_self_host("project current"))
+    }
 }
 
 fn not_self_host(command: &str) -> CliError {
@@ -294,16 +324,35 @@ fn not_self_host(command: &str) -> CliError {
     )
 }
 
-pub fn parse_args<I, S>(args: I) -> Result<Command, CliError>
+pub fn parse_cli<I, S>(args: I) -> Result<ParsedCli, CliError>
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
     let mut args: Vec<String> = args.into_iter().map(Into::into).collect();
-    // `--format <text|json>` is a global flag: record it, then strip it so
-    // positional/arity matching below is unaffected.
-    let format = parse_format_flag(&args);
-    if let Some(idx) = args.iter().position(|a| a == "--format") {
+    let globals = strip_global_flags(&mut args);
+    let command = parse_command(&args, globals.format)?;
+    Ok(ParsedCli { globals, command })
+}
+
+pub fn parse_args<I, S>(args: I) -> Result<Command, CliError>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    parse_cli(args).map(|p| p.command)
+}
+
+fn strip_global_flags(args: &mut Vec<String>) -> GlobalArgs {
+    let format = parse_format_flag(args);
+    drain_flag(args, "--format");
+    let project = optional_flag_value(args, "--project");
+    drain_flag(args, "--project");
+    GlobalArgs { format, project }
+}
+
+fn drain_flag(args: &mut Vec<String>, flag: &str) {
+    if let Some(idx) = args.iter().position(|a| a == flag) {
         let end = if args.get(idx + 1).is_some_and(|v| !v.starts_with("--")) {
             idx + 2
         } else {
@@ -311,6 +360,9 @@ where
         };
         args.drain(idx..end);
     }
+}
+
+fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliError> {
     if args.is_empty() || args == ["--help"] || args == ["help"] {
         return Ok(Command::Help);
     }
@@ -337,12 +389,12 @@ where
         "doctor" => Ok(Command::Doctor { format }),
         "init" if args.len() == 1 => Ok(Command::Init),
         "issue" if args.get(1).map(String::as_str) == Some("create") => Ok(Command::IssueCreate {
-            issue_type: flag_value(&args, "--type")?,
-            title: flag_value(&args, "--title")?,
-            spec_id: flag_value(&args, "--spec")?,
-            pipeline: optional_flag_value(&args, "--pipeline"),
-            priority: flag_value_or(&args, "--priority", "medium"),
-            description: flag_value_or(&args, "--description", ""),
+            issue_type: flag_value(args, "--type")?,
+            title: flag_value(args, "--title")?,
+            spec_id: flag_value(args, "--spec")?,
+            pipeline: optional_flag_value(args, "--pipeline"),
+            priority: flag_value_or(args, "--priority", "medium"),
+            description: flag_value_or(args, "--description", ""),
         }),
         "issue" if args.get(1).map(String::as_str) == Some("list") && args.len() == 2 => {
             Ok(Command::IssueList)
@@ -365,20 +417,20 @@ where
                 .ok_or_else(|| missing("issue-key", "issue start"))?;
             Ok(Command::IssueStart {
                 key: key.clone(),
-                spec_id: flag_value_or(&args, "--spec", ""),
-                pipeline: flag_value_or(&args, "--pipeline", ""),
+                spec_id: flag_value_or(args, "--spec", ""),
+                pipeline: flag_value_or(args, "--pipeline", ""),
             })
         }
         "doc" if args.get(1).map(String::as_str) == Some("create") => {
             let skill = args.get(2).ok_or_else(|| missing("skill", "doc create"))?;
             Ok(Command::DocCreate {
                 skill: skill.clone(),
-                title: flag_value(&args, "--title")?,
-                run_id: flag_value(&args, "--run")?,
+                title: flag_value(args, "--title")?,
+                run_id: flag_value(args, "--run")?,
             })
         }
         "doc" if args.get(1).map(String::as_str) == Some("list") => Ok(Command::DocList {
-            run_id: optional_flag_value(&args, "--run"),
+            run_id: optional_flag_value(args, "--run"),
         }),
         "doc" if args.get(1).map(String::as_str) == Some("show") => {
             let doc_id = args.get(2).ok_or_else(|| missing("doc-id", "doc show"))?;
@@ -394,12 +446,12 @@ where
         }
         "pipeline" if args.get(1).map(String::as_str) == Some("status") => {
             Ok(Command::PipelineStatus {
-                run_id: flag_value(&args, "--run")?,
+                run_id: flag_value(args, "--run")?,
             })
         }
         "pipeline" if args.get(1).map(String::as_str) == Some("next") => {
             Ok(Command::PipelineNext {
-                run_id: flag_value(&args, "--run")?,
+                run_id: flag_value(args, "--run")?,
             })
         }
         "pipeline"
@@ -411,7 +463,7 @@ where
                 .ok_or_else(|| missing("stage", "stage complete"))?;
             Ok(Command::StageComplete {
                 stage: stage.clone(),
-                run_id: flag_value(&args, "--run")?,
+                run_id: flag_value(args, "--run")?,
                 confirm: args.iter().any(|a| a == "--confirm"),
             })
         }
@@ -424,16 +476,45 @@ where
         }
         "admin" if args.get(1).map(String::as_str) == Some("migrate") => {
             Ok(Command::Admin(AdminCommand::Migrate {
-                workspace: flag_value_or(&args, "--workspace", ""),
+                workspace: flag_value_or(args, "--workspace", ""),
             }))
         }
         "admin" if args.get(1).map(String::as_str) == Some("reinit") => {
             Ok(Command::Admin(AdminCommand::Reinit {
-                workspace: flag_value_or(&args, "--workspace", ""),
+                workspace: flag_value_or(args, "--workspace", ""),
             }))
         }
+        "project" if args.get(1).map(String::as_str) == Some("list") && args.len() == 2 => {
+            Ok(Command::ProjectList)
+        }
+        "project" if args.get(1).map(String::as_str) == Some("add") => {
+            let path = args
+                .get(2)
+                .ok_or_else(|| missing("path", "project add <path>"))?;
+            Ok(Command::ProjectAdd {
+                path: path.clone(),
+                name: optional_flag_value(args, "--name"),
+            })
+        }
+        "project" if args.get(1).map(String::as_str) == Some("use") => {
+            let target = args
+                .get(2)
+                .ok_or_else(|| missing("name-or-path", "project use <name|path>"))?;
+            Ok(Command::ProjectUse {
+                target: target.clone(),
+            })
+        }
+        "project" if args.get(1).map(String::as_str) == Some("remove") => {
+            let name = args
+                .get(2)
+                .ok_or_else(|| missing("name", "project remove <name>"))?;
+            Ok(Command::ProjectRemove { name: name.clone() })
+        }
+        "project" if args.get(1).map(String::as_str) == Some("current") && args.len() == 2 => {
+            Ok(Command::ProjectCurrent)
+        }
         "ui" => Ok(Command::Ui {
-            project: optional_flag_value(&args, "--project"),
+            project: optional_flag_value(args, "--project"),
         }),
         "migrate" | "reinit" => Err(CliError::actionable(
             "invalid-args",
@@ -448,6 +529,70 @@ where
             "unknown or incomplete command",
         )),
     }
+}
+
+/// Commands that do not require an open workspace (global project registry only).
+pub fn run_command_stateless(command: Command) -> Result<CommandResponse, CliError> {
+    match command {
+        Command::ProjectList => project_list_response(),
+        Command::ProjectAdd { path, name } => project_add_response(&path, name.as_deref()),
+        Command::ProjectUse { target } => project_use_response(&target),
+        Command::ProjectRemove { name } => project_remove_response(&name),
+        other => Err(CliError::actionable(
+            "invalid-args",
+            "command",
+            "open a workspace first",
+            format!("{other:?} requires a workspace-backed domain"),
+        )),
+    }
+}
+
+fn project_list_response() -> Result<CommandResponse, CliError> {
+    let cfg = global_config::list_projects().map_err(global_err)?;
+    let mut fields = BTreeMap::new();
+    fields.insert("count".into(), cfg.projects.len().to_string());
+    if let Some(d) = &cfg.default_project {
+        fields.insert("default_project".into(), d.clone());
+    }
+    for (idx, p) in cfg.projects.iter().enumerate() {
+        fields.insert(format!("project_{idx}_name"), p.name.clone());
+        fields.insert(format!("project_{idx}_path"), p.path.clone());
+    }
+    Ok(CommandResponse {
+        status: "ok",
+        next_step: Some("popsicle project use <name>".into()),
+        fields,
+    })
+}
+
+fn project_add_response(path: &str, name: Option<&str>) -> Result<CommandResponse, CliError> {
+    let entry = global_config::add_project(path, name).map_err(global_err)?;
+    Ok(CommandResponse {
+        status: "ok",
+        next_step: Some(format!("popsicle project use {}", entry.name)),
+        fields: BTreeMap::from([("name".into(), entry.name), ("path".into(), entry.path)]),
+    })
+}
+
+fn project_use_response(target: &str) -> Result<CommandResponse, CliError> {
+    let entry = global_config::set_default_project(target).map_err(global_err)?;
+    Ok(CommandResponse {
+        status: "ok",
+        next_step: Some("popsicle issue list".into()),
+        fields: BTreeMap::from([
+            ("default_project".into(), entry.path),
+            ("name".into(), entry.name),
+        ]),
+    })
+}
+
+fn project_remove_response(name: &str) -> Result<CommandResponse, CliError> {
+    global_config::remove_project(name).map_err(global_err)?;
+    Ok(CommandResponse {
+        status: "ok",
+        next_step: Some("popsicle project list".into()),
+        fields: BTreeMap::from([("removed".into(), name.to_string())]),
+    })
 }
 
 pub fn run_command<D: CliDomain>(
@@ -662,6 +807,15 @@ pub fn run_command<D: CliDomain>(
         Command::Admin(AdminCommand::Reinit { workspace }) => {
             admin_response(domain.admin_reinit(&workspace)?)
         }
+        Command::ProjectList
+        | Command::ProjectAdd { .. }
+        | Command::ProjectUse { .. }
+        | Command::ProjectRemove { .. } => run_command_stateless(command),
+        Command::ProjectCurrent => Ok(CommandResponse {
+            status: "ok",
+            next_step: None,
+            fields: domain.current_workspace()?,
+        }),
         Command::Ui { .. } => Err(CliError::actionable(
             "invalid-args",
             "ui",
@@ -669,6 +823,19 @@ pub fn run_command<D: CliDomain>(
             "desktop UI is launched from main, not run_command",
         )),
     }
+}
+
+fn global_err(e: storage::WorkspaceError) -> CliError {
+    let msg = e.to_string();
+    let (category, next) = match &e {
+        storage::WorkspaceError::NotFound(id) => ("not-found", format!("check `{id}` exists")),
+        storage::WorkspaceError::InvalidState(_) => (
+            "invalid-args",
+            "run `popsicle project add <path>` after `popsicle init`".into(),
+        ),
+        storage::WorkspaceError::Io(_) => ("io", msg.clone()),
+    };
+    CliError::actionable(category, "project", next, msg)
 }
 
 pub fn top_level_help() -> String {
@@ -867,6 +1034,11 @@ pub const COMMAND_USAGE: &[&str] = &[
     "tool run intent-validate path=<dir> [format=<text|json>]",
     "admin migrate [--workspace <path>]",
     "admin reinit [--workspace <path>]",
+    "project list",
+    "project add <path> [--name <n>]",
+    "project use <name|path>",
+    "project remove <name>",
+    "project current",
     "ui [--project <path>]",
 ];
 
@@ -876,7 +1048,7 @@ pub fn help_response() -> CommandResponse {
     fields.insert("usage".into(), COMMAND_USAGE.join("\n"));
     fields.insert(
         "global_flags".into(),
-        "--format json (machine-readable output, any command)".into(),
+        "--format json | --project <path> (any command); env POPSICLE_PROJECT".into(),
     );
     fields.insert(
         "deferred_commands".into(),

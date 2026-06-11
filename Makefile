@@ -2,7 +2,7 @@
 # Differences from legacy: no UI bundle (build-ui dropped), golden/intent
 # targets added for the IDD verification chain.
 
-.PHONY: check fmt fmt-fix clippy test build build-ui ui-dev golden intent install install-hooks
+.PHONY: check fmt fmt-fix clippy test build build-ui ui-dev build-dmg golden intent install install-hooks
 
 check: fmt clippy test
 
@@ -27,6 +27,9 @@ build-ui:
 
 ui-dev:
 	cd ui && npm run dev
+
+build-dmg:
+	bash packaging/macos/build-dmg.sh
 
 # Full golden-baseline chain (latest run-all chains all earlier baselines).
 golden:

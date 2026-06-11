@@ -22,6 +22,11 @@ use storage::{
     SqliteStateDb, StageCompleteRow, StateSnapshot, WorkspaceError, WorkspaceStore,
 };
 
+use crate::global_config::{
+    global_config_path, resolve_init_root, resolve_workspace_root, ResolvedWorkspace,
+    WorkspaceSource,
+};
+
 const SELF_HOST_DIR: &str = ".popsicle/self-host";
 const STATE_FILE: &str = "state.tsv";
 // NOT `.popsicle/popsicle.db`: that path belongs to the legacy binary's
@@ -72,14 +77,18 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn discover() -> Result<Self, WorkspaceError> {
-        find_workspace_root().map(|root| Self { root })
+        resolve_workspace_root(None).map(|r| Self { root: r.root })
+    }
+
+    pub fn discover_with(cli_project: Option<&str>) -> Result<ResolvedWorkspace, WorkspaceError> {
+        resolve_workspace_root(cli_project)
     }
 
     /// Discover an existing workspace, or fall back to the current directory
     /// so `popsicle init` can bootstrap a brand-new project.
     pub fn discover_or_current_dir() -> Result<Self, WorkspaceError> {
-        match find_workspace_root() {
-            Ok(root) => Ok(Self { root }),
+        match resolve_workspace_root(None) {
+            Ok(r) => Ok(Self { root: r.root }),
             Err(_) => {
                 let cwd = std::env::current_dir().map_err(|e| io_err(e.to_string()))?;
                 Ok(Self { root: cwd })
@@ -141,21 +150,6 @@ impl Workspace {
         }
         Ok(installed)
     }
-}
-
-fn find_workspace_root() -> Result<PathBuf, WorkspaceError> {
-    let mut dir = std::env::current_dir().map_err(|e| io_err(e.to_string()))?;
-    loop {
-        if dir.join(".popsicle").is_dir() {
-            return Ok(dir);
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    Err(WorkspaceError::InvalidState(
-        "no .popsicle workspace root found".into(),
-    ))
 }
 
 struct StoreState {
@@ -244,25 +238,39 @@ impl Default for StoreState {
 /// read compatibility. Implements [`WorkspaceStore`].
 pub struct LocalWorkspace {
     pub workspace: Workspace,
+    pub workspace_source: WorkspaceSource,
     backend: StateBackend,
     state: StoreState,
 }
 
 impl LocalWorkspace {
     pub fn open() -> Result<Self, WorkspaceError> {
-        let workspace = Workspace::discover()?;
-        Self::open_at_workspace(workspace)
+        let resolved = resolve_workspace_root(None)?;
+        Self::open_resolved(resolved)
+    }
+
+    pub fn open_with(cli_project: Option<&str>) -> Result<Self, WorkspaceError> {
+        let resolved = resolve_workspace_root(cli_project)?;
+        Self::open_resolved(resolved)
+    }
+
+    pub fn open_resolved(resolved: ResolvedWorkspace) -> Result<Self, WorkspaceError> {
+        Self::open_at_workspace_with_source(Workspace::at(resolved.root), resolved.source)
     }
 
     pub fn open_at(root: PathBuf) -> Result<Self, WorkspaceError> {
-        Self::open_at_workspace(Workspace::at(root))
+        Self::open_at_workspace_with_source(Workspace::at(root), WorkspaceSource::CwdWalk)
     }
 
-    fn open_at_workspace(workspace: Workspace) -> Result<Self, WorkspaceError> {
+    fn open_at_workspace_with_source(
+        workspace: Workspace,
+        workspace_source: WorkspaceSource,
+    ) -> Result<Self, WorkspaceError> {
         let backend = detect_backend(&workspace);
         let state = load_state(&workspace, backend)?;
         Ok(Self {
             workspace,
+            workspace_source,
             backend,
             state,
         })
@@ -716,6 +724,9 @@ impl WorkspaceStore for LocalWorkspace {
 pub struct BinaryProvenance {
     pub executable_path: String,
     pub workspace_root: String,
+    pub workspace_source: String,
+    pub global_config_path: String,
+    pub registered_projects: usize,
     pub package: String,
     pub build_source: String,
     pub expected_workspace_binary: String,
@@ -724,6 +735,7 @@ pub struct BinaryProvenance {
     pub current_workspace_binary_match: bool,
     pub used_parent_binary: bool,
     pub used_system_binary: bool,
+    pub used_local_bin: bool,
 }
 
 impl BinaryProvenance {
@@ -735,26 +747,46 @@ impl BinaryProvenance {
 }
 
 pub fn binary_provenance() -> Result<BinaryProvenance, WorkspaceError> {
-    let workspace = Workspace::discover()?;
+    let resolved = resolve_workspace_root(None)?;
+    binary_provenance_for(&Workspace::at(resolved.root), resolved.source)
+}
+
+pub fn binary_provenance_for(
+    workspace: &Workspace,
+    source: WorkspaceSource,
+) -> Result<BinaryProvenance, WorkspaceError> {
     let exe = std::env::current_exe().map_err(|e| io_err(e.to_string()))?;
     let expected = workspace.expected_binary();
     let exe_canon = fs::canonicalize(&exe).unwrap_or(exe.clone());
     let dev_workspace = expected.exists();
     let expected_canon = fs::canonicalize(&expected).unwrap_or(expected.clone());
-    let used_system = std::env::var("HOME")
-        .ok()
-        .map(|h| PathBuf::from(h).join(".cargo/bin/popsicle"))
+    let home = std::env::var("HOME").ok().map(PathBuf::from);
+    let used_system = home
+        .as_ref()
+        .map(|h| h.join(".cargo/bin/popsicle"))
         .and_then(|p| fs::canonicalize(p).ok())
         .is_some_and(|sys| sys == exe_canon);
+    let used_local_bin = home
+        .as_ref()
+        .map(|h| h.join(".local/bin/popsicle"))
+        .and_then(|p| fs::canonicalize(p).ok())
+        .is_some_and(|local| local == exe_canon);
     let used_parent = workspace
         .root
         .parent()
         .map(|p| p.join("target/debug/popsicle"))
         .and_then(|p| fs::canonicalize(p).ok())
         .is_some_and(|parent| parent == exe_canon && parent != expected_canon);
+    let global_cfg = global_config_path()?;
+    let registered_projects = crate::global_config::load_global_config()
+        .map(|c| c.projects.len())
+        .unwrap_or(0);
     Ok(BinaryProvenance {
         executable_path: exe_canon.display().to_string(),
         workspace_root: workspace.root.display().to_string(),
+        workspace_source: source.as_str().to_string(),
+        global_config_path: global_cfg.display().to_string(),
+        registered_projects,
         package: "cli-ux".into(),
         build_source: "popsicle-new/crates/cli-ux".into(),
         expected_workspace_binary: expected_canon.display().to_string(),
@@ -762,11 +794,15 @@ pub fn binary_provenance() -> Result<BinaryProvenance, WorkspaceError> {
         current_workspace_binary_match: exe_canon == expected_canon,
         used_parent_binary: used_parent,
         used_system_binary: used_system,
+        used_local_bin,
     })
 }
 
-pub fn run_intent_validate(path: &str, format: &str) -> Result<i32, WorkspaceError> {
-    let workspace = Workspace::discover()?;
+pub fn run_intent_validate(
+    workspace: &Workspace,
+    path: &str,
+    format: &str,
+) -> Result<i32, WorkspaceError> {
     // Resolve strictly inside the workspace. The old `root.parent()` lookup
     // predates the repo-root promotion (4d8b5c6) and could silently pick up an
     // unrelated sibling checkout — the same provenance bug class ADR-010 D-003
@@ -1173,7 +1209,11 @@ pub struct SelfHostDomain {
 
 impl SelfHostDomain {
     pub fn open() -> Result<Self, crate::CliError> {
-        LocalWorkspace::open()
+        Self::open_with(None)
+    }
+
+    pub fn open_with(cli_project: Option<&str>) -> Result<Self, crate::CliError> {
+        LocalWorkspace::open_with(cli_project)
             .map(|store| Self { store })
             .map_err(ws_err)
     }
@@ -1181,14 +1221,38 @@ impl SelfHostDomain {
     /// Open for `popsicle init`: when no `.popsicle/` exists anywhere up the
     /// tree, bootstrap the current directory as a new workspace root.
     pub fn open_or_bootstrap() -> Result<Self, crate::CliError> {
-        let workspace = Workspace::discover_or_current_dir().map_err(ws_err)?;
-        LocalWorkspace::open_at(workspace.root)
+        Self::open_or_bootstrap_with(None)
+    }
+
+    pub fn open_or_bootstrap_with(cli_project: Option<&str>) -> Result<Self, crate::CliError> {
+        let resolved = resolve_init_root(cli_project).map_err(ws_err)?;
+        LocalWorkspace::open_resolved(resolved)
             .map(|store| Self { store })
             .map_err(ws_err)
+    }
+
+    pub fn workspace_root(&self) -> &std::path::Path {
+        &self.store.workspace.root
+    }
+
+    pub fn workspace_source(&self) -> WorkspaceSource {
+        self.store.workspace_source
     }
 }
 
 impl crate::CliDomain for SelfHostDomain {
+    fn current_workspace(&self) -> Result<BTreeMap<String, String>, crate::CliError> {
+        Ok(BTreeMap::from([
+            (
+                "workspace_root".into(),
+                self.store.workspace.root.display().to_string(),
+            ),
+            (
+                "workspace_source".into(),
+                self.store.workspace_source.as_str().to_string(),
+            ),
+        ]))
+    }
     fn init_workspace(&mut self) -> Result<crate::InitResult, crate::CliError> {
         self.store.init().map_err(ws_err)?;
         let installed = self
@@ -1431,7 +1495,8 @@ impl crate::CliDomain for SelfHostDomain {
         &self,
         _format: crate::OutputFormat,
     ) -> Result<crate::CommandResponse, crate::CliError> {
-        let prov = binary_provenance().map_err(ws_err)?;
+        let prov = binary_provenance_for(&self.store.workspace, self.store.workspace_source)
+            .map_err(ws_err)?;
         let trusted = prov.is_trusted();
         let next_step = if trusted {
             "popsicle issue list".to_string()
@@ -1441,6 +1506,12 @@ impl crate::CliDomain for SelfHostDomain {
         let fields = BTreeMap::from([
             ("executable_path".into(), prov.executable_path),
             ("workspace_root".into(), prov.workspace_root),
+            ("workspace_source".into(), prov.workspace_source),
+            ("global_config_path".into(), prov.global_config_path),
+            (
+                "registered_projects".into(),
+                prov.registered_projects.to_string(),
+            ),
             ("package".into(), prov.package),
             ("build_source".into(), prov.build_source),
             (
@@ -1460,6 +1531,7 @@ impl crate::CliDomain for SelfHostDomain {
                 "used_system_binary".into(),
                 prov.used_system_binary.to_string(),
             ),
+            ("used_local_bin".into(), prov.used_local_bin.to_string()),
             (
                 "storage_backend".into(),
                 self.store.backend().describe(&self.store.workspace),
@@ -1495,7 +1567,7 @@ impl crate::CliDomain for SelfHostDomain {
             )
         })?;
         let format = args.get("format").map(String::as_str).unwrap_or("text");
-        run_intent_validate(path, format).map_err(ws_err)
+        run_intent_validate(&self.store.workspace, path, format).map_err(ws_err)
     }
 
     fn admin_migrate(&mut self, workspace: &str) -> Result<crate::AdminResult, crate::CliError> {

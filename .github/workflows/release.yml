@@ -70,9 +70,66 @@ jobs:
           name: popsicle-${{ matrix.target }}
           path: popsicle-${{ matrix.target }}.*
 
+  build-dmg:
+    name: Build macOS DMG (${{ matrix.arch }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            rust_target: aarch64-apple-darwin
+          - arch: x86_64
+            rust_target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --locked --version "^2.0.0"
+
+      - name: Build DMG
+        run: |
+          export CARGO_BUILD_TARGET=${{ matrix.rust_target }}
+          bash packaging/macos/generate-icons.sh
+          cd ui && npm ci && npm run build
+          cargo build --release --features ui -p cli-ux --target ${{ matrix.rust_target }}
+          cd crates/cli-ux && cargo tauri build --features ui --bundles app --target ${{ matrix.rust_target }}
+          APP="target/${{ matrix.rust_target }}/release/bundle/macos/Popsicle.app"
+          CLI="target/${{ matrix.rust_target }}/release/popsicle"
+          STAGING="$(mktemp -d)"
+          cp -R "$APP" "$STAGING/Popsicle.app"
+          cp "$CLI" "$STAGING/popsicle"
+          chmod +x "$STAGING/popsicle"
+          cp "packaging/macos/Install CLI.command" "$STAGING/"
+          chmod +x "$STAGING/Install CLI.command"
+          ln -s /Applications "$STAGING/Applications"
+          VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' crates/cli-ux/Cargo.toml)"
+          OUT="Popsicle_${VERSION}_${{ matrix.arch }}.dmg"
+          mkdir -p dist
+          hdiutil create -volname "Popsicle" -srcfolder "$STAGING" -ov -format UDZO "dist/$OUT"
+          rm -rf "$STAGING"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: popsicle-dmg-${{ matrix.arch }}
+          path: dist/*.dmg
+
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, build-dmg]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@v4

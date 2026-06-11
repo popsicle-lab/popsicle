@@ -38,10 +38,14 @@ Run `popsicle doctor --format json` before starting work. It must report
 
 ## Global Flags
 
-Every command accepts `--format json` for machine-readable output. Always use
-it when you need to parse results. Errors are also emitted as JSON
-(`{"status":"error","category":...,"next":...}`) when the flag is present, and
-every error carries an actionable `next` step.
+Every command accepts:
+
+- `--format json` — machine-readable output; errors also JSON with actionable `next`
+- `--project <path>` — target a specific `.popsicle/` workspace (overrides default)
+- `POPSICLE_PROJECT` env var — same as `--project`
+- `POPSICLE_HOME` — override `~/.popsicle/` global config directory
+
+Workspace resolution: `--project` → `POPSICLE_PROJECT` → `global.json` default → cwd walk.
 
 ## ⛔ MANDATORY: Before Starting ANY Development Task
 
@@ -122,6 +126,16 @@ removed (see below).
 - `popsicle doctor [--format json]` — binary/workspace provenance check
 - `popsicle help` — top-level commands + full usage lines
 - `popsicle ui [--project <path>]` — Tauri 2 desktop UI（需 `cargo build --features ui -p cli-ux`；见 ADR-015）
+
+### Project（全局多项目，macOS DMG / `~/.local/bin` 安装）
+
+- `popsicle project list` — 已注册项目 + 默认项
+- `popsicle project add <path> [--name <n>]` — 注册已有 `.popsicle/` 工作区
+- `popsicle project use <name|path>` — 设置默认项目
+- `popsicle project remove <name>` — 从注册表移除
+- `popsicle project current` — 当前解析到的工作区与来源
+
+全局标志（任意命令）：`--project <path>`；环境变量 `POPSICLE_PROJECT`。注册表 `~/.popsicle/global.json`。
 
 ### Issue
 
