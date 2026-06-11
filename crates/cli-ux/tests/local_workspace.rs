@@ -30,6 +30,8 @@ stages:
     requires_approval: false
 "#,
     );
+    fs::create_dir_all(root.join("products/cli-ux")).expect("product dir");
+    fs::create_dir_all(root.join("products/other-product")).expect("product dir");
     write_pipeline(
         &root,
         "test-gated",
@@ -61,7 +63,7 @@ fn tsv_roundtrip_persists_issue_and_doc() {
         .create_issue(
             "bug",
             "roundtrip",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-open"),
             "medium",
             "desc",
@@ -99,7 +101,7 @@ fn fresh_workspace_defaults_to_sqlite_backend() {
         .create_issue(
             "bug",
             "sqlite native",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-open"),
             "medium",
             "",
@@ -134,7 +136,7 @@ fn legacy_tsv_workspace_still_loads_and_saves() {
         .create_issue(
             "bug",
             "tsv second",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-open"),
             "medium",
             "",
@@ -175,7 +177,7 @@ fn migrate_to_sqlite_preserves_rows_and_is_idempotent() {
         .create_issue(
             "bug",
             "post-migration",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-open"),
             "medium",
             "",
@@ -193,14 +195,7 @@ fn tsv_issue_close_requires_completed_run() {
     let root = temp_workspace();
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
-        .create_issue(
-            "bug",
-            "close me",
-            "slice-3-cli-ux",
-            Some("test-open"),
-            "medium",
-            "",
-        )
+        .create_issue("bug", "close me", "cli-ux", Some("test-open"), "medium", "")
         .expect("create issue");
     let run = store
         .start_issue(&issue.key, "", "test-open")
@@ -230,7 +225,7 @@ fn tsv_doc_check_fails_stub_and_passes_filled_doc() {
         .create_issue(
             "bug",
             "doc check",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-open"),
             "medium",
             "",
@@ -282,7 +277,7 @@ fn tsv_pipeline_status_uses_stable_status_strings() {
         .create_issue(
             "bug",
             "status strings",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-open"),
             "medium",
             "",
@@ -308,7 +303,7 @@ fn tsv_gated_stage_requires_confirm_but_open_stage_does_not() {
         .create_issue(
             "bug",
             "open stage",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-open"),
             "medium",
             "",
@@ -329,7 +324,7 @@ fn tsv_gated_stage_requires_confirm_but_open_stage_does_not() {
         .create_issue(
             "bug",
             "gated stage",
-            "slice-3-cli-ux",
+            "cli-ux",
             Some("test-gated"),
             "medium",
             "",
@@ -360,7 +355,7 @@ fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
         .expect("clock")
         .as_nanos();
     let root = std::env::temp_dir().join(format!("popsicle-bootstrap-test-{nanos}"));
-    fs::create_dir_all(&root).expect("create fresh dir");
+    fs::create_dir_all(root.join("products/demo-proj")).expect("create fresh dir");
 
     let workspace = Workspace::at(root.clone());
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open fresh workspace");
@@ -381,7 +376,7 @@ fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
         .create_issue(
             "technical",
             "first issue in fresh workspace",
-            "new-proj-slice-1",
+            "demo-proj",
             Some("migration-bootstrap"),
             "medium",
             "",
@@ -405,19 +400,12 @@ fn tsv_start_issue_rejects_duplicate_active_run_and_spec_mismatch() {
     let root = temp_workspace();
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
-        .create_issue(
-            "bug",
-            "guards",
-            "slice-3-cli-ux",
-            Some("test-open"),
-            "medium",
-            "",
-        )
+        .create_issue("bug", "guards", "cli-ux", Some("test-open"), "medium", "")
         .expect("create issue");
 
-    let mismatch = store.start_issue(&issue.key, "other-spec", "test-open");
+    let mismatch = store.start_issue(&issue.key, "other-product", "test-open");
     assert!(mismatch.is_err());
-    assert!(mismatch.unwrap_err().to_string().contains("spec-lock"));
+    assert!(mismatch.unwrap_err().to_string().contains("product-lock"));
 
     let first = store
         .start_issue(&issue.key, "", "test-open")
@@ -430,7 +418,7 @@ fn tsv_start_issue_rejects_duplicate_active_run_and_spec_mismatch() {
     let reloaded = LocalWorkspace::open_at(root.clone()).expect("reload");
     let shown = reloaded.get_issue(&issue.key).expect("get issue");
     assert_eq!(shown.status, "in_progress");
-    assert_eq!(shown.spec_id, "slice-3-cli-ux");
+    assert_eq!(shown.product_id, "cli-ux");
 
     let runs = reloaded.run_ids_for_issue(&issue.key);
     assert_eq!(runs, vec![first.run_id]);

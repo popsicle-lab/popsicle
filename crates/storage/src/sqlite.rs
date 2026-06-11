@@ -67,7 +67,24 @@ impl SqliteStateDb {
     pub fn open(path: &Path) -> Result<Self, WorkspaceError> {
         let conn = Connection::open(path).map_err(db_err)?;
         conn.execute_batch(SCHEMA).map_err(db_err)?;
+        Self::migrate_schema(&conn)?;
         Ok(Self { conn })
+    }
+
+    fn migrate_schema(conn: &Connection) -> Result<(), WorkspaceError> {
+        let has_product: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('issues') WHERE name = 'product_id'")
+            .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
+            .unwrap_or(0)
+            > 0;
+        if !has_product {
+            conn.execute(
+                "ALTER TABLE issues ADD COLUMN product_id TEXT NOT NULL DEFAULT ''",
+                [],
+            )
+            .map_err(db_err)?;
+        }
+        Ok(())
     }
 
     pub fn load(&self) -> Result<StateSnapshot, WorkspaceError> {
@@ -80,19 +97,28 @@ impl SqliteStateDb {
 
         let mut stmt = self
             .conn
-            .prepare("SELECT key, issue_type, priority, status, title, spec_id, pipeline, description FROM issues")
+            .prepare(
+                "SELECT key, issue_type, priority, status, title, product_id, spec_id, pipeline, description FROM issues",
+            )
             .map_err(db_err)?;
         let rows = stmt
             .query_map([], |row| {
+                let product_id: String = row.get(5)?;
+                let spec_id: String = row.get(6)?;
                 Ok(IssueRow {
                     key: row.get(0)?,
                     issue_type: row.get(1)?,
                     priority: row.get(2)?,
                     status: row.get(3)?,
                     title: row.get(4)?,
-                    spec_id: row.get(5)?,
-                    pipeline: row.get(6)?,
-                    description: row.get(7)?,
+                    product_id: if product_id.is_empty() {
+                        spec_id.clone()
+                    } else {
+                        product_id
+                    },
+                    spec_id,
+                    pipeline: row.get(7)?,
+                    description: row.get(8)?,
                 })
             })
             .map_err(db_err)?;
@@ -166,14 +192,15 @@ impl SqliteStateDb {
         }
         for issue in &snap.issues {
             tx.execute(
-                "INSERT INTO issues (key, issue_type, priority, status, title, spec_id, pipeline, description)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO issues (key, issue_type, priority, status, title, product_id, spec_id, pipeline, description)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     issue.key,
                     issue.issue_type,
                     issue.priority,
                     issue.status,
                     issue.title,
+                    issue.product_id,
                     issue.spec_id,
                     issue.pipeline,
                     issue.description,

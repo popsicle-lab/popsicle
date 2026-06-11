@@ -106,7 +106,7 @@ export function IssueDetailView({
               <IssueTypeBadge type={issue.issue_type} />
               <StatusBadge status={issue.status} />
               <span className="text-[11px] text-[var(--text-muted)]">
-                {issue.priority} · {issue.spec_id}
+                {issue.priority} · {issue.product_id}
               </span>
             </div>
           </div>

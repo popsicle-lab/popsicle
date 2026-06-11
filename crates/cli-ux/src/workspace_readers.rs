@@ -211,7 +211,45 @@ pub fn scan_intents(workspace_root: &Path, product: &str) -> Result<IntentGraph,
     })
 }
 
-/// Map issue `spec_id` to a `products/<name>/` directory.
+/// Resolve a CLI/UI product id, accepting legacy slice-style spec names.
+pub fn resolve_product_id(workspace_root: &Path, input: &str) -> Result<String, WorkspaceError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(WorkspaceError::InvalidState(
+            "product id required (products/<name>/)".into(),
+        ));
+    }
+    let products = list_products(workspace_root)?;
+    if products.iter().any(|p| p == trimmed) {
+        return Ok(trimmed.to_string());
+    }
+    if let Some(p) = product_for_spec(trimmed, &products) {
+        return Ok(p);
+    }
+    Err(WorkspaceError::InvalidState(format!(
+        "unknown product '{trimmed}' (available: {})",
+        if products.is_empty() {
+            "none — create products/<name>/ first".into()
+        } else {
+            products.join(", ")
+        }
+    )))
+}
+
+/// Backfill `product_id` on legacy rows; normalize `spec_id` to the lock key.
+pub fn backfill_issue_products(
+    workspace_root: &Path,
+    product_id: &mut String,
+    spec_id: &mut String,
+) {
+    if product_id.is_empty() {
+        let products = list_products(workspace_root).unwrap_or_default();
+        *product_id = product_for_spec(spec_id, &products).unwrap_or_else(|| spec_id.clone());
+    }
+    *spec_id = product_id.clone();
+}
+
+/// Map legacy issue `spec_id` to a `products/<name>/` directory.
 pub fn product_for_spec(spec_id: &str, products: &[String]) -> Option<String> {
     if products.iter().any(|p| p == spec_id) {
         return Some(spec_id.to_string());
@@ -323,16 +361,22 @@ pub fn resolve_intent_ref(
 
 pub fn guidance_for_issue(
     workspace_root: &Path,
-    spec_id: &str,
+    product_id: &str,
     issue_type: &str,
     status: &str,
     pipeline_stage: Option<&str>,
 ) -> Result<IssueGuidance, WorkspaceError> {
     let products = list_products(workspace_root)?;
-    let product = product_for_spec(spec_id, &products);
+    let product = if product_id.is_empty() {
+        None
+    } else if products.iter().any(|p| p == product_id) {
+        Some(product_id.to_string())
+    } else {
+        product_for_spec(product_id, &products)
+    };
     let hint = pipeline_stage
         .map(|s| format!("当前 pipeline 阶段「{s}」— 以下为推荐 task/intent"))
-        .unwrap_or_else(|| "按 issue spec 关联的产品推荐 task/intent".to_string());
+        .unwrap_or_else(|| "按 issue 关联产品推荐 task/intent".to_string());
 
     let mut recommended_tasks = Vec::new();
     let mut related_intents = Vec::new();

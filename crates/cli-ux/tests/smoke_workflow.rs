@@ -17,7 +17,7 @@ fn temp_workspace() -> PathBuf {
         .unwrap()
         .as_nanos();
     let root = std::env::temp_dir().join(format!("popsicle-smoke-{nanos}"));
-    std::fs::create_dir_all(&root).expect("create temp workspace");
+    std::fs::create_dir_all(root.join("products/smoke-spec")).expect("product dir");
     root
 }
 
@@ -82,7 +82,7 @@ fn self_host_workflow_smoke_passes() {
             "bug",
             "--title",
             "smoke bug",
-            "--spec",
+            "--product",
             "smoke-spec",
         ],
     );

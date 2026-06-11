@@ -188,7 +188,7 @@ pub fn list_issues(state: State<AppState>) -> Result<Vec<IssueInfo>, String> {
                 issue_type: row.issue_type,
                 priority: row.priority,
                 status: row.status,
-                spec_id: row.spec_id,
+                product_id: row.product_id,
                 pipeline: row.pipeline,
                 description: row.description,
                 active_run_id: active,
@@ -211,7 +211,7 @@ pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueInfo, Strin
             issue_type: row.issue_type,
             priority: row.priority,
             status: row.status,
-            spec_id: row.spec_id,
+            product_id: row.product_id,
             pipeline: row.pipeline,
             description: row.description,
             active_run_id: active,
@@ -227,25 +227,28 @@ pub fn get_create_issue_form_options(
     state.with_store(|store| {
         let root = store.workspace().root.clone();
         let cfg = load_project_config(&root).unwrap_or_default();
-        let mut spec_options: Vec<String> = store
-            .list_issues()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .map(|i| i.spec_id)
-            .filter(|s| !s.is_empty())
-            .collect();
-        if !cfg.paths.default_spec.is_empty() {
-            spec_options.push(cfg.paths.default_spec.clone());
+        let mut product_options = list_products(&root).map_err(|e| e.to_string())?;
+        for issue in store.list_issues().map_err(|e| e.to_string())? {
+            if !issue.product_id.is_empty()
+                && !product_options.iter().any(|p| p == &issue.product_id)
+            {
+                product_options.push(issue.product_id);
+            }
         }
-        spec_options.sort();
-        spec_options.dedup();
-        if spec_options.is_empty() {
-            spec_options.push("slice-4-ui".into());
-        }
-        let default_spec = if !cfg.paths.default_spec.is_empty() {
-            cfg.paths.default_spec.clone()
-        } else {
-            spec_options[0].clone()
+        product_options.sort();
+        product_options.dedup();
+        let default_product = {
+            let mapped = if !cfg.paths.default_spec.is_empty() {
+                crate::workspace_readers::product_for_spec(
+                    &cfg.paths.default_spec,
+                    &product_options,
+                )
+            } else {
+                None
+            };
+            mapped
+                .or_else(|| product_options.first().cloned())
+                .unwrap_or_else(|| "cli-ux".into())
         };
         let pipeline_options = list_installed_pipeline_names(store.workspace());
         let default_pipeline_by_type = [
@@ -258,8 +261,8 @@ pub fn get_create_issue_form_options(
         .map(|(t, p)| (t.to_string(), p.to_string()))
         .collect();
         Ok(CreateIssueFormOptions {
-            default_spec,
-            spec_options,
+            default_product,
+            product_options,
             pipeline_options,
             default_pipeline_by_type,
         })
@@ -270,7 +273,7 @@ pub fn get_create_issue_form_options(
 pub fn create_issue(
     issue_type: String,
     title: String,
-    spec_id: String,
+    product_id: String,
     pipeline: Option<String>,
     priority: Option<String>,
     description: Option<String>,
@@ -281,7 +284,7 @@ pub fn create_issue(
             .create_issue(
                 &issue_type,
                 &title,
-                &spec_id,
+                &product_id,
                 pipeline.as_deref(),
                 priority.as_deref().unwrap_or("medium"),
                 description.as_deref().unwrap_or(""),
@@ -293,7 +296,7 @@ pub fn create_issue(
             issue_type: row.issue_type,
             priority: row.priority,
             status: row.status,
-            spec_id: row.spec_id,
+            product_id: row.product_id,
             pipeline: row.pipeline,
             description: row.description,
             active_run_id: None,
@@ -520,7 +523,7 @@ pub fn get_issue_guidance(
         let dir = store.workspace().root.clone();
         guidance_for_issue(
             &dir,
-            &issue.spec_id,
+            &issue.product_id,
             &issue.issue_type,
             &issue.status,
             pipeline_stage.as_deref(),

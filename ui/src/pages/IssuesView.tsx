@@ -199,7 +199,7 @@ export function IssuesView({ setPage, initialSelectedKey }: Props) {
                 <div className="mt-1.5 flex items-center gap-2">
                   <StatusBadge status={issue.status} />
                   <span className="truncate text-[11px] text-[var(--text-muted)]">
-                    {issue.spec_id}
+                    {issue.product_id}
                   </span>
                 </div>
               </div>
@@ -301,7 +301,7 @@ function CreateIssueForm({
   );
   const [issueType, setIssueType] = useState("technical");
   const [title, setTitle] = useState("");
-  const [specId, setSpecId] = useState("");
+  const [productId, setProductId] = useState("");
   const [pipeline, setPipeline] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -311,11 +311,11 @@ function CreateIssueForm({
     getCreateIssueFormOptions()
       .then((opts) => {
         setFormOptions(opts);
-        setSpecId(opts.default_spec);
+        setProductId(opts.default_product);
         setPipeline(defaultPipelineForType("technical", opts));
       })
       .catch(() => {
-        setSpecId("slice-4-ui");
+        setProductId("cli-ux");
       });
   }, []);
 
@@ -332,7 +332,7 @@ function CreateIssueForm({
       const issue = await createIssue({
         issueType,
         title,
-        specId,
+        productId,
         pipeline,
         description,
       });
@@ -397,21 +397,23 @@ function CreateIssueForm({
           />
         </label>
         <label className="text-[12px] text-[var(--text-secondary)]">
-          Spec（所属 slice）
+          所属产品
           <select
-            value={specId}
-            onChange={(e) => setSpecId(e.target.value)}
+            value={productId}
+            onChange={(e) => setProductId(e.target.value)}
             className="input mt-1"
             required
           >
-            {(formOptions?.spec_options ?? [specId].filter(Boolean)).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+            {(formOptions?.product_options ?? [productId].filter(Boolean)).map(
+              (p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              )
+            )}
           </select>
           <span className="mt-1 block text-[11px] text-[var(--text-muted)]">
-            锁定 pipeline 所属的 spec；默认取自项目设置或近期 issue。
+            对应 <code className="text-[10px]">products/&lt;name&gt;/</code> 目录；Guidance 与文档路径均以此为准。
           </span>
         </label>
         <label className="text-[12px] text-[var(--text-secondary)]">
@@ -428,7 +430,9 @@ function CreateIssueForm({
         )}
         <button
           type="submit"
-          disabled={loading || !title.trim() || !specId.trim() || !pipeline.trim()}
+          disabled={
+            loading || !title.trim() || !productId.trim() || !pipeline.trim()
+          }
           className="btn btn-primary w-fit"
         >
           {loading ? "Creating…" : "Create"}

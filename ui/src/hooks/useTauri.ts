@@ -34,8 +34,8 @@ export interface ProjectConfigDto {
 }
 
 export interface CreateIssueFormOptions {
-  default_spec: string;
-  spec_options: string[];
+  default_product: string;
+  product_options: string[];
   pipeline_options: string[];
   default_pipeline_by_type: Record<string, string>;
 }
@@ -54,7 +54,7 @@ export interface IssueInfo {
   issue_type: string;
   priority: string;
   status: string;
-  spec_id: string;
+  product_id: string;
   pipeline: string | null;
   description: string;
   active_run_id: string | null;
@@ -207,7 +207,7 @@ export async function getIssue(key: string): Promise<IssueInfo> {
 export async function createIssue(params: {
   issueType: string;
   title: string;
-  specId: string;
+  productId: string;
   pipeline?: string;
   priority?: string;
   description?: string;
@@ -215,7 +215,7 @@ export async function createIssue(params: {
   return invoke("create_issue", {
     issueType: params.issueType,
     title: params.title,
-    specId: params.specId,
+    productId: params.productId,
     pipeline: params.pipeline,
     priority: params.priority,
     description: params.description,

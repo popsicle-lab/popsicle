@@ -20,8 +20,8 @@ pub struct ProjectInfo {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateIssueFormOptions {
-    pub default_spec: String,
-    pub spec_options: Vec<String>,
+    pub default_product: String,
+    pub product_options: Vec<String>,
     pub pipeline_options: Vec<String>,
     pub default_pipeline_by_type: std::collections::BTreeMap<String, String>,
 }
@@ -50,7 +50,7 @@ pub struct IssueInfo {
     pub issue_type: String,
     pub priority: String,
     pub status: String,
-    pub spec_id: String,
+    pub product_id: String,
     pub pipeline: Option<String>,
     pub description: String,
     pub active_run_id: Option<String>,

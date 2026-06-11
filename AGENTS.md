@@ -247,3 +247,11 @@ names with `popsicle doc create <skill>`.
 | `project-init` | project-init-plan | fact-extractor | planning → surveying → scaffolding → completed |
 | `rfc-writer` | rfc | arch-debate, prd-writer, fact-extractor | review → completed → ingesting → scoring → drafting |
 | `shadow-implementer` | implementation-coverage | adr-writer, rfc-writer, intent-consistency-check | review → completed → verifying → implementing → scoping |
+
+<!-- popsicle:project-config:start -->
+## 本项目 Agent 偏好
+
+- **回复语言**：简体中文
+- **产品文档目录**：`products/`
+- **决策记录**：`products/<product>/decisions/{adr,pdr}/`
+<!-- popsicle:project-config:end -->

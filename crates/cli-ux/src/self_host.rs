@@ -427,7 +427,8 @@ impl LocalWorkspace {
         workspace_source: WorkspaceSource,
     ) -> Result<Self, WorkspaceError> {
         let backend = detect_backend(&workspace);
-        let state = load_state(&workspace, backend)?;
+        let mut state = load_state(&workspace, backend)?;
+        normalize_issue_rows(&workspace, &mut state);
         Ok(Self {
             workspace,
             workspace_source,
@@ -506,7 +507,7 @@ impl LocalWorkspace {
                 issue.priority,
                 issue.status,
                 escape_tsv(&issue.title),
-                issue.spec_id,
+                issue.product_id,
                 issue.pipeline.as_deref().unwrap_or(""),
                 escape_tsv(&issue.description),
             )
@@ -570,12 +571,14 @@ impl WorkspaceStore for LocalWorkspace {
         &mut self,
         issue_type: &str,
         title: &str,
-        spec_id: &str,
+        product_id: &str,
         pipeline: Option<&str>,
         priority: &str,
         description: &str,
     ) -> Result<IssueRow, WorkspaceError> {
         parse_issue_type(issue_type)?;
+        let product_id =
+            crate::workspace_readers::resolve_product_id(&self.workspace.root, product_id)?;
         let key = format!("PROJ-{}", self.state.next_issue_num);
         self.state.next_issue_num += 1;
         let row = IssueRow {
@@ -584,7 +587,8 @@ impl WorkspaceStore for LocalWorkspace {
             priority: priority.into(),
             status: "open".into(),
             title: title.into(),
-            spec_id: spec_id.into(),
+            product_id: product_id.clone(),
+            spec_id: product_id,
             pipeline: pipeline.map(str::to_string),
             description: description.into(),
         };
@@ -635,16 +639,14 @@ impl WorkspaceStore for LocalWorkspace {
                 "active-run:{active}:complete or cancel the active run before starting another"
             )));
         }
-        let resolved_spec = if spec_id.is_empty() {
-            issue.spec_id.clone()
-        } else if spec_id != issue.spec_id {
+        let lock_key = issue.product_id.clone();
+        if !spec_id.is_empty() && spec_id != lock_key {
             return Err(WorkspaceError::InvalidState(format!(
-                "spec-lock:{}:{}:omit --spec or pass the issue spec",
-                issue.spec_id, spec_id
+                "product-lock:{}:{}:omit --spec/--product or pass the issue product",
+                lock_key, spec_id
             )));
-        } else {
-            spec_id.to_string()
-        };
+        }
+        let resolved_spec = lock_key;
         let pipeline_name = if pipeline.is_empty() {
             issue
                 .pipeline
@@ -1050,6 +1052,7 @@ fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
             },
             Some("issue") if cols.len() >= 9 => {
                 let key = cols[1].to_string();
+                let legacy = cols[6].to_string();
                 state.issues.insert(
                     key.clone(),
                     IssueRow {
@@ -1058,7 +1061,8 @@ fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
                         priority: cols[3].into(),
                         status: cols[4].into(),
                         title: cols[5].into(),
-                        spec_id: cols[6].into(),
+                        product_id: legacy.clone(),
+                        spec_id: legacy,
                         pipeline: if cols[7].is_empty() {
                             None
                         } else {
@@ -1131,6 +1135,16 @@ fn count_occurrences(haystack: &str, needle: &str) -> usize {
     haystack.matches(needle).count()
 }
 
+fn normalize_issue_rows(workspace: &Workspace, state: &mut StoreState) {
+    for row in state.issues.values_mut() {
+        crate::workspace_readers::backfill_issue_products(
+            &workspace.root,
+            &mut row.product_id,
+            &mut row.spec_id,
+        );
+    }
+}
+
 fn issue_row_to_domain(row: &IssueRow) -> Issue {
     let issue_type = match row.issue_type.as_str() {
         "technical" => IssueType::Technical,
@@ -1144,7 +1158,7 @@ fn issue_row_to_domain(row: &IssueRow) -> Issue {
         description: row.description.clone(),
         issue_type,
         pipeline: row.pipeline.clone(),
-        spec_id: row.spec_id.clone(),
+        spec_id: row.product_id.clone(),
     }
 }
 
@@ -1467,18 +1481,25 @@ impl crate::CliDomain for SelfHostDomain {
         &mut self,
         issue_type: &str,
         title: &str,
-        spec_id: &str,
+        product_id: &str,
         pipeline: Option<&str>,
         priority: &str,
         description: &str,
     ) -> Result<crate::IssueCreateResult, crate::CliError> {
         let row = self
             .store
-            .create_issue(issue_type, title, spec_id, pipeline, priority, description)
+            .create_issue(
+                issue_type,
+                title,
+                product_id,
+                pipeline,
+                priority,
+                description,
+            )
             .map_err(ws_err)?;
         Ok(crate::IssueCreateResult {
             key: row.key,
-            spec_id: row.spec_id,
+            product_id: row.product_id,
             pipeline: row.pipeline,
         })
     }
@@ -1495,7 +1516,7 @@ impl crate::CliDomain for SelfHostDomain {
                             ("priority".into(), issue.priority),
                             ("status".into(), issue.status),
                             ("title".into(), issue.title),
-                            ("spec".into(), issue.spec_id),
+                            ("product".into(), issue.product_id),
                         ])
                     })
                     .collect()
@@ -1511,7 +1532,7 @@ impl crate::CliDomain for SelfHostDomain {
             ("priority".into(), issue.priority),
             ("status".into(), issue.status),
             ("title".into(), issue.title),
-            ("spec".into(), issue.spec_id),
+            ("product".into(), issue.product_id),
             ("description".into(), issue.description),
         ]);
         if let Some(p) = issue.pipeline {

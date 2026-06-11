@@ -32,6 +32,9 @@ pub struct IssueRow {
     pub priority: String,
     pub status: String,
     pub title: String,
+    /// User-facing product under `products/<product_id>/`.
+    pub product_id: String,
+    /// Internal spec-lock key (always `product_id` for new issues).
     pub spec_id: String,
     pub pipeline: Option<String>,
     pub description: String,
@@ -103,7 +106,7 @@ pub trait WorkspaceStore {
         &mut self,
         issue_type: &str,
         title: &str,
-        spec_id: &str,
+        product_id: &str,
         pipeline: Option<&str>,
         priority: &str,
         description: &str,

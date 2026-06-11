@@ -67,14 +67,8 @@ fn guidance_for_issue_recommends_tasks() {
     let ws = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let products = list_products(&ws).expect("list_products");
     let product = product_for_spec("slice-3-cli-ux", &products);
-    let g = guidance_for_issue(
-        &ws,
-        "slice-3-cli-ux",
-        "technical",
-        "in_progress",
-        Some("implement"),
-    )
-    .expect("guidance");
+    let g = guidance_for_issue(&ws, "cli-ux", "technical", "in_progress", Some("implement"))
+        .expect("guidance");
     assert_eq!(g.product, product);
     assert!(!g.recommended_tasks.is_empty());
 }

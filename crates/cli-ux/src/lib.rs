@@ -56,7 +56,7 @@ pub enum Command {
     IssueCreate {
         issue_type: String,
         title: String,
-        spec_id: String,
+        product_id: String,
         pipeline: Option<String>,
         priority: String,
         description: String,
@@ -167,7 +167,7 @@ pub struct IssueStartResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssueCreateResult {
     pub key: String,
-    pub spec_id: String,
+    pub product_id: String,
     pub pipeline: Option<String>,
 }
 
@@ -250,12 +250,19 @@ pub trait CliDomain {
         &mut self,
         issue_type: &str,
         title: &str,
-        spec_id: &str,
+        product_id: &str,
         pipeline: Option<&str>,
         priority: &str,
         description: &str,
     ) -> Result<IssueCreateResult, CliError> {
-        let _ = (issue_type, title, spec_id, pipeline, priority, description);
+        let _ = (
+            issue_type,
+            title,
+            product_id,
+            pipeline,
+            priority,
+            description,
+        );
         Err(not_self_host("issue create"))
     }
     fn list_issues(&self) -> Result<Vec<BTreeMap<String, String>>, CliError> {
@@ -397,14 +404,24 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
     match args[0].as_str() {
         "doctor" => Ok(Command::Doctor { format }),
         "init" if args.len() == 1 => Ok(Command::Init),
-        "issue" if args.get(1).map(String::as_str) == Some("create") => Ok(Command::IssueCreate {
-            issue_type: flag_value(args, "--type")?,
-            title: flag_value(args, "--title")?,
-            spec_id: flag_value(args, "--spec")?,
-            pipeline: optional_flag_value(args, "--pipeline"),
-            priority: flag_value_or(args, "--priority", "medium"),
-            description: flag_value_or(args, "--description", ""),
-        }),
+        "issue" if args.get(1).map(String::as_str) == Some("create") => {
+            let product = optional_flag_value(args, "--product")
+                .or_else(|| optional_flag_value(args, "--spec"))
+                .ok_or_else(|| {
+                    missing(
+                        "product",
+                        "issue create --product <products-dir-name> (or deprecated --spec)",
+                    )
+                })?;
+            Ok(Command::IssueCreate {
+                issue_type: flag_value(args, "--type")?,
+                title: flag_value(args, "--title")?,
+                product_id: product,
+                pipeline: optional_flag_value(args, "--pipeline"),
+                priority: flag_value_or(args, "--priority", "medium"),
+                description: flag_value_or(args, "--description", ""),
+            })
+        }
         "issue" if args.get(1).map(String::as_str) == Some("list") && args.len() == 2 => {
             Ok(Command::IssueList)
         }
@@ -636,7 +653,7 @@ pub fn run_command<D: CliDomain>(
         Command::IssueCreate {
             issue_type,
             title,
-            spec_id,
+            product_id,
             pipeline,
             priority,
             description,
@@ -644,14 +661,14 @@ pub fn run_command<D: CliDomain>(
             let result = domain.create_issue(
                 &issue_type,
                 &title,
-                &spec_id,
+                &product_id,
                 pipeline.as_deref(),
                 &priority,
                 &description,
             )?;
             let mut fields = BTreeMap::new();
             fields.insert("key".into(), result.key.clone());
-            fields.insert("spec".into(), result.spec_id);
+            fields.insert("product".into(), result.product_id);
             if let Some(p) = result.pipeline {
                 fields.insert("pipeline".into(), p);
             }
@@ -1049,7 +1066,7 @@ fn removed_command_next_step(command: &str) -> &'static str {
 pub const COMMAND_USAGE: &[&str] = &[
     "init",
     "doctor [--format json]",
-    "issue create --type <product|technical|bug|idea> --title <t> --spec <spec-id> [--pipeline <name>] [--priority <p>] [--description <d>]",
+    "issue create --type <product|technical|bug|idea> --title <t> --product <products-dir-name> [--pipeline <name>] [--priority <p>] [--description <d>]",
     "issue list",
     "issue show <key>",
     "issue start <key> [--spec <spec-id>] [--pipeline <name>]",
