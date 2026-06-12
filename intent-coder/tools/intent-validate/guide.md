@@ -23,7 +23,7 @@ popsicle tool，供 `intent-consistency-check` skill 和 CI 闸门调用。
 |---|---|
 | `0` | 全部 VC `verified` 或合理 `skipped`（如 struct-typed theorem 尚未实现、`@asis` 默认跳过） |
 | `1` | 解析错误、类型错误，或任一 VC `failed` / `unknown` / `error` |
-| `127` | 环境缺失：找不到 `intent` 可执行文件或 `z3` |
+| `127` | 环境缺失：找不到 `intent` 可执行文件（安装 v0.1.1+ release 或 DMG 捆绑版） |
 
 ## JSON 输出结构
 

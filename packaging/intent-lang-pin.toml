@@ -1,0 +1,28 @@
+# Pinned intent-lang release for DMG bundling and doctor compat checks.
+# v0.1.1+ bundles Z3 statically — no system z3 required.
+# https://github.com/popsicle-lab/intent-lang/releases/tag/v0.1.1
+
+[pin]
+repo = "https://github.com/popsicle-lab/intent-lang"
+release_tag = "v0.1.1"
+semver = "0.1.1"
+git_sha = "eae6264a9e8e684cc4574ac464743071d434dd67"
+
+[compat]
+min_semver = "0.1.1"
+tested_with = "0.1.1"
+bundled_z3 = true
+
+[assets.macos]
+aarch64 = "intent-macos-aarch64"
+x86_64 = "intent-macos-x86_64"
+
+[assets.macos.sha256]
+aarch64 = "6d0754a8442c15bdce735ed91ae5d299a67c0229ef760c0d59368c06ce4d1c04"
+x86_64 = "48c97d98aaa261c971067a5362ad8100bb27f495026849807e09c72158b19689"
+
+[assets.linux]
+x86_64 = "intent-linux-x86_64"
+
+[assets.linux.sha256]
+x86_64 = "dfd6dd62c51dbf4084f572c4360445d26bc8448b0587608b23efee27f7d32ae3"

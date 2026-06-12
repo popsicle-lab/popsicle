@@ -3,7 +3,8 @@ description: >
   对 .intent 文件跑 intent-lang 的一致性验证（parse + typecheck + VC 生成 + Z3）。
   是 intent-consistency-check skill 的底层执行器。输出 intent-lang 的原生结果
   （text 或 json）；exit 0 = 全部 verified/skipped，exit 1 = 解析/类型错误或任一 VC 失败。
-version: "0.2.0"
+  intent-lang v0.1.1+ bundles Z3 — no system z3 required.
+version: "0.3.0"
 
 args:
   - name: path
@@ -18,32 +19,17 @@ args:
     required: false
     default: ""
 
-# popsicle tool run 在 tool.source_dir 下以 sh -c 执行渲染后的命令。
-# 这里先在 PATH 上找 `intent`；找不到则回退到仓库内已编译的 intent-cli。
-# 这样无论是否全局安装 intent-lang，本 tool 都能跑。
+# Resolve `intent` from PATH or DMG install (~/.local/bin/intent).
+# vender/intent-lang in the repo is for AI/docs only — not a runtime fallback.
 command: |
   set -e
   ROOT="$(git rev-parse --show-toplevel)"
   INTENT_BIN="$(command -v intent || true)"
-  if [ -z "$INTENT_BIN" ]; then
-    for CANDIDATE in \
-      "$ROOT/intent-lang/target/release/intent-cli" \
-      "$ROOT/vender/intent-lang/target/release/intent-cli" \
-      "$ROOT/legacy/popsicle/vender/intent-lang/target/release/intent-cli" \
-      "$ROOT/../vender/intent-lang/target/release/intent-cli"
-    do
-      if [ -x "$CANDIDATE" ]; then
-        INTENT_BIN="$CANDIDATE"
-        break
-      fi
-    done
+  if [ -z "$INTENT_BIN" ] && [ -n "${HOME:-}" ] && [ -x "$HOME/.local/bin/intent" ]; then
+    INTENT_BIN="$HOME/.local/bin/intent"
   fi
   if [ ! -x "$INTENT_BIN" ]; then
-    echo "error: intent-lang 未找到。请把 intent 装进 PATH，或在 intent-lang/ 下跑 'cargo build --release -p intent-cli'。" >&2
-    exit 127
-  fi
-  if ! command -v z3 >/dev/null 2>&1; then
-    echo "error: 未找到 z3。intent-lang 依赖系统 PATH 上的 z3 求解器。" >&2
+    echo "error: intent-lang 未找到。请安装 v0.1.1+（DMG 静默安装、~/.local/bin/intent，或 https://github.com/popsicle-lab/intent-lang/releases）。" >&2
     exit 127
   fi
   case "{{path}}" in

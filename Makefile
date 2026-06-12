@@ -2,7 +2,7 @@
 # Differences from legacy: no UI bundle (build-ui dropped), golden/intent
 # targets added for the IDD verification chain.
 
-.PHONY: check fmt fmt-fix clippy test build build-ui ui-dev build-dmg golden intent install install-hooks
+.PHONY: check fmt fmt-fix clippy test build build-ui ui-dev build-dmg install-intent golden intent install install-hooks
 
 check: fmt clippy test
 
@@ -31,11 +31,15 @@ ui-dev:
 build-dmg:
 	bash packaging/macos/build-dmg.sh
 
+# Install pinned intent-lang to ~/.local/bin/intent (macOS; see packaging/intent-lang-pin.toml).
+install-intent:
+	bash packaging/macos/install-intent.sh
+
 # Full golden-baseline chain (latest run-all chains all earlier baselines).
 golden:
 	bash docs/baseline/2026-06-11/cli-ux-sqlite-phase2/run-all.sh
 
-# Z3 intent validation over the product specs (requires intent-lang).
+# Intent validation over product specs (requires intent v0.1.1+ on PATH; Z3 bundled).
 intent:
 	cargo build -p cli-ux
 	./target/debug/popsicle tool run intent-validate path=products

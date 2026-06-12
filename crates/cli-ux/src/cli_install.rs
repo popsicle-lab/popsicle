@@ -7,6 +7,8 @@ pub struct InstallOutcome {
     pub dest: PathBuf,
     pub copied: bool,
     pub path_line_added: bool,
+    pub intent_dest: Option<PathBuf>,
+    pub intent_copied: bool,
 }
 
 pub fn launched_from_app_bundle() -> bool {
@@ -43,6 +45,7 @@ mod platform {
     use super::InstallOutcome;
 
     const BIN_NAME: &str = "popsicle";
+    const INTENT_NAME: &str = "intent";
     const PATH_LINE: &str = r#"export PATH="$HOME/.local/bin:$PATH""#;
     const ZSHRC_MARKER: &str = ".local/bin";
 
@@ -72,13 +75,42 @@ mod platform {
             false
         };
 
+        let (intent_dest, intent_copied) = install_intent_from_bundle(&src, &dest_dir)?;
+
         let path_line_added = ensure_zshrc_path_line(&PathBuf::from(&home).join(".zshrc"))?;
 
         Ok(InstallOutcome {
             dest,
             copied,
             path_line_added,
+            intent_dest,
+            intent_copied,
         })
+    }
+
+    fn intent_resource_from_exe(exe: &Path) -> Option<PathBuf> {
+        exe.parent()
+            .and_then(|macos| macos.parent())
+            .map(|contents| contents.join("Resources").join(INTENT_NAME))
+            .filter(|p| p.is_file())
+    }
+
+    fn install_intent_from_bundle(
+        exe: &Path,
+        dest_dir: &Path,
+    ) -> io::Result<(Option<PathBuf>, bool)> {
+        let Some(src) = intent_resource_from_exe(exe) else {
+            return Ok((None, false));
+        };
+        let dest = dest_dir.join(INTENT_NAME);
+        let copied = if should_copy(&src, &dest)? {
+            fs::copy(&src, &dest)?;
+            set_executable(&dest)?;
+            true
+        } else {
+            false
+        };
+        Ok((Some(dest), copied))
     }
 
     fn should_copy(src: &Path, dest: &Path) -> io::Result<bool> {
@@ -113,7 +145,7 @@ mod platform {
             if !content.ends_with('\n') {
                 line.push('\n');
             }
-            line.push_str("\n# Popsicle CLI (app install)\n");
+            line.push_str("\n# Popsicle toolchain (app install)\n");
             line.push_str(PATH_LINE);
             line.push('\n');
             let mut file = fs::OpenOptions::new().append(true).open(zshrc)?;
@@ -138,6 +170,22 @@ mod platform {
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
             dir
+        }
+
+        fn fake_app_bundle(root: &Path, with_intent: bool) -> PathBuf {
+            let exe = root
+                .join("Popsicle.app")
+                .join("Contents")
+                .join("MacOS")
+                .join("popsicle");
+            fs::create_dir_all(exe.parent().unwrap()).unwrap();
+            fs::write(&exe, b"popsicle-bin").unwrap();
+            if with_intent {
+                let resources = root.join("Popsicle.app").join("Contents").join("Resources");
+                fs::create_dir_all(&resources).unwrap();
+                fs::write(resources.join(INTENT_NAME), b"intent-bin").unwrap();
+            }
+            exe
         }
 
         #[test]
@@ -180,6 +228,28 @@ mod platform {
             let zshrc = dir.join(".zshrc");
             assert!(ensure_zshrc_path_line(&zshrc).unwrap());
             assert!(zshrc.is_file());
+            let _ = fs::remove_dir_all(dir);
+        }
+
+        #[test]
+        fn intent_resource_resolves_from_app_layout() {
+            let dir = test_dir("intent-resource");
+            let exe = fake_app_bundle(&dir, true);
+            let resource = intent_resource_from_exe(&exe).unwrap();
+            assert!(resource.ends_with("Resources/intent"));
+            let _ = fs::remove_dir_all(dir);
+        }
+
+        #[test]
+        fn install_intent_from_bundle_copies_to_dest_dir() {
+            let dir = test_dir("intent-install");
+            let exe = fake_app_bundle(&dir, true);
+            let dest_dir = dir.join("bin");
+            fs::create_dir_all(&dest_dir).unwrap();
+            let (dest, copied) = install_intent_from_bundle(&exe, &dest_dir).unwrap();
+            assert!(copied);
+            assert_eq!(dest.as_deref(), Some(dest_dir.join(INTENT_NAME).as_path()));
+            assert!(dest_dir.join(INTENT_NAME).is_file());
             let _ = fs::remove_dir_all(dir);
         }
     }

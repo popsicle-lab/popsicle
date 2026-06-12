@@ -58,6 +58,32 @@ trap 'rm -rf "$STAGING"' EXIT
 cp -R "$APP" "$STAGING/Popsicle.app"
 cp "$CLI" "$STAGING/popsicle"
 chmod +x "$STAGING/popsicle"
+
+echo "==> fetch intent-lang (packaging/intent-lang-pin.toml)"
+INTENT_FETCH_OUT_DIR="$(mktemp -d /tmp/popsicle-intent-staging.XXXXXX)"
+export INTENT_FETCH_OUT_DIR
+if INTENT_BIN="$(bash packaging/macos/fetch-intent.sh)"; then
+  cp "$INTENT_BIN" "$STAGING/intent"
+  chmod +x "$STAGING/intent"
+  # Also patch the built .app under target/ (not only DMG staging).
+  mkdir -p "$APP/Contents/Resources"
+  cp "$INTENT_BIN" "$APP/Contents/Resources/intent"
+  chmod +x "$APP/Contents/Resources/intent"
+  mkdir -p "$STAGING/Popsicle.app/Contents/Resources"
+  cp "$INTENT_BIN" "$STAGING/Popsicle.app/Contents/Resources/intent"
+  chmod +x "$STAGING/Popsicle.app/Contents/Resources/intent"
+  INTENT_VER="$("$STAGING/intent" --version 2>/dev/null || true)"
+  echo "==> bundled intent-lang ${INTENT_VER:-unknown}"
+else
+  fetch_status=$?
+  if [[ $fetch_status -eq 2 ]]; then
+    echo "==> intent-lang not bundled (fetch skipped or no asset for arch)" >&2
+  else
+    exit "$fetch_status"
+  fi
+fi
+rm -rf "$INTENT_FETCH_OUT_DIR"
+
 cp "packaging/macos/Install CLI.command" "$STAGING/Install CLI.command"
 chmod +x "$STAGING/Install CLI.command"
 ln -s /Applications "$STAGING/Applications"
@@ -74,3 +100,8 @@ hdiutil create -volname "Popsicle" -srcfolder "$STAGING" -ov -format UDZO "$OUT"
 
 echo "DMG ready: $OUT"
 ls -lh "$OUT"
+echo ""
+echo "Note: make build-dmg does NOT install into your shell PATH."
+echo "  • Open Popsicle.app from Applications once (double-click), or"
+echo "  • Mount the DMG and run Install CLI.command"
+echo "  • Or: make install-intent"

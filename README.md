@@ -190,7 +190,7 @@ popsicle/
 ├── products/               # IDD 产品文档（任务图 + intent + 决策）
 ├── docs/                   # 仓库级 charter、baseline、invariants
 ├── intent-coder/           # IDD 编排技能包（10+ skills、pipeline 模板）
-├── vender/intent-lang/     # intent DSL + Z3 校验工具链
+├── vender/intent-lang/     # intent DSL 源码镜像（AI/文档用；运行时用独立安装的 intent v0.1.1+）
 ├── ui/                     # Tauri 前端（Vite + React 19）
 ├── migration/              # Strangler Fig 进度与 traceability
 ├── legacy/popsicle/        # legacy 源码 submodule（对账用）
@@ -309,7 +309,7 @@ make ui-dev                   # 另开终端运行 popsicle ui
 | 项目 | 关系 |
 |---|---|
 | [intent-coder](intent-coder/README.md) | IDD 编排技能包：fact-extract → debate → PRD → RFC/ADR → intent → living-doc |
-| [intent-lang](vender/intent-lang/) | `.intent` DSL 与 Z3 验证（`intent-cli` / `intent-core`）|
+| [intent-lang](https://github.com/popsicle-lab/intent-lang) | `.intent` DSL 与 Z3 验证（独立安装 / DMG 捆绑；`vender/` 仅为文档镜像）|
 | Legacy popsicle（`backup-v0.5` / submodule） | 迁移前单体实现，equivalence 对账基准 |
 
 ---
