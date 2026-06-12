@@ -13,9 +13,10 @@ pub mod ui;
 
 pub use global_config::WorkspaceSource;
 pub use self_host::{
-    binary_provenance_for, bundled_pipeline_names, install_intent_coder_module,
-    intent_coder_module_version, IntentCoderInstallResult, IntentCoderSource, LocalWorkspace,
-    SelfHostDomain, StateBackend, Workspace,
+    binary_provenance_for, bootstrap_workspace_at, bundled_pipeline_names,
+    install_intent_coder_module, intent_coder_module_version, IntentCoderInstallResult,
+    IntentCoderSource, LocalWorkspace, SelfHostDomain, StateBackend, Workspace,
+    WorkspaceBootstrapOutcome,
 };
 
 use std::collections::BTreeMap;
@@ -605,7 +606,7 @@ fn project_list_response() -> Result<CommandResponse, CliError> {
 }
 
 fn project_add_response(path: &str, name: Option<&str>) -> Result<CommandResponse, CliError> {
-    let entry = global_config::add_project(path, name).map_err(global_err)?;
+    let entry = global_config::add_project_or_bootstrap(path, name).map_err(global_err)?;
     Ok(CommandResponse {
         status: "ok",
         next_step: Some(format!("popsicle project use {}", entry.name)),
@@ -879,7 +880,8 @@ fn global_err(e: storage::WorkspaceError) -> CliError {
         storage::WorkspaceError::NotFound(id) => ("not-found", format!("check `{id}` exists")),
         storage::WorkspaceError::InvalidState(_) => (
             "invalid-args",
-            "run `popsicle project add <path>` after `popsicle init`".into(),
+            "run `popsicle project add <path>` or open the folder in the UI to auto-bootstrap"
+                .into(),
         ),
         storage::WorkspaceError::Io(_) => ("io", msg.clone()),
     };

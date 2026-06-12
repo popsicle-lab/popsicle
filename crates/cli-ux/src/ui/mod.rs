@@ -33,6 +33,7 @@ pub fn run(project: Option<String>) {
             commands::get_initial_dir,
             commands::set_project_dir,
             commands::open_project_cmd,
+            commands::workspace_needs_bootstrap_cmd,
             commands::list_registered_projects,
             commands::remove_registered_project,
             commands::pick_project_directory,

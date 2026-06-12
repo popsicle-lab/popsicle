@@ -8,6 +8,7 @@ import {
   type WorkspaceInfo,
 } from "./hooks/useTauri";
 import { Sidebar } from "./components/Sidebar";
+import { BootstrapConfirmModal } from "./components/BootstrapConfirmModal";
 import { ProjectPicker } from "./components/ProjectPicker";
 import { AppHeader } from "./components/AppHeader";
 import { IssuesView } from "./pages/IssuesView";
@@ -49,8 +50,14 @@ export type Page =
   | { kind: "settings" };
 
 export default function App() {
-  const { project, openProjectDir, closeProject, syncProject } =
-    useProjectSession();
+  const {
+    project,
+    openProjectDir,
+    closeProject,
+    syncProject,
+    bootstrapPromptPath,
+    finishBootstrapPrompt,
+  } = useProjectSession();
   const [page, setPage] = useState<Page>({ kind: "issues" });
   const [refreshKey, setRefreshKey] = useState(0);
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -83,7 +90,10 @@ export default function App() {
       const startup = await resolveStartupProject(queryProject);
       if (startup && !cancelled) {
         try {
-          await openProjectDir(startup);
+          const opened = await openProjectDir(startup);
+          if (!opened) {
+            // user declined bootstrap on startup
+          }
         } catch {
           // fall through to picker
         }
@@ -110,7 +120,8 @@ export default function App() {
 
   const handleSwitchProject = useCallback(
     async (path: string) => {
-      await openProjectDir(path);
+      const opened = await openProjectDir(path);
+      if (!opened) return;
       setPage({ kind: "issues" });
       setRefreshKey((k) => k + 1);
     },
@@ -134,28 +145,44 @@ export default function App() {
     });
   }, []);
 
+  const bootstrapModal = bootstrapPromptPath ? (
+    <BootstrapConfirmModal
+      path={bootstrapPromptPath}
+      locale={locale}
+      onConfirm={() => finishBootstrapPrompt(true)}
+      onCancel={() => finishBootstrapPrompt(false)}
+    />
+  ) : null;
+
   if (!bootstrapped) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
-        <div className="spinner" aria-hidden />
-        <span className="text-[13px]">Loading workspace…</span>
-      </div>
+      <>
+        {bootstrapModal}
+        <div className="flex h-screen flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
+          <div className="spinner" aria-hidden />
+          <span className="text-[13px]">Loading workspace…</span>
+        </div>
+      </>
     );
   }
 
   if (!project) {
     return (
-      <ProjectPicker
-        onSelect={async (path) => {
-          await openProjectDir(path);
-          setPage({ kind: "issues" });
-        }}
-      />
+      <>
+        {bootstrapModal}
+        <ProjectPicker
+          onSelect={async (path) => {
+            const opened = await openProjectDir(path);
+            if (opened) setPage({ kind: "issues" });
+          }}
+        />
+      </>
     );
   }
 
   return (
     <LocaleProvider locale={locale} onLocaleChange={setLocale}>
+    {bootstrapModal}
     <div className="flex h-screen flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1">
         <Sidebar

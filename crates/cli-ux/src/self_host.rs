@@ -1397,15 +1397,108 @@ pub struct SelfHostDomain {
     store: LocalWorkspace,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceBootstrapOutcome {
+    pub created: bool,
+    pub pipelines_installed: Vec<String>,
+    pub intent_coder_installed: bool,
+}
+
+/// Runtime workspace bootstrap (not IDD `project-init`): `.popsicle/`, pipelines,
+/// intent-coder module, and `project.yaml` / `AGENTS.md` agent block.
+fn init_next_step(outcome: &WorkspaceBootstrapOutcome) -> String {
+    let mut parts = Vec::new();
+    if !outcome.pipelines_installed.is_empty() {
+        parts.push(format!(
+            "pipelines installed ({})",
+            outcome.pipelines_installed.join(", ")
+        ));
+    }
+    if outcome.intent_coder_installed {
+        parts.push("intent-coder module installed".into());
+    }
+    if parts.is_empty() {
+        "popsicle issue create --type product --title \"<title>\" --spec <spec> --pipeline <pipeline>"
+            .to_string()
+    } else {
+        format!(
+            "{}; read intent-coder/guides/pipeline-selection.md before issue create",
+            parts.join("; ")
+        )
+    }
+}
+
+pub fn bootstrap_workspace_at(root: &Path) -> Result<WorkspaceBootstrapOutcome, WorkspaceError> {
+    let canon = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+    let workspace = Workspace::at(canon);
+    let created = !workspace.self_host_dir().is_dir();
+    workspace.ensure_layout()?;
+    let installed = workspace
+        .install_bundled_pipelines()?
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let module = install_intent_coder_module(&workspace, false)?;
+    ensure_project_config(&workspace.root)?;
+    let mut store =
+        LocalWorkspace::open_at_workspace_with_source(workspace, WorkspaceSource::LazyBootstrap)?;
+    store.init()?;
+    Ok(WorkspaceBootstrapOutcome {
+        created,
+        pipelines_installed: installed,
+        intent_coder_installed: module.installed,
+    })
+}
+
+fn is_missing_workspace_error(err: &WorkspaceError) -> bool {
+    matches!(
+        err,
+        WorkspaceError::InvalidState(msg) if msg == "no .popsicle workspace root found"
+            || msg.contains("not a popsicle workspace")
+    )
+}
+
 impl SelfHostDomain {
     pub fn open() -> Result<Self, crate::CliError> {
-        Self::open_with(None)
+        Self::open_with_lazy(None)
     }
 
     pub fn open_with(cli_project: Option<&str>) -> Result<Self, crate::CliError> {
         LocalWorkspace::open_with(cli_project)
             .map(|store| Self { store })
             .map_err(ws_err)
+    }
+
+    /// Resolve an existing workspace, or lazily bootstrap cwd / `--project` when none exists.
+    pub fn open_with_lazy(cli_project: Option<&str>) -> Result<Self, crate::CliError> {
+        if let Some(p) = cli_project.filter(|s| !s.is_empty()) {
+            let canon = fs::canonicalize(Path::new(p)).unwrap_or_else(|_| PathBuf::from(p));
+            if canon.join(".popsicle").is_dir() {
+                return Self::open_with(Some(p));
+            }
+            bootstrap_workspace_at(&canon).map_err(ws_err)?;
+            return LocalWorkspace::open_resolved(ResolvedWorkspace {
+                root: canon,
+                source: WorkspaceSource::LazyBootstrap,
+            })
+            .map(|store| Self { store })
+            .map_err(ws_err);
+        }
+        match LocalWorkspace::open_with(None) {
+            Ok(store) => Ok(Self { store }),
+            Err(e) if is_missing_workspace_error(&e) => {
+                let cwd = std::env::current_dir().map_err(|e| ws_err(io_err(e)))?;
+                bootstrap_workspace_at(&cwd).map_err(ws_err)?;
+                let root = fs::canonicalize(&cwd).unwrap_or(cwd);
+                LocalWorkspace::open_resolved(ResolvedWorkspace {
+                    root,
+                    source: WorkspaceSource::LazyBootstrap,
+                })
+                .map(|store| Self { store })
+                .map_err(ws_err)
+            }
+            Err(e) => Err(ws_err(e)),
+        }
     }
 
     /// Open for `popsicle init`: when no `.popsicle/` exists anywhere up the
@@ -1450,37 +1543,14 @@ impl crate::CliDomain for SelfHostDomain {
         ]))
     }
     fn init_workspace(&mut self) -> Result<crate::InitResult, crate::CliError> {
-        self.store.init().map_err(ws_err)?;
-        let installed = self
-            .store
-            .workspace
-            .install_bundled_pipelines()
-            .map_err(ws_err)?;
-        let module = install_intent_coder_module(&self.store.workspace, false).map_err(ws_err)?;
-        let project_cfg = ensure_project_config(&self.store.workspace.root).map_err(ws_err)?;
-        let next_step = {
-            let mut parts = Vec::new();
-            if !installed.is_empty() {
-                parts.push(format!("pipelines installed ({})", installed.join(", ")));
-            }
-            if module.installed {
-                parts.push(format!(
-                    "intent-coder module v{} → {}",
-                    module.version.as_deref().unwrap_or("?"),
-                    module.dest
-                ));
-            } else if let Some(reason) = &module.skipped_reason {
-                parts.push(format!("intent-coder: {reason}"));
-            }
-            if parts.is_empty() {
-                "popsicle issue create --type product --title \"<title>\" --spec <spec> --pipeline <pipeline>".to_string()
-            } else {
-                format!(
-                    "{}; read intent-coder/guides/pipeline-selection.md before issue create",
-                    parts.join("; ")
-                )
-            }
-        };
+        let outcome = bootstrap_workspace_at(&self.store.workspace.root).map_err(ws_err)?;
+        let project_cfg = load_project_config(&self.store.workspace.root).map_err(ws_err)?;
+        self.store = LocalWorkspace::open_resolved(ResolvedWorkspace {
+            root: self.store.workspace.root.clone(),
+            source: self.store.workspace_source,
+        })
+        .map_err(ws_err)?;
+        let next_step = init_next_step(&outcome);
         let next_with_config = if project_cfg.workflow.sync_agents_md {
             format!("{next_step}; project preferences synced to AGENTS.md")
         } else {

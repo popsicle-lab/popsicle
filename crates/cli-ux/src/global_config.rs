@@ -35,6 +35,8 @@ pub enum WorkspaceSource {
     CwdWalk,
     /// `popsicle init` without an explicit project targets cwd.
     InitBootstrap,
+    /// UI open or CLI lazy-init bootstrapped a directory without `.popsicle/`.
+    LazyBootstrap,
 }
 
 impl WorkspaceSource {
@@ -45,6 +47,7 @@ impl WorkspaceSource {
             Self::GlobalDefault => "global_default",
             Self::CwdWalk => "cwd_walk",
             Self::InitBootstrap => "init_bootstrap",
+            Self::LazyBootstrap => "lazy_bootstrap",
         }
     }
 }
@@ -196,6 +199,12 @@ pub fn is_valid_workspace_path(path: &str) -> bool {
     Path::new(path).join(".popsicle").is_dir()
 }
 
+/// Whether opening this directory would require runtime workspace bootstrap.
+pub fn workspace_needs_bootstrap(path: &str) -> Result<bool, WorkspaceError> {
+    let canon = canonicalize_project_path(path);
+    Ok(!is_valid_workspace_path(&canon.display().to_string()))
+}
+
 pub fn upsert_project_entry(
     cfg: &mut GlobalConfig,
     canon: &Path,
@@ -229,6 +238,19 @@ pub fn upsert_project_entry(
     entry
 }
 
+fn canonicalize_project_path(path: &str) -> PathBuf {
+    let p = Path::new(path);
+    fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+fn ensure_workspace_bootstrapped(canon: &Path) -> Result<bool, WorkspaceError> {
+    if is_valid_workspace_path(&canon.display().to_string()) {
+        return Ok(false);
+    }
+    crate::self_host::bootstrap_workspace_at(canon)?;
+    Ok(true)
+}
+
 pub fn add_project(path: &str, name: Option<&str>) -> Result<ProjectEntry, WorkspaceError> {
     let canon = validate_workspace_root(Path::new(path))?;
     let mut cfg = load_global_config()?;
@@ -236,6 +258,16 @@ pub fn add_project(path: &str, name: Option<&str>) -> Result<ProjectEntry, Works
     cfg.projects.sort_by(|a, b| a.name.cmp(&b.name));
     save_global_config(&cfg)?;
     Ok(entry)
+}
+
+/// Register a project, auto-bootstrapping runtime workspace files when needed.
+pub fn add_project_or_bootstrap(
+    path: &str,
+    name: Option<&str>,
+) -> Result<ProjectEntry, WorkspaceError> {
+    let canon = canonicalize_project_path(path);
+    ensure_workspace_bootstrapped(&canon)?;
+    add_project(&canon.display().to_string(), name)
 }
 
 /// Register, mark as recently opened, and set as the global default workspace.
@@ -246,6 +278,16 @@ pub fn open_project(path: &str, name: Option<&str>) -> Result<ProjectEntry, Work
     cfg.default_project = Some(entry.path.clone());
     save_global_config(&cfg)?;
     Ok(entry)
+}
+
+/// Open (register + default) a directory, auto-bootstrapping when `.popsicle/` is missing.
+pub fn open_project_or_bootstrap(
+    path: &str,
+    name: Option<&str>,
+) -> Result<ProjectEntry, WorkspaceError> {
+    let canon = canonicalize_project_path(path);
+    ensure_workspace_bootstrapped(&canon)?;
+    open_project(&canon.display().to_string(), name)
 }
 
 pub fn list_recent_projects(limit: usize) -> Result<Vec<ProjectEntry>, WorkspaceError> {

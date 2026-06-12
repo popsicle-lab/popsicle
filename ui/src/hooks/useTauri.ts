@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface WorkspaceInfo {
   root: string;
@@ -168,8 +168,15 @@ export async function resolveStartupProject(
   return invoke("resolve_startup_project", { cliProject: cliProject ?? null });
 }
 
-export async function openProject(path: string): Promise<ProjectInfo> {
-  return invoke("open_project_cmd", { path });
+export async function workspaceNeedsBootstrap(path: string): Promise<boolean> {
+  return invoke("workspace_needs_bootstrap_cmd", { path });
+}
+
+export async function openProject(
+  path: string,
+  confirmBootstrap = false
+): Promise<ProjectInfo> {
+  return invoke("open_project_cmd", { path, confirmBootstrap });
 }
 
 export async function listRegisteredProjects(): Promise<ProjectsList> {
@@ -186,13 +193,46 @@ export async function pickProjectDirectory(): Promise<string | null> {
 
 export function useProjectSession() {
   const [project, setProject] = useState<ProjectInfo | null>(null);
+  const [bootstrapPromptPath, setBootstrapPromptPath] = useState<string | null>(
+    null
+  );
+  const bootstrapResolverRef = useRef<
+    ((info: ProjectInfo | null) => void) | null
+  >(null);
 
   const syncProject = useCallback(async (info: ProjectInfo) => {
     setProject(info);
   }, []);
 
+  const finishBootstrapPrompt = useCallback((confirmed: boolean) => {
+    const path = bootstrapPromptPath;
+    setBootstrapPromptPath(null);
+    const resolve = bootstrapResolverRef.current;
+    bootstrapResolverRef.current = null;
+    if (!path || !resolve) return;
+    if (!confirmed) {
+      resolve(null);
+      return;
+    }
+    openProject(path, true)
+      .then((info) => {
+        setProject(info);
+        resolve(info);
+      })
+      .catch(() => resolve(null));
+  }, [bootstrapPromptPath]);
+
   const openProjectDir = useCallback(async (path: string) => {
-    const info = await openProject(path);
+    const trimmed = path.trim();
+    if (!trimmed) return null;
+    const needs = await workspaceNeedsBootstrap(trimmed);
+    if (needs) {
+      return new Promise<ProjectInfo | null>((resolve) => {
+        bootstrapResolverRef.current = resolve;
+        setBootstrapPromptPath(trimmed);
+      });
+    }
+    const info = await openProject(trimmed, false);
     setProject(info);
     return info;
   }, []);
@@ -208,6 +248,8 @@ export function useProjectSession() {
     syncProject,
     openProjectDir,
     closeProject,
+    bootstrapPromptPath,
+    finishBootstrapPrompt,
   };
 }
 

@@ -131,7 +131,7 @@ fn main() {
 
     let domain_result = match &command {
         Command::Init => SelfHostDomain::open_or_bootstrap_with(cli_project.as_deref()),
-        _ => SelfHostDomain::open_with(cli_project.as_deref()),
+        _ => SelfHostDomain::open_with_lazy(cli_project.as_deref()),
     };
     let mut domain = match domain_result {
         Ok(domain) => domain,

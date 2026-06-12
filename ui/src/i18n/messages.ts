@@ -51,6 +51,15 @@ type Messages = {
     selectHint: string;
     createIssue: string;
   };
+  project: {
+    bootstrap: {
+      title: string;
+      body: string;
+      items: string[];
+      confirm: string;
+      cancel: string;
+    };
+  };
 };
 
 const zhCN: Messages = {
@@ -102,6 +111,19 @@ const zhCN: Messages = {
     selectIssue: "选择一条 Issue",
     selectHint: "使用上方筛选，点击列表行查看详情与 Guidance。",
     createIssue: "新建 Issue",
+  },
+  project: {
+    bootstrap: {
+      title: "初始化 Popsicle 工作区？",
+      body: "该目录尚未配置 Popsicle。确认后将创建轻量运行时环境，便于 Agent 与 pipeline 开工。",
+      items: [
+        "创建 .popsicle/ 与内置 pipelines",
+        "安装 intent-coder 模块",
+        "写入 project.yaml 与 AGENTS.md 片段",
+      ],
+      confirm: "初始化并打开",
+      cancel: "取消",
+    },
   },
 };
 
@@ -157,6 +179,19 @@ const en: Messages = {
     selectIssue: "Select an issue",
     selectHint: "Use filters above, then pick a row to preview details and guidance.",
     createIssue: "Create issue",
+  },
+  project: {
+    bootstrap: {
+      title: "Initialize Popsicle workspace?",
+      body: "This folder has no Popsicle setup yet. Confirm to create a lightweight runtime so agents and pipelines can start.",
+      items: [
+        "Create .popsicle/ and bundled pipelines",
+        "Install the intent-coder module",
+        "Write project.yaml and an AGENTS.md snippet",
+      ],
+      confirm: "Initialize and open",
+      cancel: "Cancel",
+    },
   },
 };
 

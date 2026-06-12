@@ -5,8 +5,8 @@ use storage::WorkspaceStore;
 use tauri::State;
 
 use crate::global_config::{
-    global_config_path, is_valid_workspace_path, list_projects, open_project, remove_project,
-    WorkspaceSource,
+    global_config_path, is_valid_workspace_path, list_projects, open_project,
+    open_project_or_bootstrap, remove_project, workspace_needs_bootstrap, WorkspaceSource,
 };
 use crate::project_config::{
     ensure_project_config, load_project_config, project_config_path, save_project_config,
@@ -67,16 +67,39 @@ fn project_info_from_entry(
     }
 }
 
-fn apply_project_dir(state: &State<AppState>, path: &str) -> Result<PathBuf, String> {
-    let entry = open_project(path, None).map_err(|e| e.to_string())?;
+fn apply_project_dir(
+    state: &State<AppState>,
+    path: &str,
+    confirm_bootstrap: bool,
+) -> Result<PathBuf, String> {
+    let needs = workspace_needs_bootstrap(path).map_err(|e| e.to_string())?;
+    if needs && !confirm_bootstrap {
+        return Err(
+            "workspace not initialized; confirm bootstrap before opening this folder".into(),
+        );
+    }
+    let entry = if needs {
+        open_project_or_bootstrap(path, None).map_err(|e| e.to_string())?
+    } else {
+        open_project(path, None).map_err(|e| e.to_string())?
+    };
     let root = PathBuf::from(&entry.path);
     *state.project_dir.lock().map_err(|e| e.to_string())? = Some(root.clone());
     Ok(root)
 }
 
 #[tauri::command]
-pub fn set_project_dir(path: String, state: State<AppState>) -> Result<ProjectInfo, String> {
-    let root = apply_project_dir(&state, &path)?;
+pub fn workspace_needs_bootstrap_cmd(path: String) -> Result<bool, String> {
+    workspace_needs_bootstrap(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_project_dir(
+    path: String,
+    confirm_bootstrap: bool,
+    state: State<AppState>,
+) -> Result<ProjectInfo, String> {
+    let root = apply_project_dir(&state, &path, confirm_bootstrap)?;
     let cfg = list_projects().map_err(|e| e.to_string())?;
     let entry = cfg
         .projects
@@ -90,8 +113,12 @@ pub fn set_project_dir(path: String, state: State<AppState>) -> Result<ProjectIn
 }
 
 #[tauri::command]
-pub fn open_project_cmd(path: String, state: State<AppState>) -> Result<ProjectInfo, String> {
-    let root = apply_project_dir(&state, &path)?;
+pub fn open_project_cmd(
+    path: String,
+    confirm_bootstrap: bool,
+    state: State<AppState>,
+) -> Result<ProjectInfo, String> {
+    let root = apply_project_dir(&state, &path, confirm_bootstrap)?;
     let cfg = list_projects().map_err(|e| e.to_string())?;
     let entry = cfg
         .projects
