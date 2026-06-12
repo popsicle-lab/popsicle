@@ -56,6 +56,7 @@ fn needs_workspace(command: &Command) -> bool {
             | Command::IssueList
             | Command::IssueShow { .. }
             | Command::IssueClose { .. }
+            | Command::IssueLink { .. }
             | Command::IssueStart { .. }
             | Command::DocCreate { .. }
             | Command::DocList { .. }

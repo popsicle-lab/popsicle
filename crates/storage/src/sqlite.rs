@@ -9,7 +9,7 @@ use std::path::Path;
 
 use rusqlite::{params, Connection};
 
-use crate::{DocumentRow, IssueRow, RunRow, WorkspaceError};
+use crate::{DocumentRow, IssueRow, IssueTaskLink, RunRow, WorkspaceError};
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (
@@ -42,6 +42,16 @@ CREATE TABLE IF NOT EXISTS documents (
     parent_id TEXT,
     file_path TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS issue_tasks (
+    issue_key      TEXT NOT NULL,
+    sort_order     INTEGER NOT NULL,
+    role           TEXT NOT NULL,
+    task_id        TEXT,
+    proposed_title TEXT,
+    journey_stage  TEXT,
+    source         TEXT NOT NULL,
+    PRIMARY KEY (issue_key, sort_order)
+);
 ";
 
 /// Full indexed-state snapshot exchanged with the db in one shot. The state is
@@ -53,6 +63,7 @@ pub struct StateSnapshot {
     pub next_run_num: u32,
     pub next_doc_num: u32,
     pub issues: Vec<IssueRow>,
+    pub issue_tasks: Vec<IssueTaskLink>,
     pub runs: Vec<RunRow>,
     pub documents: Vec<DocumentRow>,
 }
@@ -84,6 +95,15 @@ impl SqliteStateDb {
             )
             .map_err(db_err)?;
         }
+        let has_epic: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('issues') WHERE name = 'epic_task_id'")
+            .and_then(|mut stmt| stmt.query_row([], |row| row.get::<_, i64>(0)))
+            .unwrap_or(0)
+            > 0;
+        if !has_epic {
+            conn.execute("ALTER TABLE issues ADD COLUMN epic_task_id TEXT", [])
+                .map_err(db_err)?;
+        }
         Ok(())
     }
 
@@ -98,7 +118,7 @@ impl SqliteStateDb {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT key, issue_type, priority, status, title, product_id, spec_id, pipeline, description FROM issues",
+                "SELECT key, issue_type, priority, status, title, product_id, spec_id, pipeline, description, epic_task_id FROM issues",
             )
             .map_err(db_err)?;
         let rows = stmt
@@ -119,11 +139,36 @@ impl SqliteStateDb {
                     spec_id,
                     pipeline: row.get(7)?,
                     description: row.get(8)?,
+                    epic_task_id: row.get(9)?,
                 })
             })
             .map_err(db_err)?;
         for row in rows {
             snap.issues.push(row.map_err(db_err)?);
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT issue_key, sort_order, role, task_id, proposed_title, journey_stage, source
+                 FROM issue_tasks ORDER BY issue_key, sort_order",
+            )
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(IssueTaskLink {
+                    issue_key: row.get(0)?,
+                    sort_order: row.get::<_, i64>(1)? as u32,
+                    role: row.get(2)?,
+                    task_id: row.get(3)?,
+                    proposed_title: row.get(4)?,
+                    journey_stage: row.get(5)?,
+                    source: row.get(6)?,
+                })
+            })
+            .map_err(db_err)?;
+        for row in rows {
+            snap.issue_tasks.push(row.map_err(db_err)?);
         }
 
         let mut stmt = self
@@ -176,7 +221,7 @@ impl SqliteStateDb {
     pub fn save(&mut self, snap: &StateSnapshot) -> Result<(), WorkspaceError> {
         let tx = self.conn.transaction().map_err(db_err)?;
         tx.execute_batch(
-            "DELETE FROM meta; DELETE FROM issues; DELETE FROM runs; DELETE FROM documents;",
+            "DELETE FROM meta; DELETE FROM issues; DELETE FROM issue_tasks; DELETE FROM runs; DELETE FROM documents;",
         )
         .map_err(db_err)?;
         for (key, value) in [
@@ -192,8 +237,8 @@ impl SqliteStateDb {
         }
         for issue in &snap.issues {
             tx.execute(
-                "INSERT INTO issues (key, issue_type, priority, status, title, product_id, spec_id, pipeline, description)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO issues (key, issue_type, priority, status, title, product_id, spec_id, pipeline, description, epic_task_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     issue.key,
                     issue.issue_type,
@@ -204,6 +249,23 @@ impl SqliteStateDb {
                     issue.spec_id,
                     issue.pipeline,
                     issue.description,
+                    issue.epic_task_id,
+                ],
+            )
+            .map_err(db_err)?;
+        }
+        for link in &snap.issue_tasks {
+            tx.execute(
+                "INSERT INTO issue_tasks (issue_key, sort_order, role, task_id, proposed_title, journey_stage, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    link.issue_key,
+                    link.sort_order as i64,
+                    link.role,
+                    link.task_id,
+                    link.proposed_title,
+                    link.journey_stage,
+                    link.source,
                 ],
             )
             .map_err(db_err)?;

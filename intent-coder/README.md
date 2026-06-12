@@ -53,7 +53,7 @@
 
 ## Pipeline 怎么选
 
-**必读**：[`guides/pipeline-selection.md`](guides/pipeline-selection.md) —— Issue 创建前的决策树与 `slice-delivery` 门禁。
+**必读**：[`skills/issue-author/guide.md`](skills/issue-author/guide.md) —— Issue 创建（pipeline 决策树 + `slice-delivery` 门禁）。
 
 要点：`slice-delivery` **不是**新产品 feature 流程；它要求 spec 链已完成。`--type technical` 默认是 `tech-decision`，不是 delivery。
 

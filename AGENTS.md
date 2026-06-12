@@ -69,14 +69,30 @@ ONLY way to create a pipeline run.
 
 **2a.** Check `popsicle issue list --format json` for an existing matching issue.
 
-**2b.** If none exists, create one. `--spec` is required: use the spec id the
-work belongs to (e.g. an existing slice spec like `slice-3-cli-ux`; check
-recent issues for spec ids in use).
+**2b.** If none exists, create one. `--product` is required (maps to
+`products/<name>/`; check recent issues for product ids in use).
+
+**2b-i. MANDATORY — run `issue-author` before `issue create`**
+
+Read `intent-coder/skills/issue-author/guide.md`（Issue 创建唯一入口，含 pipeline
+决策树与门禁）。按 guide 填 `issue-create-report` 或同等检查项：
+
+1. Scan `products/<product>/intents/acceptance.intent` — does this capability
+   already have a block?
+2. Apply the pipeline decision tree (below) — **do not** default to
+   `slice-delivery` for new UI/CLI features.
+3. Set `--tasks` for **existing** tasks this run implements; use
+   `--proposed-task "title|journey"` for **new** user journeys (then
+   `slice-spec`, not `slice-delivery`).
+4. Put **every** linked `task_id` in `--description` (CLI enforces this on
+   `issue start` for `slice-delivery`).
 
 ```bash
 popsicle issue create --type <product|technical|bug|idea> \
-  --title "<concise title>" --spec <spec-id> --pipeline <name> \
-  --description "<what and why>" --format json
+  --title "<concise title>" --product <product-id> --pipeline <name> \
+  --tasks T-XXXX [--proposed-task "新旅程|daily-ops"] \
+  --description "<what and why; must cite each --tasks id for slice-delivery>" \
+  --format json
 ```
 
 The bundled pipeline templates are:
@@ -95,7 +111,7 @@ If `--pipeline` is omitted, the issue type's default (last column) is used
 templates self-heal: bundled definitions are installed on demand, and a
 "pipeline not found" error lists all available templates.
 
-**Pipeline routing (read before `issue create`):** `intent-coder/guides/pipeline-selection.md`
+**Pipeline routing（`issue-author` 内嵌，下表仅速查）：**
 
 | Situation | Pipeline |
 |---|---|
@@ -107,6 +123,11 @@ templates self-heal: bundled definitions are installed on demand, and a
 
 `slice-delivery` is **not** a substitute for spec work. Do not use it for greenfield
 features or incremental UI/CLI capabilities until `acceptance.intent` covers them.
+
+**CLI hard gate (`issue start`):** `slice-delivery` is rejected when the issue has
+`proposed` task links, no `linked` tasks, `description` omits a linked `task_id`, or
+linked tasks lack resolvable `related_intents` in `products/<product>/intents/`.
+`issue create` rejects `slice-delivery` + `--proposed-task` together.
 
 **intent-coder module (ADR-017):** compiled into the `popsicle` binary (`include_dir!`).
 `popsicle init` extracts it to `.popsicle/modules/intent-coder/`. In the popsicle
@@ -159,11 +180,12 @@ removed (see below).
 
 ### Issue
 
-- `popsicle issue create --type <t> --title "<t>" --spec <spec-id> [--pipeline <name>] [--priority <p>] [--description "<d>"]`
+- `popsicle issue create --type <t> --title "<t>" --spec <spec-id> [--pipeline <name>] [--priority <p>] [--description "<d>"] [--tasks T1,T2] [--proposed-task "title\|journey"]`（`--epic-task` 已废弃）
 - `popsicle issue list`
 - `popsicle issue show <key>`
 - `popsicle issue start <key> [--spec <spec-id>] [--pipeline <name>]`
 - `popsicle issue close <key>` — close after the run completes (fails actionably while a run is active)
+- `popsicle issue link <key> --tasks T1,T2 [--replace] [--drop-proposed]` — add/replace linked tasks after create (proposed→linked promotion)
 
 ### Pipeline
 
@@ -181,6 +203,7 @@ removed (see below).
 ### Tool & Admin
 
 - `popsicle tool run intent-validate path=<dir> [format=<text|json>]` — Z3 intent check
+- `popsicle tool run mermaid-diagram action=<guide|scaffold|validate> [type=…] [path=…] [title=…] [format=<text|json>]` — Mermaid 画图技能（PRD/task/RFC/ADR）；`action=guide` 打印 `intent-coder/tools/mermaid-diagram/guide.md`
 - `popsicle admin migrate [--workspace <path>]` — migrate legacy TSV state to the SQLite backend (`.popsicle/self-host/state.db`); idempotent, keeps `state.tsv.migrated` for rollback
 - `popsicle admin reinit [--workspace <path>]`
 
@@ -234,6 +257,7 @@ names with `popsicle doc create <skill>`.
 
 | Skill | Artifact | Inputs | States |
 |-------|----------|--------|--------|
+| `issue-author` | issue-create-report | none (standalone; **not** in pipeline yaml) | analyzing → drafting → completed |
 | `adr-writer` | adr-finalization-report | rfc-writer, arch-debate | review → completed → reviewing → finalizing |
 | `arch-debate` | arch-debate-record | prd-writer, fact-extractor, product-debate | debating → setup → completed → concluding |
 | `cutover-author` | cutover-adr | equivalence-baseline, intent-consistency-check, shadow-implementer | drafting → completed → review → gating |
@@ -255,6 +279,7 @@ names with `popsicle doc create <skill>`.
 - **产品文档目录**：`products/`
 - **决策记录**：`products/<product>/decisions/{adr,pdr}/`
 - **Pipeline 审批模式**：`delegate-dangerous`（危险操作需审批（其余代批））
+- **Issue / 文档文案**：创建或更新 Issue / 文档时，`--title` 与 `--description` 使用简体中文（除非用户明确要求英文）。
 
 ### 阶段完成策略
 

@@ -86,7 +86,8 @@ fn golden_004_skill_registry_count() {
     }
     let mut reg = SkillRegistry::new();
     let n = reg.load_dir(&dir).expect("scan skills");
-    assert_eq!(n, 13, "intent-coder v0.4 expects 13 skills");
+    assert_eq!(n, 14, "intent-coder expects 14 skills (incl. issue-author)");
+    assert!(reg.get("issue-author").is_some());
     assert!(reg.get("shadow-implementer").is_some());
     assert!(reg.get("equivalence-baseline").is_some());
     assert!(reg.get("cutover-author").is_some());

@@ -1,3 +1,6 @@
+import { useLocale } from "../i18n/LocaleContext";
+import { issueTypeLabel } from "../lib/issueLabels";
+
 const TYPE_STYLES: Record<string, string> = {
   product: "issue-type-badge issue-type-product",
   technical: "issue-type-badge issue-type-technical",
@@ -10,8 +13,9 @@ interface Props {
 }
 
 export function IssueTypeBadge({ type }: Props) {
+  const { m } = useLocale();
   const cls = TYPE_STYLES[type] ?? "issue-type-badge issue-type-default";
-  return <span className={cls}>{type}</span>;
+  return <span className={cls}>{issueTypeLabel(type, m)}</span>;
 }
 
 export function issueTypeAccentClass(type: string): string {

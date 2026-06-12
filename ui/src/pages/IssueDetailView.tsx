@@ -10,6 +10,7 @@ import {
   type IssueInfo,
 } from "../hooks/useTauri";
 import { LoadingState } from "../components/LoadingState";
+import { RetroDocBanner } from "../components/RetroDocBanner";
 import { IssueTypeBadge } from "../components/IssueTypeBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import type { Page } from "../App";
@@ -17,7 +18,7 @@ import type { Page } from "../App";
 interface Props {
   issueKey: string;
   setPage: (p: Page) => void;
-  variant?: "page" | "panel";
+  variant?: "page" | "panel" | "modal";
 }
 
 export function IssueDetailView({
@@ -66,11 +67,16 @@ export function IssueDetailView({
   };
 
   const guidanceReturnTo: Page =
-    variant === "panel"
+    variant === "panel" || variant === "modal"
       ? { kind: "issues", selectedKey: issueKey }
       : { kind: "issue", issueKey };
 
-  const shell = variant === "panel" ? "detail-panel-scroll" : "page-frame mx-auto max-w-5xl";
+  const shell =
+    variant === "panel"
+      ? "detail-panel-scroll"
+      : variant === "modal"
+        ? "issue-modal-detail"
+        : "page-frame mx-auto max-w-5xl";
 
   if (error) {
     return (
@@ -98,7 +104,13 @@ export function IssueDetailView({
               <p className="font-mono text-[12px] text-[#93c5fd]">{issue.key}</p>
             )}
             <h2
-              className={`font-semibold leading-snug ${variant === "panel" ? "text-[15px]" : "mt-1 text-xl"}`}
+              className={`font-semibold leading-snug ${
+                variant === "panel"
+                  ? "text-[15px]"
+                  : variant === "modal"
+                    ? "text-[17px]"
+                    : "mt-1 text-xl"
+              }`}
             >
               {issue.title}
             </h2>
@@ -107,6 +119,15 @@ export function IssueDetailView({
               <StatusBadge status={issue.status} />
               <span className="text-[11px] text-[var(--text-muted)]">
                 {issue.priority} · {issue.product_id}
+                {issue.task_links
+                  .filter((l) => l.role === "linked" && l.task_id)
+                  .map((l) => l.task_id)
+                  .join(", ")
+                  ? ` · tasks ${issue.task_links
+                      .filter((l) => l.role === "linked" && l.task_id)
+                      .map((l) => l.task_id)
+                      .join(", ")}`
+                  : ""}
               </span>
             </div>
           </div>
@@ -129,8 +150,14 @@ export function IssueDetailView({
           </div>
         )}
 
+        {!issue.pipeline && issue.run_ids.length === 0 && (
+          <RetroDocBanner productId={issue.product_id} />
+        )}
+
         {guidance &&
-          (guidance.recommended_tasks.length > 0 ||
+          (guidance.linked_tasks.length > 0 ||
+            guidance.proposed_tasks.length > 0 ||
+            guidance.recommended_tasks.length > 0 ||
             guidance.related_intents.length > 0) && (
             <div className="card space-y-3 p-3.5">
               <div className="flex items-center gap-2">
@@ -153,8 +180,61 @@ export function IssueDetailView({
                 )}
               </div>
               <p className="text-[12px] text-[var(--text-muted)]">{guidance.hint}</p>
+              {guidance.linked_tasks.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-[var(--text-secondary)]">
+                    Linked tasks
+                  </p>
+                  {guidance.linked_tasks.map((t) => (
+                    <button
+                      key={t.task_id}
+                      type="button"
+                      onClick={() =>
+                        setPage({
+                          kind: "task",
+                          taskId: t.task_id,
+                          product: t.product,
+                          returnTo: guidanceReturnTo,
+                        })
+                      }
+                      className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-[var(--bg-hover)]"
+                    >
+                      <span className="shrink-0 font-mono text-[11px] text-[#93c5fd]">
+                        {t.task_id}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                      <span className="badge badge-neutral shrink-0">
+                        {t.journey_stage}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {guidance.proposed_tasks.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-[var(--text-secondary)]">
+                    Proposed tasks
+                  </p>
+                  {guidance.proposed_tasks.map((p) => (
+                    <div
+                      key={`${p.title}-${p.source}`}
+                      className="flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-[13px] text-[var(--text-secondary)]"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{p.title}</span>
+                      {p.journey_stage && (
+                        <span className="badge badge-neutral shrink-0">
+                          {p.journey_stage}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               {guidance.recommended_tasks.length > 0 && (
                 <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-[var(--text-secondary)]">
+                    Suggested (heuristic)
+                  </p>
                   {guidance.recommended_tasks.map((t) => (
                     <button
                       key={t.task_id}

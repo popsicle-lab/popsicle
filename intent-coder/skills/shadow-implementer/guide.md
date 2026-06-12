@@ -16,7 +16,7 @@ slice-spec / migration-bootstrap（spec 完成）
 
 在 `slice-delivery` 的 **implement** stage 写代码之前，确认：
 
-1. **Pipeline 选对**：若 PRD/intent 未覆盖本能力 → 先跑 `slice-spec` 或 `greenfield-product-spec`，不要直接 delivery。见 [`guides/pipeline-selection.md`](../../guides/pipeline-selection.md)。
+1. **Pipeline 选对**：若 PRD/intent 未覆盖本能力 → 先跑 `slice-spec` 或 `greenfield-product-spec`，不要直接 delivery。见 [`issue-author`](../issue-author/guide.md)。
 2. **Intent**：`products/<slice>/intents/` 存在与本任务对应的 acceptance block；`intent-validate` 无新增失败。
 3. **ADR**：File Manifest 列出将创建/修改的路径；无清单外文件。
 4. **模块**：`.popsicle/modules/intent-coder/` 已安装（`popsicle init` 或 `admin sync-intent-coder`），skill 模板与 guide 可引用。
@@ -43,6 +43,14 @@ slice-spec / migration-bootstrap（spec 完成）
 
 - `{slug}.implementation-coverage.md`：intent → fn/test 1:1 表
 - 副作用：代码落在 `crates/<slice>/` + `tests/intent_properties.rs`
+
+## Issue ↔ Task 关联（implement 末）
+
+在 `implementation-coverage` 提交前检查 Issue 的 task 关联（`popsicle issue show <key> --format json` 的 `task_link_*`）：
+
+- [ ] 实现覆盖的既有 task 已 **linked**
+- [ ] 暴露的新用户旅程登记为 **proposed**（`--proposed-task` 或后续 `living-doc` 晋升）
+- [ ] 勿依赖固定 5 条 Guidance 启发式代替显式关联
 
 ## 硬规则
 

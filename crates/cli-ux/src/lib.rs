@@ -4,6 +4,7 @@ pub mod cli_install;
 pub mod global_config;
 pub mod i18n;
 mod intent_coder_bundle;
+mod pipeline_gate;
 pub mod project_config;
 pub mod self_host;
 pub mod workspace_readers;
@@ -14,7 +15,7 @@ pub mod ui;
 pub use global_config::WorkspaceSource;
 pub use self_host::{
     binary_provenance_for, bootstrap_workspace_at, bundled_pipeline_names,
-    install_intent_coder_module, intent_coder_module_version, IntentCoderInstallResult,
+    install_intent_coder_module, intent_coder_module_version, run_tool, IntentCoderInstallResult,
     IntentCoderSource, LocalWorkspace, SelfHostDomain, StateBackend, Workspace,
     WorkspaceBootstrapOutcome,
 };
@@ -63,6 +64,9 @@ pub enum Command {
         pipeline: Option<String>,
         priority: String,
         description: String,
+        epic_task_id: Option<String>,
+        linked_task_ids: Vec<String>,
+        proposed_tasks: Vec<(String, Option<String>)>,
     },
     IssueList,
     IssueShow {
@@ -70,6 +74,12 @@ pub enum Command {
     },
     IssueClose {
         key: String,
+    },
+    IssueLink {
+        key: String,
+        linked_task_ids: Vec<String>,
+        replace: bool,
+        drop_proposed: bool,
     },
     IssueStart {
         key: String,
@@ -158,6 +168,13 @@ pub struct InitResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssueLinkResult {
+    pub links_updated: bool,
+    pub linked_count: usize,
+    pub task_link_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssueStartResult {
     pub run_created: bool,
     pub spec_locked: bool,
@@ -172,6 +189,8 @@ pub struct IssueCreateResult {
     pub key: String,
     pub product_id: String,
     pub pipeline: Option<String>,
+    /// Project preferences when `inject_on_run` is enabled (same as issue start).
+    pub agent_context: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -249,6 +268,7 @@ impl std::error::Error for CliError {}
 
 pub trait CliDomain {
     fn init_workspace(&mut self) -> Result<InitResult, CliError>;
+    #[allow(clippy::too_many_arguments)]
     fn create_issue(
         &mut self,
         issue_type: &str,
@@ -257,6 +277,9 @@ pub trait CliDomain {
         pipeline: Option<&str>,
         priority: &str,
         description: &str,
+        epic_task_id: Option<&str>,
+        linked_task_ids: &[&str],
+        proposed_tasks: &[(String, Option<String>)],
     ) -> Result<IssueCreateResult, CliError> {
         let _ = (
             issue_type,
@@ -265,6 +288,9 @@ pub trait CliDomain {
             pipeline,
             priority,
             description,
+            epic_task_id,
+            linked_task_ids,
+            proposed_tasks,
         );
         Err(not_self_host("issue create"))
     }
@@ -278,6 +304,16 @@ pub trait CliDomain {
     fn close_issue(&mut self, key: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = key;
         Err(not_self_host("issue close"))
+    }
+    fn link_issue_tasks(
+        &mut self,
+        key: &str,
+        task_ids: &[&str],
+        replace: bool,
+        drop_proposed: bool,
+    ) -> Result<IssueLinkResult, CliError> {
+        let _ = (key, task_ids, replace, drop_proposed);
+        Err(not_self_host("issue link"))
     }
     fn start_issue(
         &mut self,
@@ -326,6 +362,9 @@ pub trait CliDomain {
         Err(not_self_host("tool run"))
     }
     fn admin_migrate(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
+    fn project_language(&self) -> project_config::AgentLanguage {
+        project_config::detect_default_language()
+    }
     fn admin_reinit(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
     fn admin_sync_intent_coder(&mut self) -> Result<AdminResult, CliError>;
     fn admin_sync_project_config(&mut self) -> Result<AdminResult, CliError>;
@@ -423,6 +462,9 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
                 pipeline: optional_flag_value(args, "--pipeline"),
                 priority: flag_value_or(args, "--priority", "medium"),
                 description: flag_value_or(args, "--description", ""),
+                epic_task_id: optional_flag_value(args, "--epic-task"),
+                linked_task_ids: parse_tasks_flag(args),
+                proposed_tasks: parse_proposed_task_flags(args),
             })
         }
         "issue" if args.get(1).map(String::as_str) == Some("list") && args.len() == 2 => {
@@ -439,6 +481,21 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
                 .get(2)
                 .ok_or_else(|| missing("issue-key", "issue close"))?;
             Ok(Command::IssueClose { key: key.clone() })
+        }
+        "issue" if args.get(1).map(String::as_str) == Some("link") => {
+            let key = args
+                .get(2)
+                .ok_or_else(|| missing("issue-key", "issue link"))?;
+            let linked_task_ids = parse_tasks_flag(args);
+            if linked_task_ids.is_empty() {
+                return Err(missing("tasks", "issue link --tasks T1,T2"));
+            }
+            Ok(Command::IssueLink {
+                key: key.clone(),
+                linked_task_ids,
+                replace: args.iter().any(|a| a == "--replace"),
+                drop_proposed: args.iter().any(|a| a == "--drop-proposed"),
+            })
         }
         "issue" if args.get(1).map(String::as_str) == Some("start") => {
             let key = args
@@ -660,7 +717,11 @@ pub fn run_command<D: CliDomain>(
             pipeline,
             priority,
             description,
+            epic_task_id,
+            linked_task_ids,
+            proposed_tasks,
         } => {
+            let linked_refs: Vec<&str> = linked_task_ids.iter().map(String::as_str).collect();
             let result = domain.create_issue(
                 &issue_type,
                 &title,
@@ -668,6 +729,9 @@ pub fn run_command<D: CliDomain>(
                 pipeline.as_deref(),
                 &priority,
                 &description,
+                epic_task_id.as_deref(),
+                &linked_refs,
+                &proposed_tasks,
             )?;
             let mut fields = BTreeMap::new();
             fields.insert("key".into(), result.key.clone());
@@ -675,9 +739,13 @@ pub fn run_command<D: CliDomain>(
             if let Some(p) = result.pipeline {
                 fields.insert("pipeline".into(), p);
             }
+            if !result.agent_context.is_empty() {
+                fields.insert("agent_context".into(), result.agent_context);
+            }
+            let lang = domain.project_language();
             Ok(CommandResponse {
                 status: "ok",
-                next_step: Some(format!("popsicle issue start {}", result.key)),
+                next_step: Some(i18n::issue_create_next(lang, &result.key)),
                 fields,
             })
         }
@@ -690,17 +758,38 @@ pub fn run_command<D: CliDomain>(
                     fields.insert(format!("issue_{idx}_{k}"), v.clone());
                 }
             }
+            let lang = domain.project_language();
             Ok(CommandResponse {
                 status: "ok",
-                next_step: Some("popsicle issue show <key>".into()),
+                next_step: Some(i18n::issue_list_next(lang).into()),
                 fields,
             })
         }
         Command::IssueShow { key } => {
             let fields = domain.show_issue(&key)?;
+            let lang = domain.project_language();
             Ok(CommandResponse {
                 status: "ok",
-                next_step: Some(format!("popsicle issue start {key}")),
+                next_step: Some(i18n::issue_show_next(lang, &key)),
+                fields,
+            })
+        }
+        Command::IssueLink {
+            key,
+            linked_task_ids,
+            replace,
+            drop_proposed,
+        } => {
+            let refs: Vec<&str> = linked_task_ids.iter().map(String::as_str).collect();
+            let result = domain.link_issue_tasks(&key, &refs, replace, drop_proposed)?;
+            let mut fields = BTreeMap::new();
+            fields.insert("key".into(), key.clone());
+            fields.insert("links_updated".into(), result.links_updated.to_string());
+            fields.insert("linked_count".into(), result.linked_count.to_string());
+            fields.insert("task_link_count".into(), result.task_link_count.to_string());
+            Ok(CommandResponse {
+                status: "ok",
+                next_step: Some(format!("popsicle issue show {key} --format json")),
                 fields,
             })
         }
@@ -1028,6 +1117,57 @@ fn optional_flag_value(args: &[String], flag: &str) -> Option<String> {
     flag_value(args, flag).ok()
 }
 
+fn collect_flag_values(args: &[String], flag: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut idx = 0;
+    while idx < args.len() {
+        if args[idx] == flag {
+            if let Some(v) = args.get(idx + 1).filter(|v| !v.starts_with("--")) {
+                out.push(v.clone());
+                idx += 2;
+                continue;
+            }
+        }
+        idx += 1;
+    }
+    out
+}
+
+fn parse_tasks_flag(args: &[String]) -> Vec<String> {
+    optional_flag_value(args, "--tasks")
+        .map(|raw| {
+            raw.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_proposed_task_flags(args: &[String]) -> Vec<(String, Option<String>)> {
+    collect_flag_values(args, "--proposed-task")
+        .into_iter()
+        .map(|raw| {
+            if let Some((title, journey)) = raw.split_once('|') {
+                let title = title.trim().to_string();
+                let journey = journey.trim();
+                (
+                    title,
+                    if journey.is_empty() {
+                        None
+                    } else {
+                        Some(journey.to_string())
+                    },
+                )
+            } else {
+                (raw.trim().to_string(), None)
+            }
+        })
+        .filter(|(title, _)| !title.is_empty())
+        .collect()
+}
+
 /// Resolve `--format <text|json>` from a raw argument list. Used both by
 /// per-command parsing and by the binary to pick the global output format.
 pub fn parse_format_flag(args: &[String]) -> OutputFormat {
@@ -1070,11 +1210,12 @@ fn removed_command_next_step(command: &str) -> &'static str {
 pub const COMMAND_USAGE: &[&str] = &[
     "init",
     "doctor [--format json]",
-    "issue create --type <product|technical|bug|idea> --title <t> --product <products-dir-name> [--pipeline <name>] [--priority <p>] [--description <d>]",
+    "issue create --type <product|technical|bug|idea> --title <t> --product <products-dir-name> [--pipeline <name>] [--tasks T1,T2] [--proposed-task <title|journey>] [--priority <p>] [--description <d>]",
     "issue list",
     "issue show <key>",
     "issue start <key> [--spec <spec-id>] [--pipeline <name>]",
     "issue close <key>",
+    "issue link <key> --tasks T1,T2 [--replace] [--drop-proposed]",
     "pipeline status --run <run_id>",
     "pipeline next --run <run_id>",
     "pipeline stage complete <stage> --run <run_id> [--confirm]",
@@ -1082,7 +1223,7 @@ pub const COMMAND_USAGE: &[&str] = &[
     "doc list [--run <run_id>]",
     "doc show <doc_id>",
     "doc check <doc_id>",
-    "tool run intent-validate path=<dir> [format=<text|json>]",
+    "tool run <name> key=value ...  # e.g. intent-validate path=products; mermaid-diagram action=guide",
     "admin migrate [--workspace <path>]",
     "admin reinit [--workspace <path>]",
     "admin sync-intent-coder",

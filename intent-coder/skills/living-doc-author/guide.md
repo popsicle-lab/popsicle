@@ -31,6 +31,15 @@
 `slice-delivery` 末尾建议：
 `living-doc-author --target implementation-status,architecture-manifest,product-header`
 
+## Proposed task 晋升（issue-author 下游）
+
+Issue 上 `role=proposed` 的 task 关联应在 living-doc 阶段落地：
+
+1. 在 `products/<p>/decisions/pdr/` 登记 Intent Mapping（若尚无对应 task）。
+2. 用 `prd-writer` / 手工创建 `products/<p>/tasks/...md`。
+3. 运行 `popsicle issue link <KEY> --tasks T-XXXX --replace --drop-proposed` 晋升为 **linked**。
+4. 跑 `intent-validate` 与 `tasks-index` target。
+
 ## 四类 doc-code drift 信号
 
 1. **过期 staleness** — `last_updated` 距今 > 60 天告警 / > 90 天进归档评审；

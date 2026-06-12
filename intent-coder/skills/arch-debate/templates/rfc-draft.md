@@ -41,7 +41,17 @@ cadr_candidates: []          # 触及 charter 的 CADR 候选
 
 ## Proposed Design
 
-{推荐方案：模块边界 + 数据流 + 关键接口。可用 mermaid。}
+{推荐方案：模块边界 + 数据流 + 关键接口。}
+
+> 建议 `popsicle tool run mermaid-diagram action=scaffold type=architecture`，供 rfc-writer 打磨。
+> 至少画出模块边界 `flowchart` 或主路径 `sequenceDiagram`。
+
+Diagram: {草稿名} (flowchart)
+
+```mermaid
+flowchart TD
+  modA["模块 A"] --> modB["模块 B"]
+```
 
 ## Alternatives Considered
 

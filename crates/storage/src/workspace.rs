@@ -38,6 +38,21 @@ pub struct IssueRow {
     pub spec_id: String,
     pub pipeline: Option<String>,
     pub description: String,
+    /// Deprecated: use [`IssueTaskLink`] with role `linked`. Kept for TSV/SQLite compat.
+    pub epic_task_id: Option<String>,
+}
+
+/// Many-to-many association between an issue and product tasks (PROJ-43).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IssueTaskLink {
+    pub issue_key: String,
+    /// `linked` | `proposed` | `discovered`
+    pub role: String,
+    pub task_id: Option<String>,
+    pub proposed_title: Option<String>,
+    pub journey_stage: Option<String>,
+    pub source: String,
+    pub sort_order: u32,
 }
 
 /// Result of starting a pipeline run.
@@ -102,6 +117,7 @@ pub struct DocCheckRow {
 pub trait WorkspaceStore {
     fn init(&mut self) -> Result<(), WorkspaceError>;
 
+    #[allow(clippy::too_many_arguments)]
     fn create_issue(
         &mut self,
         issue_type: &str,
@@ -110,7 +126,21 @@ pub trait WorkspaceStore {
         pipeline: Option<&str>,
         priority: &str,
         description: &str,
+        epic_task_id: Option<&str>,
+        linked_task_ids: &[&str],
+        proposed_tasks: &[(String, Option<String>)],
     ) -> Result<IssueRow, WorkspaceError>;
+
+    fn list_issue_tasks(&self, issue_key: &str) -> Result<Vec<IssueTaskLink>, WorkspaceError>;
+
+    /// Add or replace `linked` task associations on an existing issue.
+    fn link_issue_tasks(
+        &mut self,
+        issue_key: &str,
+        task_ids: &[&str],
+        replace: bool,
+        drop_proposed: bool,
+    ) -> Result<Vec<IssueTaskLink>, WorkspaceError>;
 
     fn list_issues(&self) -> Result<Vec<IssueRow>, WorkspaceError>;
 

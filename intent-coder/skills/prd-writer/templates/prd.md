@@ -26,6 +26,23 @@
 
 ---
 
+## 1b. 旅程与 Task 关系（建议附图）
+
+> 用一张图说明本次新增 task 在 5 个 journey 中的位置，以及 `related_next_tasks` 主链。
+> 先 `popsicle tool run mermaid-diagram action=scaffold type=task-relations title="…"`，节点用真实 task_id。
+
+Diagram: 本次变更 task 关系 (flowchart)
+
+```mermaid
+flowchart LR
+  T0001["T-0001 onboarding"] --> T0002["T-0002 troubleshooting"]
+  T0001 --> T0010["T-0010 daily-ops"]
+```
+
+> 节点标签必须用真实 `task_id`；边与各 task frontmatter `related_next_tasks` 一致。
+
+---
+
 ## 2. Problem Statement（合并到 PRODUCT.md › Problem Statement 段）
 
 **Current Situation**: {当前痛点 — cite fact-extraction-report § X / Product Brief}

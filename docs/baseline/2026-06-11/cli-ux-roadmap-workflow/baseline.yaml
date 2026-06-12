@@ -1,0 +1,63 @@
+slice: "cli-ux-roadmap-workflow"
+date: "2026-06-11"
+legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+baseline_dir: "docs/baseline/2026-06-11/cli-ux-roadmap-workflow/"
+summary:
+  golden_total: 5
+  golden_pass: 5
+  golden_fail: 0
+  divergence_count: 0
+  equivalence_gate_pass: true
+goldens:
+  - id: G-001
+    description: "WorkflowProfile default pipeline map"
+    script: "golden-001-workflow-profile.sh"
+    legacy: "single default pipeline per issue type"
+    new: "workflow.profile drives default pipeline + approval hints"
+    compares: "unit test"
+    status: pass
+    diff_summary: "new persona; no legacy equivalent"
+    traces_to:
+      - "README Roadmap P1"
+      - "PROJ-42"
+  - id: G-002
+    description: "epic_task_id round-trip on issue row"
+    script: "golden-002-epic-task-persist.sh"
+    legacy: "issues table without epic column"
+    new: "SQLite + TSV col 10 + --epic-task"
+    compares: "integration test"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "README Roadmap P6"
+  - id: G-003
+    description: "scan_product_health for cli-ux product"
+    script: "golden-003-product-health.sh"
+    legacy: "no living-doc health panel"
+    new: "workspace_readers::scan_product_health"
+    compares: "integration test"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "README Roadmap P2"
+  - id: G-004
+    description: "retro doc checklist guide + UI banner"
+    script: "golden-004-retro-checklist.sh"
+    legacy: "no retro checklist"
+    new: "intent-coder/guides/retro-doc-checklist.md + RetroDocBanner"
+    compares: "artifact presence"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "README Roadmap P4"
+  - id: G-005
+    description: "workflow UI components build"
+    script: "golden-005-ui-workflow.sh"
+    legacy: "flat issue list; no mermaid in task body"
+    new: "ProductHealthPanel, MarkdownWithMermaid, issueGroup"
+    compares: "structural + ui build"
+    status: pass
+    diff_summary: "P3/P5 UI-only; no IPC contract change beyond existing readers"
+    traces_to:
+      - "README Roadmap P3/P5"
+divergences: []

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownWithMermaid } from "./MarkdownWithMermaid";
 import { ArrowLeft } from "lucide-react";
 import { readTaskContent, type TaskFull } from "../hooks/useTauri";
 import { FrontmatterSidebar } from "./FrontmatterSidebar";
@@ -59,7 +58,7 @@ export function TaskDetailPanel({
       : [];
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex flex-col gap-3">
       {showBack && (
         <button
           type="button"
@@ -78,12 +77,12 @@ export function TaskDetailPanel({
           <ArrowLeft size={15} /> {backLabel(returnTo)}
         </button>
       )}
-      <div className="detail-grid min-h-0 flex-1">
-        <div className="min-w-0 overflow-auto">
+      <div className="detail-grid">
+        <div className="min-w-0">
           <p className="font-mono text-[12px] text-[#93c5fd]">{task.task_id}</p>
           <h2 className="mb-3 text-base font-semibold leading-snug">{task.title}</h2>
           <div className="card p-5 prose prose-invert max-w-none">
-            <Markdown remarkPlugins={[remarkGfm]}>{task.body}</Markdown>
+            <MarkdownWithMermaid content={task.body} />
           </div>
           {relatedIntents.length > 0 && (
             <div className="mt-3">

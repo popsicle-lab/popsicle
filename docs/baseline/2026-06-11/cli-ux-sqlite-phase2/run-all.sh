@@ -14,5 +14,6 @@ done
 bash "$DIR/../cli-ux-ui/run-all.sh"
 bash "$DIR/../cli-ux-global/run-all.sh"
 bash "$DIR/../cli-ux-project-ui/run-all.sh"
+bash "$DIR/../cli-ux-roadmap-workflow/run-all.sh"
 
 echo "All cli-ux sqlite-phase2 golden baselines passed."

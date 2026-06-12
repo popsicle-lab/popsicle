@@ -17,13 +17,15 @@ export function IntentDetailPage({
   setPage,
 }: Props) {
   return (
-    <IntentDetailPanel
-      product={product}
-      file={file}
-      block={block}
-      returnTo={returnTo}
-      setPage={setPage}
-      showBack
-    />
+    <div className="page-frame mx-auto max-w-5xl">
+      <IntentDetailPanel
+        product={product}
+        file={file}
+        block={block}
+        returnTo={returnTo}
+        setPage={setPage}
+        showBack
+      />
+    </div>
   );
 }

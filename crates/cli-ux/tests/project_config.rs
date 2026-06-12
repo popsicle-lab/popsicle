@@ -3,8 +3,9 @@
 use std::fs;
 
 use cli_ux::project_config::{
-    ensure_project_config, load_project_config, project_config_path, save_project_config,
-    sync_agents_md, AgentLanguage, ProjectConfig,
+    agent_prompt_context, authoring_language_guidance, ensure_project_config, load_project_config,
+    project_config_path, prompt_context_block, save_project_config, sync_agents_md, AgentLanguage,
+    ProjectConfig,
 };
 
 fn temp_workspace() -> std::path::PathBuf {
@@ -63,6 +64,24 @@ fn default_spec_alias_deserializes_as_default_product() {
     .unwrap();
     let cfg = load_project_config(&root).unwrap();
     assert_eq!(cfg.paths.default_product, "cli-ux");
+}
+
+#[test]
+fn zh_cn_prompt_context_requires_chinese_issue_titles() {
+    let mut cfg = ProjectConfig::default();
+    cfg.agent.language = AgentLanguage::ZhCn;
+    let block = prompt_context_block(&cfg);
+    assert!(block.contains("简体中文"));
+    assert!(block.contains(authoring_language_guidance(AgentLanguage::ZhCn)));
+}
+
+#[test]
+fn agent_prompt_context_empty_when_inject_disabled() {
+    let root = temp_workspace();
+    let mut cfg = ProjectConfig::default();
+    cfg.workflow.inject_on_run = false;
+    save_project_config(&root, &cfg).unwrap();
+    assert!(agent_prompt_context(&root).is_empty());
 }
 
 #[test]

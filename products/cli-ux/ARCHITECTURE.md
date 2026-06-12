@@ -2,9 +2,9 @@
 
 > **Layer**: L4（实现视角）
 > **Audience**: 工程师、AI agent
-> **Status**: cutover-done + self-host Phase 1（ADR-010 Accepted 2026-06-11）
+> **Status**: cutover-done + issue_tasks（ADR-023 Accepted 2026-06-11）
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-010（self-hosting Phase 1）
+> **Last-Decision-Ref**: ADR-023（PROJ-43 issue-author + issue_tasks）
 
 ## 责任边界
 
@@ -34,6 +34,16 @@ cli-ux (bin: popsicle)
 | `products/cli-ux/intents/contracts.intent` | `CliShellDelegatesToDomainCrates` | accepted（ADR-007）|
 | `products/cli-ux/decisions/adr/ADR-007-cli-ux-io-shell-boundary.md` | IO shell boundary | Accepted |
 | `products/cli-ux/decisions/adr/ADR-008-cli-ux-cutover.md` | cli-ux cutover | Accepted |
+| `crates/cli-ux/src/project_config.rs` | `WorkflowProfile` + approval hints | cutover-done（ADR-022）|
+| `crates/cli-ux/src/workspace_readers.rs` | `scan_product_health` | cutover-done（ADR-022）|
+| `crates/storage/src/sqlite.rs` | `issues.epic_task_id` + `issue_tasks` table | cutover-done（ADR-022/023）|
+| `intent-coder/skills/issue-author/` | 独立 Issue 创建 + task 语义关联 | cutover-done（ADR-023）|
+| `ui/src/components/ProductHealthPanel.tsx` | Products 健康仪表盘 | cutover-done（ADR-022）|
+| `ui/src/components/MarkdownWithMermaid.tsx` | task 正文 mermaid | cutover-done（ADR-022）|
+| `ui/src/lib/issueGroup.ts` | Issue 分组 | cutover-done（ADR-022）|
+| `intent-coder/guides/retro-doc-checklist.md` | retro 文档闭环指南 | cutover-done（ADR-022）|
+| `products/cli-ux/decisions/adr/ADR-022-roadmap-workflow-enhancements.md` | Roadmap P1–P6 cutover | Accepted |
+| `products/cli-ux/decisions/adr/ADR-023-issue-task-linking.md` | issue_tasks + issue-author | Accepted |
 
 > 由 rfc-writer 写到 RFC 文档的 "ARCHITECTURE.md 增量" 章节，再在 RFC 接受时合并到本表。
 

@@ -18,6 +18,38 @@ pub fn help_next(lang: AgentLanguage) -> &'static str {
     }
 }
 
+pub fn issue_create_next(lang: AgentLanguage, key: &str) -> String {
+    match lang {
+        AgentLanguage::ZhCn => format!("popsicle issue show {key} --format json"),
+        AgentLanguage::En => format!("popsicle issue start {key}"),
+    }
+}
+
+pub fn issue_show_next(lang: AgentLanguage, key: &str) -> String {
+    match lang {
+        AgentLanguage::ZhCn => format!("popsicle issue start {key}"),
+        AgentLanguage::En => format!("popsicle issue start {key}"),
+    }
+}
+
+pub fn issue_list_next(lang: AgentLanguage) -> &'static str {
+    match lang {
+        AgentLanguage::ZhCn => "popsicle issue show <key> --format json",
+        AgentLanguage::En => "popsicle issue show <key>",
+    }
+}
+
+pub fn init_issue_create_hint(lang: AgentLanguage) -> &'static str {
+    match lang {
+        AgentLanguage::ZhCn => {
+            "popsicle issue create --type <product|technical|bug|idea> --title \"<简体中文标题>\" --product <产品> [--pipeline <名称>]"
+        }
+        AgentLanguage::En => {
+            "popsicle issue create --type <product|technical|bug|idea> --title \"<title>\" --product <id> [--pipeline <name>]"
+        }
+    }
+}
+
 pub fn command_usage(lang: AgentLanguage) -> &'static [&'static str] {
     match lang {
         AgentLanguage::ZhCn => COMMAND_USAGE_ZH,
@@ -33,6 +65,7 @@ const COMMAND_USAGE_EN: &[&str] = &[
     "popsicle issue show <key>",
     "popsicle issue start <key> [--product <id>] [--pipeline <name>]",
     "popsicle issue close <key>",
+    "popsicle issue link <key> --tasks T1,T2 [--replace] [--drop-proposed]",
     "popsicle pipeline status --run <run_id>",
     "popsicle pipeline next --run <run_id>",
     "popsicle pipeline stage complete <stage> --run <run_id> [--confirm]",
@@ -40,7 +73,7 @@ const COMMAND_USAGE_EN: &[&str] = &[
     "popsicle doc list [--run <run_id>]",
     "popsicle doc show <doc_id>",
     "popsicle doc check <doc_id>",
-    "popsicle tool run intent-validate path=<dir> [format=<text|json>]",
+    "popsicle tool run <tool> key=value ...  # intent-validate path=products; mermaid-diagram action=guide",
     "popsicle admin migrate [--workspace <path>]",
     "popsicle admin reinit [--workspace <path>]",
     "popsicle admin sync-project-config [--workspace <path>]",
@@ -60,6 +93,7 @@ const COMMAND_USAGE_ZH: &[&str] = &[
     "popsicle issue show <key>",
     "popsicle issue start <key> [--product <产品>] [--pipeline <名称>]",
     "popsicle issue close <key>",
+    "popsicle issue link <key> --tasks T1,T2 [--replace] [--drop-proposed]",
     "popsicle pipeline status --run <run_id>",
     "popsicle pipeline next --run <run_id>",
     "popsicle pipeline stage complete <stage> --run <run_id> [--confirm]",
@@ -67,7 +101,7 @@ const COMMAND_USAGE_ZH: &[&str] = &[
     "popsicle doc list [--run <run_id>]",
     "popsicle doc show <doc_id>",
     "popsicle doc check <doc_id>",
-    "popsicle tool run intent-validate path=<dir> [format=<text|json>]",
+    "popsicle tool run <tool> key=value ...  # intent-validate path=products; mermaid-diagram action=guide",
     "popsicle admin migrate [--workspace <path>]",
     "popsicle admin reinit [--workspace <path>]",
     "popsicle admin sync-project-config [--workspace <path>]",

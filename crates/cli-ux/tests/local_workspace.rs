@@ -76,6 +76,9 @@ fn tsv_roundtrip_persists_issue_and_doc() {
             Some("test-open"),
             "medium",
             "desc",
+            None,
+            &[],
+            &[],
         )
         .expect("create issue");
     let run = store
@@ -114,6 +117,9 @@ fn fresh_workspace_defaults_to_sqlite_backend() {
             Some("test-open"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create issue");
     assert!(root.join(".popsicle/self-host/state.db").is_file());
@@ -149,6 +155,9 @@ fn legacy_tsv_workspace_still_loads_and_saves() {
             Some("test-open"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create issue");
     assert!(!root.join(".popsicle/self-host/state.db").is_file());
@@ -190,6 +199,9 @@ fn migrate_to_sqlite_preserves_rows_and_is_idempotent() {
             Some("test-open"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create issue");
     assert_eq!(next.key, "PROJ-3");
@@ -204,7 +216,17 @@ fn tsv_issue_close_requires_completed_run() {
     let root = temp_workspace();
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
-        .create_issue("bug", "close me", "cli-ux", Some("test-open"), "medium", "")
+        .create_issue(
+            "bug",
+            "close me",
+            "cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+            None,
+            &[],
+            &[],
+        )
         .expect("create issue");
     let run = store
         .start_issue(&issue.key, "", "test-open")
@@ -238,6 +260,9 @@ fn tsv_doc_check_fails_stub_and_passes_filled_doc() {
             Some("test-open"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create issue");
     let run = store
@@ -290,6 +315,9 @@ fn tsv_pipeline_status_uses_stable_status_strings() {
             Some("test-open"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create issue");
     let run = store
@@ -316,6 +344,9 @@ fn tsv_gated_stage_requires_confirm_but_open_stage_does_not() {
             Some("test-open"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create open issue");
     let open_run = store
@@ -337,6 +368,9 @@ fn tsv_gated_stage_requires_confirm_but_open_stage_does_not() {
             Some("test-gated"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create gated issue");
     let gated_run = store
@@ -371,6 +405,9 @@ fn auto_approval_mode_completes_gated_stage_without_confirm() {
             Some("test-gated"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create issue");
     let run = store
@@ -413,6 +450,9 @@ stages:
             Some("test-gated"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create review issue");
     let review_run = store
@@ -434,6 +474,9 @@ stages:
             Some("test-cutover"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create cutover issue");
     let cutover_run = store
@@ -486,6 +529,9 @@ fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
             Some("migration-bootstrap"),
             "medium",
             "",
+            None,
+            &[],
+            &[],
         )
         .expect("create first issue");
     assert_eq!(issue.key, "PROJ-1");
@@ -501,13 +547,182 @@ fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
     let _ = fs::remove_dir_all(root);
 }
 
+fn write_slice_delivery_gate_product(root: &Path) {
+    let task_dir = root.join("products/cli-ux/tasks/daily-ops");
+    fs::create_dir_all(&task_dir).expect("task dir");
+    fs::create_dir_all(root.join("products/cli-ux/intents")).expect("intents");
+    fs::write(
+        task_dir.join("T-CU-0098-gate-local.md"),
+        r#"---
+task_id: T-CU-0098
+title: "local gate task"
+journey_stage: daily-ops
+related_intents:
+  - acceptance.intent#LocalGateIntent
+---
+# local gate
+"#,
+    )
+    .expect("task");
+    fs::write(
+        root.join("products/cli-ux/intents/acceptance.intent"),
+        r#"type LocalGateResult { ok: Bool }
+intent LocalGateIntent(r: LocalGateResult) {
+  require true
+  ensure r.ok' == true
+}
+"#,
+    )
+    .expect("intent");
+    write_pipeline(
+        root,
+        "slice-delivery",
+        r#"name: slice-delivery
+description: gate test
+stages:
+  - name: implement
+    skill: shadow-implementer
+    description: impl
+    requires_approval: false
+"#,
+    );
+}
+
+#[test]
+fn slice_delivery_create_rejects_proposed_with_delivery_pipeline() {
+    let root = temp_workspace();
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open");
+    let err = store.create_issue(
+        "technical",
+        "bad combo",
+        "cli-ux",
+        Some("slice-delivery"),
+        "medium",
+        "desc",
+        None,
+        &[],
+        &[("new thing".into(), Some("daily-ops".into()))],
+    );
+    assert!(err.is_err());
+    assert!(err.unwrap_err().to_string().contains("create-proposed"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn slice_delivery_start_requires_task_id_in_description() {
+    let root = temp_workspace();
+    write_slice_delivery_gate_product(&root);
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open");
+    let issue = store
+        .create_issue(
+            "technical",
+            "gate",
+            "cli-ux",
+            Some("slice-delivery"),
+            "medium",
+            "no task id in body",
+            None,
+            &["T-CU-0098"],
+            &[],
+        )
+        .expect("create");
+    let err = store.start_issue(&issue.key, "", "");
+    assert!(err.is_err());
+    assert!(err
+        .unwrap_err()
+        .to_string()
+        .contains("description-missing-task"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn slice_delivery_start_passes_with_valid_links_and_description() {
+    let root = temp_workspace();
+    write_slice_delivery_gate_product(&root);
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open");
+    let issue = store
+        .create_issue(
+            "technical",
+            "gate ok",
+            "cli-ux",
+            Some("slice-delivery"),
+            "medium",
+            "交付 T-CU-0098 能力",
+            None,
+            &["T-CU-0098"],
+            &[],
+        )
+        .expect("create");
+    store
+        .start_issue(&issue.key, "", "")
+        .expect("start should pass gate");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn issue_link_replace_and_drop_proposed() {
+    let root = temp_workspace();
+    write_slice_delivery_gate_product(&root);
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open");
+    let issue = store
+        .create_issue(
+            "technical",
+            "link me",
+            "cli-ux",
+            Some("test-open"),
+            "medium",
+            "proposed only",
+            None,
+            &[],
+            &[("New task".into(), Some("daily-ops".into()))],
+        )
+        .expect("create");
+    let links = store
+        .link_issue_tasks(&issue.key, &["T-CU-0098"], true, true)
+        .expect("link");
+    assert_eq!(links.iter().filter(|l| l.role == "linked").count(), 1);
+    assert!(links.iter().all(|l| l.role != "proposed"));
+    assert_eq!(links[0].task_id.as_deref(), Some("T-CU-0098"));
+    assert_eq!(links[0].source, "issue-link");
+    let _ = fs::remove_dir_all(root);
+}
+
 #[test]
 fn tsv_start_issue_rejects_duplicate_active_run_and_spec_mismatch() {
     let root = temp_workspace();
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
     let issue = store
-        .create_issue("bug", "guards", "cli-ux", Some("test-open"), "medium", "")
+        .create_issue(
+            "bug",
+            "guards",
+            "cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+            None,
+            &[],
+            &[],
+        )
         .expect("create issue");
+
+    let epic = store
+        .create_issue(
+            "technical",
+            "epic link",
+            "cli-ux",
+            Some("bugfix"),
+            "medium",
+            "",
+            Some("T-CU-0001"),
+            &[],
+            &[],
+        )
+        .expect("create epic issue");
+    assert_eq!(epic.epic_task_id.as_deref(), Some("T-CU-0001"));
+    let links = store.list_issue_tasks(&epic.key).expect("task links");
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].role, "linked");
+    assert_eq!(links[0].task_id.as_deref(), Some("T-CU-0001"));
 
     let mismatch = store.start_issue(&issue.key, "other-product", "test-open");
     assert!(mismatch.is_err());
@@ -528,6 +743,41 @@ fn tsv_start_issue_rejects_duplicate_active_run_and_spec_mismatch() {
 
     let runs = reloaded.run_ids_for_issue(&issue.key);
     assert_eq!(runs, vec![first.run_id]);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn issue_tasks_multi_linked_and_proposed_persist() {
+    let root = temp_workspace();
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+
+    let issue = store
+        .create_issue(
+            "technical",
+            "task links",
+            "cli-ux",
+            None,
+            "medium",
+            "multi task",
+            None,
+            &["T-CU-0001", "T-CU-0002"],
+            &[("新旅程".into(), Some("daily-ops".into()))],
+        )
+        .expect("create issue");
+
+    let links = store.list_issue_tasks(&issue.key).expect("links");
+    assert_eq!(links.len(), 3);
+    assert_eq!(links[0].role, "linked");
+    assert_eq!(links[0].task_id.as_deref(), Some("T-CU-0001"));
+    assert_eq!(links[1].task_id.as_deref(), Some("T-CU-0002"));
+    assert_eq!(links[2].role, "proposed");
+    assert_eq!(links[2].proposed_title.as_deref(), Some("新旅程"));
+
+    drop(store);
+    let reloaded = LocalWorkspace::open_at(root.clone()).expect("reload");
+    let again = reloaded.list_issue_tasks(&issue.key).expect("reload links");
+    assert_eq!(again.len(), 3);
 
     let _ = fs::remove_dir_all(root);
 }

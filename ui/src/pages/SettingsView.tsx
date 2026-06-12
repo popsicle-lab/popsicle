@@ -56,6 +56,7 @@ export function SettingsView({ onSaved }: Props) {
         language: config.language,
         products_dir: config.products_dir,
         default_product: config.default_product,
+        workflow_profile: config.workflow_profile,
         sync_agents_md: config.sync_agents_md,
         inject_on_run: config.inject_on_run,
         approval_mode: config.approval_mode,
@@ -148,6 +149,25 @@ export function SettingsView({ onSaved }: Props) {
           </select>
           <p className="mt-1 text-[12px] text-[var(--text-muted)]">
             {m.settings.defaultProductHint}
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-[13px] font-medium">
+            {m.settings.workflowProfile}
+          </label>
+          <select
+            className="filter-select w-full max-w-md"
+            value={config.workflow_profile}
+            onChange={(e) => update("workflow_profile", e.target.value)}
+          >
+            <option value="daily-dev">{m.settings.profileDailyDev}</option>
+            <option value="migration">{m.settings.profileMigration}</option>
+            <option value="pm-spec-only">{m.settings.profilePmSpec}</option>
+            <option value="opc-full">{m.settings.profileOpcFull}</option>
+          </select>
+          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+            {m.settings.workflowProfileHint}
           </p>
         </div>
 

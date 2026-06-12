@@ -1,7 +1,7 @@
 # Migration Traceability
 
 > **Status**: skill-runtime + artifact-system + cli-ux cutover-done
-> **Last-Updated**: 2026-06-11
+> **Last-Updated**: 2026-06-11（PROJ-43）
 
 | Legacy 路径（`legacy/popsicle/`）| 新位置（`popsicle-new`）| 责任 Spec | 切流 ADR | 等价性 baseline | 状态 |
 |---|---|---|---|---|---|
@@ -36,6 +36,8 @@
 | issue `spec_id` user-facing | `product_id` + `--product` CLI/UI | slice-4-ui | ADR-021 | `local_workspace` / `workspace_readers` | cutover-done |
 | hardcoded stage `--confirm` | `workflow.approval_mode` + i18n | cli-ux | ADR-020 | `project_config` / `local_workspace` | cutover-done |
 | PROJ-29/30/34 without retro spec | PDR-003 + T-CU-0009..0012 + acceptance blocks | cli-ux | PDR-003 | `make check` + intent-validate | cutover-done |
+| README Roadmap P1–P6（workflow_profile / health / epic）| `project_config.rs` + `workspace_readers.rs` + `ui/` components | cli-ux | ADR-022 | `docs/baseline/2026-06-11/cli-ux-roadmap-workflow/` | cutover-done |
+| `epic_task_id` 0/1 task 绑定 | `issue_tasks` 多对多 + `issue-author` skill | cli-ux | ADR-023 | `docs/baseline/2026-06-11/cli-ux-issue-tasks/` | cutover-done |
 
 ## 规则
 

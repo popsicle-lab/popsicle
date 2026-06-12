@@ -13,6 +13,6 @@ pub use document_row::DocumentRow;
 pub use memory_store::{MemoryDocumentStore, StoreError};
 pub use sqlite::{SqliteStateDb, StateSnapshot};
 pub use workspace::{
-    DocCheckRow, DocCreateRow, IssueRow, PipelineStatusRow, RunRow, RunStartRow, StageCompleteRow,
-    WorkspaceError, WorkspaceStore,
+    DocCheckRow, DocCreateRow, IssueRow, IssueTaskLink, PipelineStatusRow, RunRow, RunStartRow,
+    StageCompleteRow, WorkspaceError, WorkspaceStore,
 };

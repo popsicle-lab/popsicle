@@ -48,6 +48,23 @@
 
 ---
 
+## Architecture Snapshot
+
+> 从 RFC § Proposed Design 继承或精炼一张图，固化后随 ADR 只读存档。
+> 从 RFC 继承或 `popsicle tool run mermaid-diagram action=scaffold type=architecture`。
+
+Diagram: 本 ADR 约束的依赖方向 (flowchart)
+
+```mermaid
+flowchart TD
+  allowedA["允许：A → B"] --> allowedB["模块 B"]
+  forbiddenC["禁止：C -/-> B"] -.-> allowedB
+```
+
+> adr-writer 固化时核对：图中模块名与 § Consequences 文件路径一致。
+
+---
+
 ## Consequences
 
 > 本 ADR Accepted 后，被强制更新的文档/intent/代码必须在同一 PR 同步（charter 铁律）。

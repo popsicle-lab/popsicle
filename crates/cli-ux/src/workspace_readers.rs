@@ -78,10 +78,19 @@ pub struct IntentRef {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ProposedTaskHint {
+    pub title: String,
+    pub journey_stage: Option<String>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct IssueGuidance {
     pub product: Option<String>,
     pub pipeline_stage: Option<String>,
     pub hint: String,
+    pub linked_tasks: Vec<TaskNode>,
+    pub proposed_tasks: Vec<ProposedTaskHint>,
     pub recommended_tasks: Vec<TaskNode>,
     pub related_intents: Vec<IntentRef>,
 }
@@ -378,6 +387,7 @@ pub fn guidance_for_issue(
     issue_type: &str,
     status: &str,
     pipeline_stage: Option<&str>,
+    task_links: &[storage::IssueTaskLink],
 ) -> Result<IssueGuidance, WorkspaceError> {
     let products = list_products(workspace_root)?;
     let product = if product_id.is_empty() {
@@ -387,25 +397,74 @@ pub fn guidance_for_issue(
     } else {
         product_for_spec(product_id, &products)
     };
-    let hint = pipeline_stage
-        .map(|s| format!("当前 pipeline 阶段「{s}」— 以下为推荐 task/intent"))
-        .unwrap_or_else(|| "按 issue 关联产品推荐 task/intent".to_string());
 
+    let mut linked_tasks = Vec::new();
+    let mut proposed_tasks = Vec::new();
     let mut recommended_tasks = Vec::new();
     let mut related_intents = Vec::new();
 
     if let Some(ref prod) = product {
         let graph = scan_product_tasks(workspace_root, prod)?;
-        let mut scored: Vec<(i32, TaskNode)> = graph
+        let node_by_id: std::collections::BTreeMap<String, TaskNode> = graph
             .nodes
             .into_iter()
-            .map(|node| (score_task(&node, issue_type, status, pipeline_stage), node))
+            .map(|n| (n.task_id.clone(), n))
             .collect();
-        scored.sort_by_key(|b| std::cmp::Reverse(b.0));
-        recommended_tasks = scored.into_iter().take(5).map(|(_, n)| n).collect();
+
+        for link in task_links {
+            match link.role.as_str() {
+                "linked" => {
+                    if let Some(task_id) = link.task_id.as_ref() {
+                        if let Some(node) = node_by_id.get(task_id) {
+                            linked_tasks.push(node.clone());
+                        }
+                    }
+                }
+                "proposed" => {
+                    if let Some(title) = link
+                        .proposed_title
+                        .as_ref()
+                        .filter(|s: &&String| !s.is_empty())
+                    {
+                        proposed_tasks.push(ProposedTaskHint {
+                            title: title.clone(),
+                            journey_stage: link.journey_stage.clone(),
+                            source: link.source.clone(),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if linked_tasks.is_empty() && proposed_tasks.is_empty() {
+            let mut scored: Vec<(i32, TaskNode)> = node_by_id
+                .into_values()
+                .map(|node| (score_task(&node, issue_type, status, pipeline_stage), node))
+                .collect();
+            scored.sort_by_key(|b| std::cmp::Reverse(b.0));
+            recommended_tasks = scored.into_iter().take(3).map(|(_, n)| n).collect();
+        }
+
+        let hint = if !linked_tasks.is_empty() || !proposed_tasks.is_empty() {
+            if let Some(stage) = pipeline_stage {
+                format!("当前阶段「{stage}」— 已关联 task 优先；proposed 待 living-doc 晋升")
+            } else {
+                "已关联 task / 待创建 proposed task".to_string()
+            }
+        } else if let Some(stage) = pipeline_stage {
+            format!("当前 pipeline 阶段「{stage}」— 启发式推荐（未关联 task）")
+        } else {
+            "未关联 task — 以下为启发式推荐".to_string()
+        };
 
         let mut seen = std::collections::BTreeSet::new();
-        for task in &recommended_tasks {
+        let intent_sources: Vec<&TaskNode> = if linked_tasks.is_empty() {
+            recommended_tasks.iter().collect()
+        } else {
+            linked_tasks.iter().collect()
+        };
+        for task in intent_sources {
             for ri in &task.related_intents {
                 if seen.insert(ri.clone()) {
                     if let Some((file, block)) = ri.split_once('#') {
@@ -419,12 +478,24 @@ pub fn guidance_for_issue(
                 }
             }
         }
+
+        return Ok(IssueGuidance {
+            product,
+            pipeline_stage: pipeline_stage.map(str::to_string),
+            hint,
+            linked_tasks,
+            proposed_tasks,
+            recommended_tasks,
+            related_intents,
+        });
     }
 
     Ok(IssueGuidance {
         product,
         pipeline_stage: pipeline_stage.map(str::to_string),
-        hint,
+        hint: "无可用产品目录".to_string(),
+        linked_tasks,
+        proposed_tasks,
         recommended_tasks,
         related_intents,
     })
@@ -678,6 +749,127 @@ fn sanitize_id(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_alphanumeric() { c } else { '_' })
         .collect()
+}
+
+/// Living-doc style health snapshot for the Products dashboard (read-only).
+#[derive(Debug, Clone, Serialize)]
+pub struct ProductHealthReport {
+    pub product: String,
+    pub task_count: u32,
+    pub intent_block_count: u32,
+    pub journey_stages: Vec<String>,
+    pub unverified_tasks: u32,
+    pub broken_refs: u32,
+    pub orphan_intents: u32,
+    pub has_product_md: bool,
+    pub has_architecture_md: bool,
+    pub health: String,
+    pub hints: Vec<String>,
+}
+
+pub fn scan_product_health(
+    workspace_root: &Path,
+    product: &str,
+) -> Result<ProductHealthReport, WorkspaceError> {
+    let product_dir = workspace_root.join("products").join(product);
+    let tasks = scan_product_tasks(workspace_root, product)?;
+    let intents = scan_intents(workspace_root, product)?;
+    let task_ids: std::collections::BTreeSet<String> =
+        tasks.nodes.iter().map(|n| n.task_id.clone()).collect();
+
+    let mut broken_refs = 0u32;
+    let mut unverified_tasks = 0u32;
+    let mut journey_stages = std::collections::BTreeSet::new();
+
+    for node in &tasks.nodes {
+        journey_stages.insert(node.journey_stage.clone());
+        for next in &node.related_next_tasks {
+            if !task_ids.contains(next) {
+                broken_refs += 1;
+            }
+        }
+        if task_last_verified_missing(&node.file_path)? {
+            unverified_tasks += 1;
+        }
+    }
+
+    let mut orphan_intents = 0u32;
+    for block in &intents.blocks {
+        if let Some(ref tid) = block.task_id {
+            if !task_ids.contains(tid) {
+                orphan_intents += 1;
+            }
+        }
+    }
+
+    let has_product_md = product_dir.join("PRODUCT.md").is_file();
+    let has_architecture_md = product_dir.join("ARCHITECTURE.md").is_file();
+
+    let mut hints = Vec::new();
+    let mut health = "good".to_string();
+    if broken_refs > 0 {
+        health = "critical".into();
+        hints.push(format!("{broken_refs} broken task cross-reference(s)"));
+    }
+    if orphan_intents > 0 {
+        health = "critical".into();
+        hints.push(format!(
+            "{orphan_intents} intent block(s) reference missing tasks"
+        ));
+    }
+    if unverified_tasks > 0 {
+        if health == "good" {
+            health = "warn".into();
+        }
+        hints.push(format!(
+            "{unverified_tasks} task(s) missing last_verified (run intent-validate + living-doc)"
+        ));
+    }
+    if !has_product_md {
+        if health == "good" {
+            health = "warn".into();
+        }
+        hints.push("PRODUCT.md missing".into());
+    }
+
+    Ok(ProductHealthReport {
+        product: product.to_string(),
+        task_count: tasks.nodes.len() as u32,
+        intent_block_count: intents.blocks.len() as u32,
+        journey_stages: journey_stages.into_iter().collect(),
+        unverified_tasks,
+        broken_refs,
+        orphan_intents,
+        has_product_md,
+        has_architecture_md,
+        health,
+        hints,
+    })
+}
+
+fn task_last_verified_missing(path: &str) -> Result<bool, WorkspaceError> {
+    let content = fs::read_to_string(path).map_err(io_err)?;
+    let Some(yaml) = extract_frontmatter_yaml(&content) else {
+        return Ok(true);
+    };
+    let map: BTreeMap<String, serde_yaml::Value> = serde_yaml::from_str(&yaml).unwrap_or_default();
+    let lv = map.get("last_verified");
+    Ok(match lv {
+        None => true,
+        Some(serde_yaml::Value::Null) => true,
+        Some(serde_yaml::Value::String(s)) => {
+            let t = s.trim();
+            t.is_empty() || t == "~" || t == "null"
+        }
+        _ => false,
+    })
+}
+
+fn extract_frontmatter_yaml(content: &str) -> Option<String> {
+    let fm = content.strip_prefix("---")?;
+    let rest = fm.strip_prefix('\n').or_else(|| fm.strip_prefix("\r\n"))?;
+    let end = rest.find("\n---")?;
+    Some(rest[..end].to_string())
 }
 
 fn io_err(e: impl ToString) -> WorkspaceError {

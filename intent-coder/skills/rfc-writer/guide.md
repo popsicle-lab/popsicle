@@ -4,6 +4,15 @@
 的技术侧对称体——`prd-writer` 产「PRD + acceptance 种子 + PDR 骨架」，`rfc-writer` 产
 「RFC + contracts 种子 + ADR 骨架」。
 
+RFC § Proposed Design **至少 1 张** Mermaid 图。先调 tool：
+
+```bash
+popsicle tool run mermaid-diagram action=guide
+popsicle tool run mermaid-diagram action=scaffold type=architecture title="<RFC 标题>"
+# 或 type=sequence
+popsicle tool run mermaid-diagram action=validate path=<rfc.md>
+```
+
 ## 三件套
 
 | Artifact | 对称的产品侧 | 角色 |

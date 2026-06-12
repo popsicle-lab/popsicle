@@ -16,7 +16,7 @@ fn install_intent_coder_module_from_repo_root() {
     assert_eq!(result.source, Some(IntentCoderSource::WorkspaceRoot));
     assert!(ws
         .intent_coder_module_dir()
-        .join("guides/pipeline-selection.md")
+        .join("skills/issue-author/guide.md")
         .is_file());
     assert_eq!(result.version.as_deref(), Some("0.4.1"));
 }
@@ -42,6 +42,10 @@ fn install_intent_coder_module_embedded_without_repo_root() {
     assert!(ws
         .intent_coder_module_dir()
         .join("tools/intent-validate/tool.yaml")
+        .is_file());
+    assert!(ws
+        .intent_coder_module_dir()
+        .join("tools/mermaid-diagram/tool.yaml")
         .is_file());
     let _ = fs::remove_dir_all(&root);
 }

@@ -73,7 +73,7 @@ export function IntentDetailPanel({
   const displayCode = viewFull || !selected ? intent.content : selected.snippet;
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
+    <div className="flex flex-col gap-4">
       {showBack && (
         <button
           type="button"

@@ -1,0 +1,63 @@
+slice: "cli-ux-issue-tasks"
+date: "2026-06-11"
+legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+baseline_dir: "docs/baseline/2026-06-11/cli-ux-issue-tasks/"
+summary:
+  golden_total: 5
+  golden_pass: 5
+  golden_fail: 0
+  divergence_count: 0
+  equivalence_gate_pass: true
+goldens:
+  - id: G-001
+    description: "issue_tasks multi linked + proposed persist (SQLite default)"
+    script: "golden-001-issue-tasks-persist.sh"
+    legacy: "epic_task_id 0/1 only"
+    new: "issue_tasks table + --tasks + --proposed-task"
+    compares: "integration test"
+    status: pass
+    diff_summary: "semantic upgrade; epic_task_id deprecated not removed"
+    traces_to:
+      - "PROJ-43"
+      - "T-CU-0002"
+  - id: G-002
+    description: "epic_task_id migrates to linked on load"
+    script: "golden-002-epic-migrate.sh"
+    legacy: "--epic-task single column"
+    new: "normalize_issue_tasks backfill"
+    compares: "integration test"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "PROJ-43"
+  - id: G-003
+    description: "guidance prefers linked tasks over heuristic"
+    script: "golden-003-guidance-linked.sh"
+    legacy: "take(5) journey heuristic only"
+    new: "linked_tasks + proposed_tasks sections"
+    compares: "integration test"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "PROJ-43"
+  - id: G-004
+    description: "issue-author skill bundle present"
+    script: "golden-004-issue-author-skill.sh"
+    legacy: "guides/pipeline-selection.md (removed; merged into issue-author)"
+    new: "intent-coder/skills/issue-author/"
+    compares: "artifact presence"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "issue-author"
+  - id: G-005
+    description: "UI build with task_links DTO"
+    script: "golden-005-ui-task-links.sh"
+    legacy: "epic_task_id single select"
+    new: "multi-select linked tasks + guidance panels"
+    compares: "ui build"
+    status: pass
+    diff_summary: ""
+    traces_to:
+      - "PROJ-43"
+divergences: []

@@ -9,19 +9,19 @@ use crate::global_config::{
     open_project_or_bootstrap, remove_project, workspace_needs_bootstrap, WorkspaceSource,
 };
 use crate::project_config::{
-    ensure_project_config, load_project_config, project_config_path, save_project_config,
-    sync_agents_md, AgentLanguage, ProjectConfig,
+    default_pipelines_by_type, ensure_project_config, load_project_config, project_config_path,
+    save_project_config, sync_agents_md, AgentLanguage, ProjectConfig, WorkflowProfile,
 };
 use crate::self_host::{
     binary_provenance_for, list_installed_pipeline_names, load_pipeline_def, Workspace,
 };
 use crate::workspace_readers::{
     guidance_for_issue, intent_fallback_mermaid, list_products, read_intent_file, read_task,
-    resolve_intent_ref, scan_intents, scan_product_tasks, scan_tasks, task_graph_mermaid,
-    IntentBlockDetail, IntentFileFull, IntentGraph, IssueGuidance, TaskFull, TaskGraph,
+    resolve_intent_ref, scan_intents, scan_product_health, scan_product_tasks, scan_tasks,
+    task_graph_mermaid, IntentBlockDetail, IntentFileFull, IntentGraph, IssueGuidance,
+    ProductHealthReport, TaskFull, TaskGraph,
 };
 use crate::LocalWorkspace;
-use skill_runtime::IssueType;
 
 use super::dto::*;
 use super::state::AppState;
@@ -201,26 +201,57 @@ pub fn get_workspace_info(state: State<AppState>) -> Result<WorkspaceInfo, Strin
     })
 }
 
+fn issue_task_links(
+    store: &crate::self_host::LocalWorkspace,
+    issue_key: &str,
+) -> Result<Vec<crate::ui::dto::IssueTaskLinkDto>, String> {
+    store
+        .list_issue_tasks(issue_key)
+        .map(|links| {
+            links
+                .into_iter()
+                .map(|l| crate::ui::dto::IssueTaskLinkDto {
+                    role: l.role,
+                    task_id: l.task_id,
+                    proposed_title: l.proposed_title,
+                    journey_stage: l.journey_stage,
+                    source: l.source,
+                })
+                .collect()
+        })
+        .map_err(|e| e.to_string())
+}
+
+fn issue_info_from_row(
+    store: &crate::self_host::LocalWorkspace,
+    row: storage::IssueRow,
+) -> Result<IssueInfo, String> {
+    let active = store.active_run_id(&row.key).ok().flatten();
+    let run_ids = store.run_ids_for_issue(&row.key);
+    let task_links = issue_task_links(store, &row.key)?;
+    Ok(IssueInfo {
+        key: row.key,
+        title: row.title,
+        issue_type: row.issue_type,
+        priority: row.priority,
+        status: row.status,
+        product_id: row.product_id,
+        pipeline: row.pipeline,
+        description: row.description,
+        epic_task_id: row.epic_task_id,
+        task_links,
+        active_run_id: active,
+        run_ids,
+    })
+}
+
 #[tauri::command]
 pub fn list_issues(state: State<AppState>) -> Result<Vec<IssueInfo>, String> {
     state.with_store(|store| {
         let rows = store.list_issues().map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let active = store.active_run_id(&row.key).ok().flatten();
-            let run_ids = store.run_ids_for_issue(&row.key);
-            out.push(IssueInfo {
-                key: row.key,
-                title: row.title,
-                issue_type: row.issue_type,
-                priority: row.priority,
-                status: row.status,
-                product_id: row.product_id,
-                pipeline: row.pipeline,
-                description: row.description,
-                active_run_id: active,
-                run_ids,
-            });
+            out.push(issue_info_from_row(store, row)?);
         }
         Ok(out)
     })
@@ -230,21 +261,17 @@ pub fn list_issues(state: State<AppState>) -> Result<Vec<IssueInfo>, String> {
 pub fn get_issue(key: String, state: State<AppState>) -> Result<IssueInfo, String> {
     state.with_store(|store| {
         let row = store.get_issue(&key).map_err(|e| e.to_string())?;
-        let active = store.active_run_id(&key).ok().flatten();
-        let run_ids = store.run_ids_for_issue(&key);
-        Ok(IssueInfo {
-            key: row.key,
-            title: row.title,
-            issue_type: row.issue_type,
-            priority: row.priority,
-            status: row.status,
-            product_id: row.product_id,
-            pipeline: row.pipeline,
-            description: row.description,
-            active_run_id: active,
-            run_ids,
-        })
+        issue_info_from_row(store, row)
     })
+}
+
+#[tauri::command]
+pub fn get_product_health(
+    product: String,
+    state: State<AppState>,
+) -> Result<ProductHealthReport, String> {
+    let dir = get_dir(&state)?;
+    scan_product_health(&dir, &product).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -269,25 +296,33 @@ pub fn get_create_issue_form_options(
                 .or_else(|| product_options.first().cloned())
                 .unwrap_or_else(|| "cli-ux".into());
         let pipeline_options = list_installed_pipeline_names(store.workspace());
-        let default_pipeline_by_type = [
-            (IssueType::Product.as_str(), "greenfield-product-spec"),
-            (IssueType::Technical.as_str(), "tech-decision"),
-            (IssueType::Bug.as_str(), "bugfix"),
-            (IssueType::Idea.as_str(), "tech-decision"),
-        ]
-        .into_iter()
-        .map(|(t, p)| (t.to_string(), p.to_string()))
-        .collect();
+        let profile = cfg.workflow.profile;
+        let default_pipeline_by_type = default_pipelines_by_type(profile);
+        let task_options = scan_product_tasks(&root, &default_product)
+            .map(|g| {
+                g.nodes
+                    .into_iter()
+                    .map(|n| crate::ui::dto::TaskOptionDto {
+                        task_id: n.task_id,
+                        title: n.title,
+                        journey_stage: n.journey_stage,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(CreateIssueFormOptions {
             default_product,
             product_options,
             pipeline_options,
             default_pipeline_by_type,
+            workflow_profile: profile.as_str().to_string(),
+            task_options,
         })
     })
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn create_issue(
     issue_type: String,
     title: String,
@@ -295,9 +330,15 @@ pub fn create_issue(
     pipeline: Option<String>,
     priority: Option<String>,
     description: Option<String>,
+    epic_task_id: Option<String>,
+    linked_task_ids: Option<Vec<String>>,
+    proposed_tasks: Option<Vec<(String, Option<String>)>>,
     state: State<AppState>,
 ) -> Result<IssueInfo, String> {
     state.with_store(|store| {
+        let linked_ids = linked_task_ids.unwrap_or_default();
+        let linked: Vec<&str> = linked_ids.iter().map(String::as_str).collect();
+        let proposed = proposed_tasks.unwrap_or_default();
         let row = store
             .create_issue(
                 &issue_type,
@@ -306,20 +347,12 @@ pub fn create_issue(
                 pipeline.as_deref(),
                 priority.as_deref().unwrap_or("medium"),
                 description.as_deref().unwrap_or(""),
+                epic_task_id.as_deref(),
+                &linked,
+                &proposed,
             )
             .map_err(|e| e.to_string())?;
-        Ok(IssueInfo {
-            key: row.key.clone(),
-            title: row.title,
-            issue_type: row.issue_type,
-            priority: row.priority,
-            status: row.status,
-            product_id: row.product_id,
-            pipeline: row.pipeline,
-            description: row.description,
-            active_run_id: None,
-            run_ids: vec![],
-        })
+        issue_info_from_row(store, row)
     })
 }
 
@@ -539,12 +572,16 @@ pub fn get_issue_guidance(
             None
         };
         let dir = store.workspace().root.clone();
+        let task_links = store
+            .list_issue_tasks(&issue.key)
+            .map_err(|e| e.to_string())?;
         guidance_for_issue(
             &dir,
             &issue.product_id,
             &issue.issue_type,
             &issue.status,
             pipeline_stage.as_deref(),
+            &task_links,
         )
         .map_err(|e| e.to_string())
     })
@@ -560,6 +597,7 @@ fn config_to_dto(root: &std::path::Path, cfg: &ProjectConfig) -> ProjectConfigDt
         products_dir: cfg.paths.products_dir.clone(),
         default_product,
         product_options,
+        workflow_profile: cfg.workflow.profile.as_str().to_string(),
         sync_agents_md: cfg.workflow.sync_agents_md,
         inject_on_run: cfg.workflow.inject_on_run,
         approval_mode: cfg.workflow.approval_mode.as_str().to_string(),
@@ -583,6 +621,7 @@ pub struct SaveProjectConfigInput {
     pub language: String,
     pub products_dir: String,
     pub default_product: String,
+    pub workflow_profile: String,
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
     pub approval_mode: String,
@@ -613,6 +652,7 @@ pub fn save_project_config_cmd(
             default_product: default_product.to_string(),
         },
         workflow: crate::project_config::WorkflowConfig {
+            profile: WorkflowProfile::parse(&input.workflow_profile),
             sync_agents_md: input.sync_agents_md,
             inject_on_run: input.inject_on_run,
             approval_mode: crate::project_config::ApprovalMode::parse(&input.approval_mode),

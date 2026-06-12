@@ -304,6 +304,31 @@ make ui-dev                   # 另开终端运行 popsicle ui
 
 ---
 
+## Roadmap（UI / 工作流 / 大型项目适配）
+
+按**优先级**推进；每项完成后在表中勾选。设计原则：Epic 语义在 **task 图**，Issue 管**一次交付 run**；重迁移链与轻日常链并存。
+
+| 优先级 | 主题 | 目标 | 状态 |
+|:---:|---|---|:---:|
+| P1 | **工作流画像 `workflow_profile`** | `project.yaml` 增加 `daily-dev` / `migration` / `pm-spec-only` / `opc-full`；Issue 创建向导与 Settings 随画像切换默认 pipeline / 审批模式 | ☑ |
+| P2 | **Product 健康仪表盘** | Products 页展示 living-doc 四类信号（过期、断链、孤儿、未验证）+ 旅程阶段覆盖 | ☑ |
+| P3 | **Issue 分组 / Epic 视图** | 按 `product` / `pipeline` 聚合列表；列表行展示 `epic_task_id` | ☑ |
+| P4 | **Retro doc 闭环** | 增量合并后的标准 checklist；无 pipeline Issue 显示 UI 横幅 + `intent-coder/guides/retro-doc-checklist.md` | ☑ |
+| P5 | **文档内嵌图表** | task Markdown 中 ` ```mermaid ` 块渲染（`MarkdownWithMermaid` 组件） | ☑ |
+| P6 | **Issue ↔ Epic 关联** | 可选 `epic_task_id` 字段（SQLite/TSV）；创建 Issue 时可绑定 task | ☑ |
+
+### 两条用户旅程（不变）
+
+| 场景 | 路径 | 文档义务 |
+|---|---|---|
+| 大型迁移 / 新 slice | `slice-spec` → `slice-delivery` + intent gate | 五件套 + 全 task 图 |
+| 日常 bug / 小增强 | `bugfix` 或已有 spec 的 `slice-delivery` | 最小 PDR + 单 task + intent block |
+| 已合并增量（retro） | **不跑 pipeline**；直接写 `products/` + `living-doc-author` | 见 P4 checklist |
+
+详见 [`intent-coder/skills/issue-author/guide.md`](intent-coder/skills/issue-author/guide.md)。
+
+---
+
 ## 相关项目
 
 | 项目 | 关系 |

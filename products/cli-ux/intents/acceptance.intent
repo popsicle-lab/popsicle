@@ -79,6 +79,18 @@ type MacosDmgInstallResult {
   initWorksInFreshDir: Bool
 }
 
+type IssueExportResult {
+  respectsFilters: Bool
+  hasMarkdownBody: Bool
+  includesTaskLinks: Bool
+}
+
+type IssueTaskLinkResult {
+  linksUpdated: Bool
+  linkedCount: Bool
+  taskFileValidated: Bool
+}
+
 @source("PDR-001", section: "Intent Mapping row 1")
 @tobe
 intent InitShowsNextStep(r: InitResult) {
@@ -223,4 +235,40 @@ intent MacosDmgInstallExposesCli(r: MacosDmgInstallResult) {
   ensure r.cliOnPath' == true
   ensure r.doctorOk' == true
   ensure r.initWorksInFreshDir' == true
+}
+
+// ---- Block 13 ----
+// task:          T-CU-0014
+// pdr:           PDR-004
+// journey_stage: daily-ops
+// source:        PDR-004 § Intent Impact
+// query_anchors:
+//   - "怎么把当前筛选的 Issue 列表导出成 Markdown？"
+//   - "导出简报里有没有 linked task？"
+//   - "导出是否尊重类型/状态/搜索筛选？"
+@source("PDR-004", section: "Intent Impact")
+@tobe
+intent IssueExportMarkdownBrief(r: IssueExportResult) {
+  require true
+  ensure r.respectsFilters' == true
+  ensure r.hasMarkdownBody' == true
+  ensure r.includesTaskLinks' == true
+}
+
+// ---- Block 14 ----
+// task:          T-CU-0015
+// pdr:           PDR-005
+// journey_stage: daily-ops
+// source:        PDR-005 § Intent Impact
+// query_anchors:
+//   - "task 落地后怎么把 Issue 改成 linked？"
+//   - "Issue 错链了 task 怎么改？"
+//   - "living-doc 晋升后怎么回写 Issue？"
+@source("PDR-005", section: "Intent Impact")
+@tobe
+intent IssueTaskLinksMutable(r: IssueTaskLinkResult) {
+  require true
+  ensure r.linksUpdated' == true
+  ensure r.linkedCount' == true
+  ensure r.taskFileValidated' == true
 }

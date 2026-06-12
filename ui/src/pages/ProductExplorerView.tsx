@@ -8,15 +8,18 @@ import {
   MarkerType,
 } from "@xyflow/react";
 import {
+  getProductHealth,
   intentGraphMermaid,
   listProductNames,
   scanIntentGraph,
   scanProductTaskGraph,
   type IntentBlockNode,
+  type ProductHealthReport,
   type TaskNode,
 } from "../hooks/useTauri";
 import { IntentDetailPanel } from "../components/IntentDetailPanel";
 import { MermaidRenderer } from "../components/MermaidRenderer";
+import { ProductHealthPanel } from "../components/ProductHealthPanel";
 import { TaskDetailPanel } from "../components/TaskDetailPanel";
 import type { Page } from "../App";
 
@@ -126,6 +129,7 @@ export function ProductExplorerView({
     initialIntentBlock ?? ""
   );
   const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<ProductHealthReport | null>(null);
 
   useEffect(() => {
     listProductNames()
@@ -153,11 +157,13 @@ export function ProductExplorerView({
       scanProductTaskGraph(product),
       scanIntentGraph(product),
       intentGraphMermaid(product).catch(() => null),
+      getProductHealth(product).catch(() => null),
     ])
-      .then(([tg, ig, mm]) => {
+      .then(([tg, ig, mm, h]) => {
         setTasks(tg.nodes);
         setIntentBlocks(ig.blocks);
         setMermaid(mm);
+        setHealth(h);
       })
       .catch((e) => setError(String(e)));
   }, [product]);
@@ -206,6 +212,7 @@ export function ProductExplorerView({
             <span>{intentBlocks.length} intent blocks</span>
           </div>
         </div>
+        {health && <ProductHealthPanel health={health} />}
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Products">
           {products.map((p) => (
             <button

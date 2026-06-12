@@ -202,11 +202,13 @@ prompts:
        - frontmatter 必填 8 项齐全
        - 「本 task 可解答」3-5 个用户原话问句
        - 完成路径走 happy path，分支拆出去
+       - 完成路径 ≥ 4 步 → `popsicle tool run mermaid-diagram action=scaffold type=task-flow`
        - Related Next Tasks ≥ 1 个
        - 文件末尾 `Decision-Ref: PDR-{id}`
 
     3. **写 prd-overview**（用 `templates/prd.md`）
        - 列文件清单（与 PDR Consequences 镜像一致）
+       - §1b 旅程与 Task 关系图（Mermaid，节点用真实 task_id）
        - 写 User Intents Catalog（每个 task 至少 3 个问句锚点）
        - 写 Intent Mapping 表（驱动 acceptance.intent 种子生成）
 

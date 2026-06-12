@@ -31,10 +31,17 @@ export interface ProjectConfigDto {
   products_dir: string;
   default_product: string;
   product_options: string[];
+  workflow_profile: string;
   sync_agents_md: boolean;
   inject_on_run: boolean;
   approval_mode: ApprovalMode;
   config_path: string;
+}
+
+export interface TaskOption {
+  task_id: string;
+  title: string;
+  journey_stage: string;
 }
 
 export interface CreateIssueFormOptions {
@@ -42,12 +49,15 @@ export interface CreateIssueFormOptions {
   product_options: string[];
   pipeline_options: string[];
   default_pipeline_by_type: Record<string, string>;
+  workflow_profile: string;
+  task_options: TaskOption[];
 }
 
 export interface SaveProjectConfigInput {
   language: string;
   products_dir: string;
   default_product: string;
+  workflow_profile: string;
   sync_agents_md: boolean;
   inject_on_run: boolean;
   approval_mode: ApprovalMode;
@@ -67,6 +77,14 @@ export function stageNeedsExplicitConfirm(
   return true;
 }
 
+export interface IssueTaskLink {
+  role: string;
+  task_id: string | null;
+  proposed_title: string | null;
+  journey_stage: string | null;
+  source: string;
+}
+
 export interface IssueInfo {
   key: string;
   title: string;
@@ -76,8 +94,25 @@ export interface IssueInfo {
   product_id: string;
   pipeline: string | null;
   description: string;
+  /** @deprecated use task_links */
+  epic_task_id: string | null;
+  task_links: IssueTaskLink[];
   active_run_id: string | null;
   run_ids: string[];
+}
+
+export interface ProductHealthReport {
+  product: string;
+  task_count: number;
+  intent_block_count: number;
+  journey_stages: string[];
+  unverified_tasks: number;
+  broken_refs: number;
+  orphan_intents: number;
+  has_product_md: boolean;
+  has_architecture_md: boolean;
+  health: string;
+  hints: string[];
 }
 
 export interface DocInfo {
@@ -272,6 +307,10 @@ export async function createIssue(params: {
   pipeline?: string;
   priority?: string;
   description?: string;
+  /** @deprecated use linkedTaskIds */
+  epicTaskId?: string;
+  linkedTaskIds?: string[];
+  proposedTasks?: [string, string | null][];
 }): Promise<IssueInfo> {
   return invoke("create_issue", {
     issueType: params.issueType,
@@ -280,7 +319,16 @@ export async function createIssue(params: {
     pipeline: params.pipeline,
     priority: params.priority,
     description: params.description,
+    epicTaskId: params.epicTaskId ?? null,
+    linkedTaskIds: params.linkedTaskIds ?? null,
+    proposedTasks: params.proposedTasks ?? null,
   });
+}
+
+export async function getProductHealth(
+  product: string
+): Promise<ProductHealthReport> {
+  return invoke("get_product_health", { product });
 }
 
 export async function startIssue(key: string): Promise<string> {
@@ -358,10 +406,18 @@ export interface IntentRef {
   product: string;
 }
 
+export interface ProposedTaskHint {
+  title: string;
+  journey_stage: string | null;
+  source: string;
+}
+
 export interface IssueGuidance {
   product: string | null;
   pipeline_stage: string | null;
   hint: string;
+  linked_tasks: TaskNode[];
+  proposed_tasks: ProposedTaskHint[];
   recommended_tasks: TaskNode[];
   related_intents: IntentRef[];
 }
@@ -412,3 +468,5 @@ export async function saveProjectConfig(
 ): Promise<ProjectConfigDto> {
   return invoke("save_project_config_cmd", { input });
 }
+
+export type IssueGroupBy = "none" | "product" | "pipeline" | "epic";

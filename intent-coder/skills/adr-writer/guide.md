@@ -7,6 +7,15 @@ contracts.intent 闭环里「解锁」这一棒。
 它像 `intent-spec-writer` 一样**刻意保持薄**：不发明 ADR 内容（那是 rfc-writer），
 只做三件事——固化门审查、Status 固化、解锁 contracts 交下游。
 
+核对图示时用 **`mermaid-diagram` tool**（adr-writer 不新画图）：
+
+```bash
+popsicle tool run mermaid-diagram action=validate path=products/<product>/decisions/adr/ADR-….md
+```
+
+固化门须核对 ADR § Architecture Snapshot / RFC 内 mermaid 与 § Decision、§ Consequences
+**一致**；缺失或矛盾则退回 rfc-writer。技能全文：`popsicle tool run mermaid-diagram action=guide`
+
 ## 在 Phase 3 链条里的位置
 
 ```
@@ -22,6 +31,8 @@ intent-spec-writer →（收紧进 acceptance/invariants）→ intent-consistenc
 3. **Intent Impact 一致** — 与 RFC § Intent & Decision Mapping + contracts goal 对应。
 4. **CADR 合规** — 没在普通 ADR 里偷改 charter 四铁律 / Layer Map（触及则走 CADR）。
 5. **Decision Context 充分** — 触发因素 + 辩论摘要 + 备选否决理由齐全。
+6. **图示与文字一致** — ADR § Architecture Snapshot（或 RFC § Proposed Design）中的
+   Mermaid 节点/边与 § Decision、§ Consequences 无矛盾；语法符合 mermaid-diagrams 指南。
 
 ## 固化 + 解锁
 

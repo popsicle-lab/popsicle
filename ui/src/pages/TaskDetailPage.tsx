@@ -15,12 +15,14 @@ export function TaskDetailPage({
   setPage,
 }: Props) {
   return (
-    <TaskDetailPanel
-      product={product}
-      taskId={taskId}
-      returnTo={returnTo}
-      setPage={setPage}
-      showBack
-    />
+    <div className="page-frame mx-auto max-w-5xl">
+      <TaskDetailPanel
+        product={product}
+        taskId={taskId}
+        returnTo={returnTo}
+        setPage={setPage}
+        showBack
+      />
+    </div>
   );
 }

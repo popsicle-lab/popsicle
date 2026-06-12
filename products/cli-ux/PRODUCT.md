@@ -2,9 +2,9 @@
 
 > **Layer**: L2（用户可见行为）
 > **Audience**: PM、销售、客户成功、AI Copilot
-> **Status**: cutover-done + 多项目/UI/DMG + 嵌入 intent-coder + UI modern layout（ADR-014–018 Accepted 2026-06-11）
+> **Status**: cutover-done + 多项目/UI/DMG + 工作流画像/健康仪表盘/Epic 关联（ADR-014–022 Accepted 2026-06-11）
 > **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-018（PROJ-36 UI modern layout）
+> **Last-Decision-Ref**: ADR-022（PROJ-42 Roadmap P1–P6）
 
 ## 一行用途
 
@@ -13,7 +13,9 @@
 ## 用户视角的入口（实现面 = 宣传面，ADR-011）
 
 - `popsicle init` / `doctor`：准备 workspace 并校验二进制/工作区来源。
-- `popsicle issue` / `pipeline`：完整生命周期（create/list/show/start/**close** · status/next/stage complete）；issue 类型默认管线全部 bundled（含最小 `bugfix` 模板，ADR-012）。
+- `popsicle issue` / `pipeline`：完整生命周期（create/list/show/start/**close** · status/next/stage complete）；issue 类型默认管线全部 bundled（含最小 `bugfix` 模板，ADR-012）；可选 `--epic-task` 绑定 task（ADR-022）。
+- **工作流画像**（`workflow.profile` in `project.yaml`）：`daily-dev` / `migration` / `pm-spec-only` / `opc-full` 切换默认 pipeline 与审批模式（ADR-022）。
+- **桌面 UI**：Products 健康信号、Issue 按 product/pipeline 分组、task 正文 Mermaid、无 pipeline Issue retro 横幅（ADR-022）；Issues 列表可按当前筛选**导出 Markdown 简报**至剪贴板（PDR-004 / T-CU-0014）。
 - `popsicle doc`：生产、召回与**校验** stage artifact（create/list/show/**check**——frontmatter/实文/占位符/checkbox）。
 - `popsicle tool run intent-validate`：Z3 intent 校验（仓库内严格解析）。
 - `popsicle admin`：低频维护（migrate/reinit），不污染主路径。

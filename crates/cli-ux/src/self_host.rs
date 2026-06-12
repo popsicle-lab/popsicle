@@ -18,8 +18,8 @@ use skill_runtime::loader::PipelineDef;
 use skill_runtime::pipeline_session::PipelineSession;
 use skill_runtime::{Issue, IssueType};
 use storage::{
-    DocCheckRow, DocCreateRow, DocumentRow, IssueRow, PipelineStatusRow, RunRow, RunStartRow,
-    SqliteStateDb, StageCompleteRow, StateSnapshot, WorkspaceError, WorkspaceStore,
+    DocCheckRow, DocCreateRow, DocumentRow, IssueRow, IssueTaskLink, PipelineStatusRow, RunRow,
+    RunStartRow, SqliteStateDb, StageCompleteRow, StateSnapshot, WorkspaceError, WorkspaceStore,
 };
 
 use crate::global_config::{
@@ -27,8 +27,8 @@ use crate::global_config::{
     WorkspaceSource,
 };
 use crate::project_config::{
-    ensure_project_config, load_project_config, project_config_path, prompt_context_block,
-    stage_needs_explicit_confirm, sync_agents_md,
+    ensure_project_config, load_project_config, project_config_path, stage_needs_explicit_confirm,
+    sync_agents_md,
 };
 
 const SELF_HOST_DIR: &str = ".popsicle/self-host";
@@ -317,6 +317,7 @@ struct StoreState {
     next_run_num: u32,
     next_doc_num: u32,
     issues: BTreeMap<String, IssueRow>,
+    issue_tasks: Vec<IssueTaskLink>,
     runs: BTreeMap<String, RunRow>,
     documents: BTreeMap<String, DocumentRow>,
 }
@@ -328,6 +329,7 @@ impl StoreState {
             next_run_num: self.next_run_num,
             next_doc_num: self.next_doc_num,
             issues: self.issues.values().cloned().collect(),
+            issue_tasks: self.issue_tasks.clone(),
             runs: self.runs.values().cloned().collect(),
             documents: self.documents.values().cloned().collect(),
         }
@@ -343,6 +345,7 @@ impl StoreState {
                 .into_iter()
                 .map(|i| (i.key.clone(), i))
                 .collect(),
+            issue_tasks: snap.issue_tasks,
             runs: snap
                 .runs
                 .into_iter()
@@ -388,6 +391,7 @@ impl Default for StoreState {
             next_run_num: 1,
             next_doc_num: 1,
             issues: BTreeMap::new(),
+            issue_tasks: Vec::new(),
             runs: BTreeMap::new(),
             documents: BTreeMap::new(),
         }
@@ -429,6 +433,7 @@ impl LocalWorkspace {
         let backend = detect_backend(&workspace);
         let mut state = load_state(&workspace, backend)?;
         normalize_issue_rows(&workspace, &mut state);
+        normalize_issue_tasks(&mut state);
         Ok(Self {
             workspace,
             workspace_source,
@@ -501,7 +506,7 @@ impl LocalWorkspace {
         for issue in self.state.issues.values() {
             writeln!(
                 out,
-                "issue\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                "issue\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                 issue.key,
                 issue.issue_type,
                 issue.priority,
@@ -510,6 +515,21 @@ impl LocalWorkspace {
                 issue.product_id,
                 issue.pipeline.as_deref().unwrap_or(""),
                 escape_tsv(&issue.description),
+                issue.epic_task_id.as_deref().unwrap_or(""),
+            )
+            .map_err(io_err)?;
+        }
+        for link in &self.state.issue_tasks {
+            writeln!(
+                out,
+                "issue_task\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                link.issue_key,
+                link.sort_order,
+                link.role,
+                link.task_id.as_deref().unwrap_or(""),
+                escape_tsv(link.proposed_title.as_deref().unwrap_or("")),
+                link.journey_stage.as_deref().unwrap_or(""),
+                link.source,
             )
             .map_err(io_err)?;
         }
@@ -575,12 +595,38 @@ impl WorkspaceStore for LocalWorkspace {
         pipeline: Option<&str>,
         priority: &str,
         description: &str,
+        epic_task_id: Option<&str>,
+        linked_task_ids: &[&str],
+        proposed_tasks: &[(String, Option<String>)],
     ) -> Result<IssueRow, WorkspaceError> {
         parse_issue_type(issue_type)?;
+        crate::pipeline_gate::validate_slice_delivery_create(pipeline, proposed_tasks)?;
         let product_id =
             crate::workspace_readers::resolve_product_id(&self.workspace.root, product_id)?;
         let key = format!("PROJ-{}", self.state.next_issue_num);
         self.state.next_issue_num += 1;
+
+        let mut linked: Vec<String> = linked_task_ids
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+        if linked.is_empty() {
+            if let Some(epic) = epic_task_id.map(str::trim).filter(|s| !s.is_empty()) {
+                linked.push(epic.to_string());
+            }
+        }
+        linked.sort();
+        linked.dedup();
+
+        let legacy_epic = linked.first().cloned().or_else(|| {
+            epic_task_id
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        });
+
         let row = IssueRow {
             key: key.clone(),
             issue_type: issue_type.into(),
@@ -591,10 +637,137 @@ impl WorkspaceStore for LocalWorkspace {
             spec_id: product_id,
             pipeline: pipeline.map(str::to_string),
             description: description.into(),
+            epic_task_id: legacy_epic,
         };
-        self.state.issues.insert(key, row.clone());
+        self.state.issues.insert(key.clone(), row.clone());
+
+        let mut sort_order = 0u32;
+        for task_id in &linked {
+            self.state.issue_tasks.push(IssueTaskLink {
+                issue_key: key.clone(),
+                role: "linked".into(),
+                task_id: Some(task_id.clone()),
+                proposed_title: None,
+                journey_stage: None,
+                source: "issue-create".into(),
+                sort_order,
+            });
+            sort_order += 1;
+        }
+        for (proposed_title, journey_stage) in proposed_tasks {
+            let title = proposed_title.trim();
+            if title.is_empty() {
+                continue;
+            }
+            self.state.issue_tasks.push(IssueTaskLink {
+                issue_key: key.clone(),
+                role: "proposed".into(),
+                task_id: None,
+                proposed_title: Some(title.to_string()),
+                journey_stage: journey_stage
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
+                source: "issue-author".into(),
+                sort_order,
+            });
+            sort_order += 1;
+        }
+
         self.save()?;
         Ok(row)
+    }
+
+    fn list_issue_tasks(&self, issue_key: &str) -> Result<Vec<IssueTaskLink>, WorkspaceError> {
+        let _ = self.get_issue(issue_key)?;
+        let mut links: Vec<_> = self
+            .state
+            .issue_tasks
+            .iter()
+            .filter(|l| l.issue_key == issue_key)
+            .cloned()
+            .collect();
+        links.sort_by_key(|l| l.sort_order);
+        Ok(links)
+    }
+
+    fn link_issue_tasks(
+        &mut self,
+        issue_key: &str,
+        task_ids: &[&str],
+        replace: bool,
+        drop_proposed: bool,
+    ) -> Result<Vec<IssueTaskLink>, WorkspaceError> {
+        let issue = self.get_issue(issue_key)?;
+        let product_id = issue.product_id.clone();
+        let mut normalized: Vec<String> = task_ids
+            .iter()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+        normalized.sort();
+        normalized.dedup();
+        if normalized.is_empty() {
+            return Err(WorkspaceError::InvalidState(
+                "issue-link:no-tasks:pass --tasks T1,T2".into(),
+            ));
+        }
+        for tid in &normalized {
+            crate::workspace_readers::read_task(&self.workspace.root, tid, Some(&product_id))?;
+        }
+        if drop_proposed {
+            self.state
+                .issue_tasks
+                .retain(|l| !(l.issue_key == issue_key && l.role == "proposed"));
+        }
+        if replace {
+            self.state
+                .issue_tasks
+                .retain(|l| !(l.issue_key == issue_key && l.role == "linked"));
+        }
+        let mut sort_order = self
+            .state
+            .issue_tasks
+            .iter()
+            .filter(|l| l.issue_key == issue_key)
+            .map(|l| l.sort_order)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        for tid in &normalized {
+            let exists = self.state.issue_tasks.iter().any(|l| {
+                l.issue_key == issue_key
+                    && l.role == "linked"
+                    && l.task_id.as_deref() == Some(tid.as_str())
+            });
+            if exists {
+                continue;
+            }
+            self.state.issue_tasks.push(IssueTaskLink {
+                issue_key: issue_key.to_string(),
+                role: "linked".into(),
+                task_id: Some(tid.clone()),
+                proposed_title: None,
+                journey_stage: None,
+                source: "issue-link".into(),
+                sort_order,
+            });
+            sort_order += 1;
+        }
+        let first_linked = self
+            .state
+            .issue_tasks
+            .iter()
+            .filter(|l| l.issue_key == issue_key && l.role == "linked")
+            .min_by_key(|l| l.sort_order)
+            .and_then(|l| l.task_id.clone());
+        if let Some(row) = self.state.issues.get_mut(issue_key) {
+            row.epic_task_id = first_linked;
+        }
+        self.save()?;
+        self.list_issue_tasks(issue_key)
     }
 
     fn list_issues(&self) -> Result<Vec<IssueRow>, WorkspaceError> {
@@ -660,6 +833,15 @@ impl WorkspaceStore for LocalWorkspace {
         } else {
             pipeline.to_string()
         };
+        if pipeline_name == "slice-delivery" {
+            let links = self.list_issue_tasks(key)?;
+            crate::pipeline_gate::validate_slice_delivery_start(
+                &self.workspace.root,
+                &issue.product_id,
+                &issue.description,
+                &links,
+            )?;
+        }
         let pipeline_def = load_pipeline_def(&self.workspace, &pipeline_name)?;
         let run_id = alloc_run_id(&mut self.state.next_run_num);
         let mut session = PipelineSession::new_pending(&run_id, pipeline_def);
@@ -702,11 +884,9 @@ impl WorkspaceStore for LocalWorkspace {
         let mut doc = Document::new(&doc_id, skill, title);
         doc.extra_frontmatter
             .insert("pipeline_run_id".into(), run_id.to_string());
-        if let Ok(cfg) = load_project_config(&self.workspace.root) {
-            if cfg.workflow.inject_on_run {
-                doc.extra_frontmatter
-                    .insert("agent_context".into(), prompt_context_block(&cfg));
-            }
+        let ctx = crate::project_config::agent_prompt_context(&self.workspace.root);
+        if !ctx.is_empty() {
+            doc.extra_frontmatter.insert("agent_context".into(), ctx);
         }
         doc.body = format!("# {title}\n");
         let rel_path = format!(".popsicle/artifacts/{run_id}/{doc_id}.{skill}.md");
@@ -976,36 +1156,104 @@ pub fn binary_provenance_for(
     })
 }
 
-pub fn run_intent_validate(
-    workspace: &Workspace,
-    path: &str,
-    format: &str,
-) -> Result<i32, WorkspaceError> {
-    // Resolve strictly inside the workspace. The old `root.parent()` lookup
-    // predates the repo-root promotion (4d8b5c6) and could silently pick up an
-    // unrelated sibling checkout — the same provenance bug class ADR-010 D-003
-    // blocks for binaries.
-    let tool_yaml = [
+/// Parsed subset of `intent-coder/tools/<name>/tool.yaml` for `popsicle tool run`.
+#[derive(Debug, Default)]
+struct ToolSpec {
+    required_args: Vec<String>,
+    defaults: BTreeMap<String, String>,
+    command: String,
+}
+
+fn resolve_tool_yaml(workspace: &Workspace, tool: &str) -> Result<PathBuf, WorkspaceError> {
+    [
         workspace
             .root
-            .join("intent-coder/tools/intent-validate/tool.yaml"),
+            .join(format!("intent-coder/tools/{tool}/tool.yaml")),
+        workspace.root.join(format!(
+            ".popsicle/modules/intent-coder/tools/{tool}/tool.yaml"
+        )),
         workspace
             .root
-            .join(".popsicle/modules/intent-coder/tools/intent-validate/tool.yaml"),
+            .join(format!(".popsicle/tools/{tool}/tool.yaml")),
     ]
     .into_iter()
     .find(|p| p.is_file())
-    .ok_or_else(|| WorkspaceError::NotFound("intent-validate tool.yaml".into()))?;
-    let content = fs::read_to_string(&tool_yaml).map_err(io_err)?;
-    let command_block = content
+    .ok_or_else(|| WorkspaceError::NotFound(format!("{tool} tool.yaml")))
+}
+
+fn parse_tool_spec(content: &str) -> Result<ToolSpec, WorkspaceError> {
+    let command = content
         .split("command: |")
         .nth(1)
         .ok_or_else(|| WorkspaceError::InvalidState("tool.yaml missing command".into()))?
-        .trim();
-    let rendered = command_block
-        .replace("{{path}}", path)
-        .replace("{{format}}", format)
-        .replace("{{include_asis}}", "");
+        .trim()
+        .to_string();
+    let mut spec = ToolSpec {
+        command,
+        ..ToolSpec::default()
+    };
+    let args_section = content
+        .split("args:")
+        .nth(1)
+        .and_then(|s| s.split("command:").next())
+        .unwrap_or("");
+    let mut current_arg: Option<String> = None;
+    for line in args_section.lines() {
+        let trimmed = line.trim();
+        if let Some(name) = trimmed.strip_prefix("- name:") {
+            current_arg = Some(name.trim().to_string());
+            continue;
+        }
+        let Some(arg) = current_arg.as_ref() else {
+            continue;
+        };
+        if trimmed.starts_with("required:") && trimmed.contains("true") {
+            spec.required_args.push(arg.clone());
+        }
+        if let Some(rest) = trimmed.strip_prefix("default:") {
+            let value = rest.trim().trim_matches('"').trim_matches('\'').to_string();
+            spec.defaults.insert(arg.clone(), value);
+        }
+    }
+    Ok(spec)
+}
+
+fn render_tool_command(spec: &ToolSpec, args: &BTreeMap<String, String>) -> String {
+    let mut rendered = spec.command.clone();
+    for (name, default) in &spec.defaults {
+        let value = args.get(name).cloned().unwrap_or_else(|| default.clone());
+        rendered = rendered.replace(&format!("{{{{{name}}}}}"), &value);
+    }
+    for (name, value) in args {
+        rendered = rendered.replace(&format!("{{{{{name}}}}}"), value);
+    }
+    // Any leftover placeholders → empty (optional args omitted from CLI).
+    while let Some(start) = rendered.find("{{") {
+        let Some(end) = rendered[start..].find("}}") else {
+            break;
+        };
+        rendered.replace_range(start..start + end + 2, "");
+    }
+    rendered
+}
+
+/// Run a bundled workspace tool by name (`intent-validate`, `mermaid-diagram`, …).
+pub fn run_tool(
+    workspace: &Workspace,
+    tool: &str,
+    args: &BTreeMap<String, String>,
+) -> Result<i32, WorkspaceError> {
+    let tool_yaml = resolve_tool_yaml(workspace, tool)?;
+    let content = fs::read_to_string(&tool_yaml).map_err(io_err)?;
+    let spec = parse_tool_spec(&content)?;
+    for required in &spec.required_args {
+        if !args.contains_key(required) && !spec.defaults.contains_key(required) {
+            return Err(WorkspaceError::InvalidState(format!(
+                "tool {tool} requires {required}="
+            )));
+        }
+    }
+    let rendered = render_tool_command(&spec, args);
     let status = ProcessCommand::new("sh")
         .arg("-c")
         .arg(&rendered)
@@ -1013,6 +1261,18 @@ pub fn run_intent_validate(
         .status()
         .map_err(|e| io_err(e.to_string()))?;
     Ok(status.code().unwrap_or(1))
+}
+
+pub fn run_intent_validate(
+    workspace: &Workspace,
+    path: &str,
+    format: &str,
+) -> Result<i32, WorkspaceError> {
+    let mut args = BTreeMap::new();
+    args.insert("path".into(), path.to_string());
+    args.insert("format".into(), format.to_string());
+    args.insert("include_asis".into(), String::new());
+    run_tool(workspace, "intent-validate", &args)
 }
 
 /// Backend detection: an existing db wins; a legacy `state.tsv` keeps TSV;
@@ -1079,6 +1339,10 @@ fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
                             Some(cols[7].into())
                         },
                         description: cols[8].into(),
+                        epic_task_id: cols
+                            .get(9)
+                            .filter(|s| !s.is_empty())
+                            .map(|s| (*s).to_string()),
                     },
                 );
             }
@@ -1094,6 +1358,17 @@ fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
                         spec_locked: cols[5] == "true",
                     },
                 );
+            }
+            Some("issue_task") if cols.len() >= 8 => {
+                state.issue_tasks.push(IssueTaskLink {
+                    issue_key: cols[1].into(),
+                    sort_order: cols[2].parse().unwrap_or(0),
+                    role: cols[3].into(),
+                    task_id: optional_tsv_field(cols[4]),
+                    proposed_title: optional_tsv_field(cols[5]),
+                    journey_stage: optional_tsv_field(cols[6]),
+                    source: cols[7].into(),
+                });
             }
             Some("doc") if cols.len() >= 7 => {
                 let id = cols[1].to_string();
@@ -1152,6 +1427,34 @@ fn normalize_issue_rows(workspace: &Workspace, state: &mut StoreState) {
             &mut row.product_id,
             &mut row.spec_id,
         );
+    }
+}
+
+fn normalize_issue_tasks(state: &mut StoreState) {
+    for issue in state.issues.values() {
+        let has_links = state.issue_tasks.iter().any(|l| l.issue_key == issue.key);
+        if has_links {
+            continue;
+        }
+        if let Some(epic) = issue.epic_task_id.as_ref().filter(|s| !s.is_empty()) {
+            state.issue_tasks.push(IssueTaskLink {
+                issue_key: issue.key.clone(),
+                role: "linked".into(),
+                task_id: Some(epic.clone()),
+                proposed_title: None,
+                journey_stage: None,
+                source: "epic-migrate".into(),
+                sort_order: 0,
+            });
+        }
+    }
+}
+
+fn optional_tsv_field(raw: &str) -> Option<String> {
+    if raw.is_empty() {
+        None
+    } else {
+        Some(raw.to_string())
     }
 }
 
@@ -1406,7 +1709,10 @@ pub struct WorkspaceBootstrapOutcome {
 
 /// Runtime workspace bootstrap (not IDD `project-init`): `.popsicle/`, pipelines,
 /// intent-coder module, and `project.yaml` / `AGENTS.md` agent block.
-fn init_next_step(outcome: &WorkspaceBootstrapOutcome) -> String {
+fn init_next_step(
+    outcome: &WorkspaceBootstrapOutcome,
+    lang: crate::project_config::AgentLanguage,
+) -> String {
     let mut parts = Vec::new();
     if !outcome.pipelines_installed.is_empty() {
         parts.push(format!(
@@ -1418,13 +1724,18 @@ fn init_next_step(outcome: &WorkspaceBootstrapOutcome) -> String {
         parts.push("intent-coder module installed".into());
     }
     if parts.is_empty() {
-        "popsicle issue create --type product --title \"<title>\" --spec <spec> --pipeline <pipeline>"
-            .to_string()
+        crate::i18n::init_issue_create_hint(lang).to_string()
     } else {
-        format!(
-            "{}; read intent-coder/guides/pipeline-selection.md before issue create",
-            parts.join("; ")
-        )
+        match lang {
+            crate::project_config::AgentLanguage::ZhCn => format!(
+                "{}；创建 issue 前请阅读 intent-coder/skills/issue-author/guide.md",
+                parts.join("；")
+            ),
+            crate::project_config::AgentLanguage::En => format!(
+                "{}; read intent-coder/skills/issue-author/guide.md before issue create",
+                parts.join("; ")
+            ),
+        }
     }
 }
 
@@ -1530,6 +1841,10 @@ impl SelfHostDomain {
 }
 
 impl crate::CliDomain for SelfHostDomain {
+    fn project_language(&self) -> crate::project_config::AgentLanguage {
+        SelfHostDomain::project_language(self)
+    }
+
     fn current_workspace(&self) -> Result<BTreeMap<String, String>, crate::CliError> {
         Ok(BTreeMap::from([
             (
@@ -1550,9 +1865,17 @@ impl crate::CliDomain for SelfHostDomain {
             source: self.store.workspace_source,
         })
         .map_err(ws_err)?;
-        let next_step = init_next_step(&outcome);
+        let lang = project_cfg.agent.language;
+        let next_step = init_next_step(&outcome, lang);
         let next_with_config = if project_cfg.workflow.sync_agents_md {
-            format!("{next_step}; project preferences synced to AGENTS.md")
+            match lang {
+                crate::project_config::AgentLanguage::ZhCn => {
+                    format!("{next_step}；项目偏好已同步到 AGENTS.md")
+                }
+                crate::project_config::AgentLanguage::En => {
+                    format!("{next_step}; project preferences synced to AGENTS.md")
+                }
+            }
         } else {
             next_step
         };
@@ -1571,6 +1894,9 @@ impl crate::CliDomain for SelfHostDomain {
         pipeline: Option<&str>,
         priority: &str,
         description: &str,
+        epic_task_id: Option<&str>,
+        linked_task_ids: &[&str],
+        proposed_tasks: &[(String, Option<String>)],
     ) -> Result<crate::IssueCreateResult, crate::CliError> {
         let row = self
             .store
@@ -1581,12 +1907,17 @@ impl crate::CliDomain for SelfHostDomain {
                 pipeline,
                 priority,
                 description,
+                epic_task_id,
+                linked_task_ids,
+                proposed_tasks,
             )
             .map_err(ws_err)?;
+        let agent_context = crate::project_config::agent_prompt_context(&self.store.workspace.root);
         Ok(crate::IssueCreateResult {
             key: row.key,
             product_id: row.product_id,
             pipeline: row.pipeline,
+            agent_context,
         })
     }
 
@@ -1624,6 +1955,24 @@ impl crate::CliDomain for SelfHostDomain {
         if let Some(p) = issue.pipeline {
             fields.insert("pipeline".into(), p);
         }
+        if let Some(epic) = issue.epic_task_id {
+            fields.insert("epic_task_id".into(), epic);
+        }
+        let task_links = self.store.list_issue_tasks(key).map_err(ws_err)?;
+        fields.insert("task_link_count".into(), task_links.len().to_string());
+        for (idx, link) in task_links.iter().enumerate() {
+            fields.insert(format!("task_link_{idx}_role"), link.role.clone());
+            if let Some(task_id) = &link.task_id {
+                fields.insert(format!("task_link_{idx}_task_id"), task_id.clone());
+            }
+            if let Some(title) = &link.proposed_title {
+                fields.insert(format!("task_link_{idx}_proposed_title"), title.clone());
+            }
+            if let Some(stage) = &link.journey_stage {
+                fields.insert(format!("task_link_{idx}_journey_stage"), stage.clone());
+            }
+            fields.insert(format!("task_link_{idx}_source"), link.source.clone());
+        }
         let run_ids = self.store.run_ids_for_issue(key);
         fields.insert("run_count".into(), run_ids.len().to_string());
         if let Some(active) = self.store.active_run_id(key).map_err(ws_err)? {
@@ -1644,6 +1993,25 @@ impl crate::CliDomain for SelfHostDomain {
         ]))
     }
 
+    fn link_issue_tasks(
+        &mut self,
+        key: &str,
+        task_ids: &[&str],
+        replace: bool,
+        drop_proposed: bool,
+    ) -> Result<crate::IssueLinkResult, crate::CliError> {
+        let links = self
+            .store
+            .link_issue_tasks(key, task_ids, replace, drop_proposed)
+            .map_err(ws_err)?;
+        let linked_count = links.iter().filter(|l| l.role == "linked").count();
+        Ok(crate::IssueLinkResult {
+            links_updated: true,
+            linked_count,
+            task_link_count: links.len(),
+        })
+    }
+
     fn start_issue(
         &mut self,
         key: &str,
@@ -1654,11 +2022,7 @@ impl crate::CliDomain for SelfHostDomain {
             .store
             .start_issue(key, spec_id, pipeline)
             .map_err(ws_err)?;
-        let agent_context = load_project_config(&self.store.workspace.root)
-            .ok()
-            .filter(|c| c.workflow.inject_on_run)
-            .map(|c| prompt_context_block(&c))
-            .unwrap_or_default();
+        let agent_context = crate::project_config::agent_prompt_context(&self.store.workspace.root);
         Ok(crate::IssueStartResult {
             run_created: true,
             spec_locked: run.spec_locked,
@@ -1890,24 +2254,21 @@ impl crate::CliDomain for SelfHostDomain {
         tool: &str,
         args: &BTreeMap<String, String>,
     ) -> Result<i32, crate::CliError> {
-        if tool != "intent-validate" {
-            return Err(crate::CliError::actionable(
+        run_tool(&self.store.workspace, tool, args).map_err(|e| match e {
+            WorkspaceError::NotFound(name) => crate::CliError::actionable(
                 "not-found",
                 tool,
-                "install tool under .popsicle/tools/",
-                "unknown tool",
-            ));
-        }
-        let path = args.get("path").ok_or_else(|| {
-            crate::CliError::actionable(
+                "run `popsicle admin sync-intent-coder` or add intent-coder/tools/<name>/tool.yaml",
+                format!("unknown tool: {name}"),
+            ),
+            WorkspaceError::InvalidState(msg) => crate::CliError::actionable(
                 "invalid-args",
-                "path",
-                "pass path=products",
-                "intent-validate requires path=",
-            )
-        })?;
-        let format = args.get("format").map(String::as_str).unwrap_or("text");
-        run_intent_validate(&self.store.workspace, path, format).map_err(ws_err)
+                tool,
+                format!("popsicle tool run {tool} --help"),
+                &msg,
+            ),
+            other => ws_err(other),
+        })
     }
 
     fn admin_migrate(&mut self, workspace: &str) -> Result<crate::AdminResult, crate::CliError> {

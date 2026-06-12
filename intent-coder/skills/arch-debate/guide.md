@@ -4,6 +4,12 @@
 之前，用 4-6 个技术角色就一个架构问题充分辩论方案空间，暴露盲点，产出可审计的
 辩论纪要 + RFC 草稿 + 技术决策矩阵。
 
+`rfc-draft` § Proposed Design 建议附 Mermaid 草图：
+
+```bash
+popsicle tool run mermaid-diagram action=scaffold type=architecture title="<辩论主题>"
+```
+
 ## 它在 Phase 3 链条里的位置
 
 ```

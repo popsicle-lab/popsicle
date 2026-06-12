@@ -39,7 +39,7 @@ fact_cite:
 1. 运行 `popsicle init` 初始化 `.popsicle/`。
 2. 确认 `.popsicle/modules/intent-coder/` 已安装（嵌入 bundle 或 dogfood 工作区覆盖，ADR-017）。
 3. 运行 `popsicle doctor --format json` 查看 `intent_coder_module` 与 bundled pipelines。
-4. CLI 输出下一步建议，指向 `intent-coder/guides/pipeline-selection.md` 与 `issue create`。
+4. CLI 输出下一步建议，指向 `intent-coder/skills/issue-author/guide.md` 与 `issue create`。
 
 ## 可观察的成功标志
 

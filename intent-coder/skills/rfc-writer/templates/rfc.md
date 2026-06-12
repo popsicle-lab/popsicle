@@ -46,7 +46,45 @@ query_anchors:
 
 ## Proposed Design
 
-{推荐方案：模块边界 + 数据流 + 关键接口签名。可用 mermaid。}
+{推荐方案：模块边界 + 数据流 + 关键接口签名。}
+
+> **必须**至少一张图：`popsicle tool run mermaid-diagram action=scaffold type=architecture|sequence`。
+> 模块边界用 `flowchart TD` + `subgraph`；主路径调用用 `sequenceDiagram`。
+> 图中 crate / 模块 / 接口名须与下文 File Manifest、ADR Consequences 一致。
+
+### 架构 / 模块图
+
+Diagram: {系统名} 模块边界 (flowchart)
+
+```mermaid
+flowchart TD
+  subgraph client ["客户端"]
+    cli["cli-ux"]
+  end
+  subgraph core ["核心"]
+    modA["模块 A"]
+    modB["模块 B"]
+  end
+  cli --> modA
+  modA --> modB
+```
+
+### 主路径时序（如适用）
+
+Diagram: {场景名} 调用序列 (sequenceDiagram)
+
+```mermaid
+sequenceDiagram
+  participant Caller
+  participant ModuleA
+  participant ModuleB
+  Caller->>ModuleA: 请求
+  ModuleA->>ModuleB: 内部调用
+  ModuleB-->>ModuleA: 响应
+  ModuleA-->>Caller: 结果
+```
+
+{关键接口签名、错误模型、数据契约文字说明。}
 
 ## Alternatives Considered
 

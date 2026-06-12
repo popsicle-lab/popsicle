@@ -1,6 +1,8 @@
 # fact-extractor —— 编写指南
 
-> 读者：负责产出 fact-extractor 五个 artifact 的 AI agent（也就是你）。开工写任何 artifact 前先读完本指南。
+> 读者：负责产出 fact-extractor 五个 artifact 的 AI agent（也就是你）。开工写任何 artifact 前先读完本指南，以及
+> **`../../tools/mermaid-diagram/`**（`dependency-graph.md` 写完后
+> `popsicle tool run mermaid-diagram action=validate path=…`）。
 
 ## 任务
 

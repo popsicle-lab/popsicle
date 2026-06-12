@@ -1,5 +1,6 @@
 //! Per-workspace agent preferences at `.popsicle/project.yaml`.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -60,6 +61,78 @@ pub struct PathConfig {
     /// Default product for new issues (`products/<name>/`). Legacy yaml key: `default_spec`.
     #[serde(default, alias = "default_spec")]
     pub default_product: String,
+}
+
+/// Workflow persona: adjusts default pipelines and UI emphasis (not RBAC).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkflowProfile {
+    /// Daily bugfix / incremental delivery on existing spec.
+    #[default]
+    DailyDev,
+    /// Large migration: spec chain before implement.
+    Migration,
+    /// PM / spec authoring; de-emphasize implement stages.
+    PmSpecOnly,
+    /// End-to-end OPC with delegated approvals.
+    OpcFull,
+}
+
+impl WorkflowProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DailyDev => "daily-dev",
+            Self::Migration => "migration",
+            Self::PmSpecOnly => "pm-spec-only",
+            Self::OpcFull => "opc-full",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "migration" | "migrate" => Self::Migration,
+            "pm" | "pm-spec-only" | "pm_spec_only" | "product-manager" => Self::PmSpecOnly,
+            "opc" | "opc-full" | "opc_full" | "full" => Self::OpcFull,
+            _ => Self::DailyDev,
+        }
+    }
+
+    pub fn label(self, lang: AgentLanguage) -> &'static str {
+        match (self, lang) {
+            (Self::DailyDev, AgentLanguage::ZhCn) => "日常开发",
+            (Self::Migration, AgentLanguage::ZhCn) => "大型迁移",
+            (Self::PmSpecOnly, AgentLanguage::ZhCn) => "产品经理 / Spec",
+            (Self::OpcFull, AgentLanguage::ZhCn) => "OPC 全流程",
+            (Self::DailyDev, AgentLanguage::En) => "Daily development",
+            (Self::Migration, AgentLanguage::En) => "Large migration",
+            (Self::PmSpecOnly, AgentLanguage::En) => "PM / spec authoring",
+            (Self::OpcFull, AgentLanguage::En) => "OPC full pipeline",
+        }
+    }
+
+    /// Default pipeline for `issue create` given issue type.
+    pub fn default_pipeline(self, issue_type: &str) -> &'static str {
+        if issue_type == "bug" {
+            return "bugfix";
+        }
+        match self {
+            Self::DailyDev => match issue_type {
+                "technical" => "slice-delivery",
+                "product" => "greenfield-product-spec",
+                _ => "tech-decision",
+            },
+            Self::Migration | Self::PmSpecOnly => "slice-spec",
+            Self::OpcFull => "greenfield-product-spec",
+        }
+    }
+
+    pub fn suggested_approval_mode(self) -> ApprovalMode {
+        match self {
+            Self::DailyDev => ApprovalMode::DelegateDangerous,
+            Self::Migration | Self::PmSpecOnly => ApprovalMode::Manual,
+            Self::OpcFull => ApprovalMode::Auto,
+        }
+    }
 }
 
 /// Pipeline stage completion policy for `requires_approval` gates.
@@ -139,6 +212,8 @@ pub fn stage_needs_explicit_confirm(
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkflowConfig {
+    #[serde(default)]
+    pub profile: WorkflowProfile,
     #[serde(default = "default_true")]
     pub sync_agents_md: bool,
     #[serde(default = "default_true")]
@@ -190,11 +265,20 @@ impl Default for PathConfig {
 impl Default for WorkflowConfig {
     fn default() -> Self {
         Self {
+            profile: WorkflowProfile::default(),
             sync_agents_md: true,
             inject_on_run: true,
             approval_mode: ApprovalMode::default(),
         }
     }
+}
+
+/// Resolve default pipeline map for issue-create UI / CLI hints.
+pub fn default_pipelines_by_type(profile: WorkflowProfile) -> BTreeMap<String, String> {
+    ["product", "technical", "bug", "idea"]
+        .into_iter()
+        .map(|t| (t.to_string(), profile.default_pipeline(t).to_string()))
+        .collect()
 }
 
 fn default_version() -> u32 {
@@ -271,6 +355,18 @@ pub fn ensure_project_config(workspace_root: &Path) -> Result<ProjectConfig, Wor
     Ok(config)
 }
 
+/// Remind agents to match project language when filling `--title` / `--description`.
+pub fn authoring_language_guidance(lang: AgentLanguage) -> &'static str {
+    match lang {
+        AgentLanguage::ZhCn => {
+            "创建或更新 Issue / 文档时，`--title` 与 `--description` 使用简体中文（除非用户明确要求英文）。"
+        }
+        AgentLanguage::En => {
+            "When creating issues or docs, write `--title` and `--description` in English unless the user asks otherwise."
+        }
+    }
+}
+
 pub fn approval_mode_guidance(mode: ApprovalMode, lang: AgentLanguage) -> &'static str {
     match (mode, lang) {
         (ApprovalMode::Manual, AgentLanguage::En) => {
@@ -300,6 +396,15 @@ pub fn approval_mode_guidance(mode: ApprovalMode, lang: AgentLanguage) -> &'stat
     }
 }
 
+/// Inject into CLI JSON / artifact frontmatter when `workflow.inject_on_run` is enabled.
+pub fn agent_prompt_context(workspace_root: &Path) -> String {
+    load_project_config(workspace_root)
+        .ok()
+        .filter(|c| c.workflow.inject_on_run)
+        .map(|c| prompt_context_block(&c))
+        .unwrap_or_default()
+}
+
 pub fn prompt_context_block(config: &ProjectConfig) -> String {
     let lang = config.agent.language;
     let mode = config.workflow.approval_mode;
@@ -315,25 +420,28 @@ pub fn prompt_context_block(config: &ProjectConfig) -> String {
             }
         }
     };
+    let authoring = authoring_language_guidance(lang);
     match lang {
         AgentLanguage::ZhCn => format!(
-            "[Project preferences]\n- 界面 / Agent 语言：{}\n- 产品目录：`{}/`\n- ADR：`{}/<product>/decisions/adr/`\n- PDR：`{}/<product>/decisions/pdr/`\n- Pipeline 审批：{}（{}）{product_line}\n- {}",
+            "[Project preferences]\n- 界面 / Agent 语言：{}\n- 产品目录：`{}/`\n- ADR：`{}/<product>/decisions/adr/`\n- PDR：`{}/<product>/decisions/pdr/`\n- Pipeline 审批：{}（{}）{product_line}\n- {}\n- {}",
             lang.label(),
             config.paths.products_dir,
             config.paths.products_dir,
             config.paths.products_dir,
             mode.as_str(),
             mode.label(lang),
+            authoring,
             approval_mode_guidance(mode, lang),
         ),
         AgentLanguage::En => format!(
-            "[Project preferences]\n- UI / agent language: {}\n- Products directory: `{}/`\n- ADRs: `{}/<product>/decisions/adr/`\n- PDRs: `{}/<product>/decisions/pdr/`\n- Pipeline approval: {} ({}){product_line}\n- {}",
+            "[Project preferences]\n- UI / agent language: {}\n- Products directory: `{}/`\n- ADRs: `{}/<product>/decisions/adr/`\n- PDRs: `{}/<product>/decisions/pdr/`\n- Pipeline approval: {} ({}){product_line}\n- {}\n- {}",
             lang.label(),
             config.paths.products_dir,
             config.paths.products_dir,
             config.paths.products_dir,
             mode.as_str(),
             mode.label(lang),
+            authoring,
             approval_mode_guidance(mode, lang),
         ),
     }
@@ -357,23 +465,26 @@ pub fn agents_md_section(config: &ProjectConfig) -> String {
         }
     };
     let mode = config.workflow.approval_mode;
+    let authoring = authoring_language_guidance(lang);
     match lang {
         AgentLanguage::ZhCn => format!(
-            "{MARKER_START}\n## 本项目偏好\n\n- **界面 / Agent 语言**：{}\n- **产品文档目录**：`{}/`\n- **决策记录**：`{}/<product>/decisions/{{adr,pdr}}/`{product_line}\n- **Pipeline 审批模式**：`{}`（{}）\n\n### 阶段完成策略\n\n{}\n{MARKER_END}",
+            "{MARKER_START}\n## 本项目偏好\n\n- **界面 / Agent 语言**：{}\n- **产品文档目录**：`{}/`\n- **决策记录**：`{}/<product>/decisions/{{adr,pdr}}/`{product_line}\n- **Pipeline 审批模式**：`{}`（{}）\n- **Issue / 文档文案**：{}\n\n### 阶段完成策略\n\n{}\n{MARKER_END}",
             lang.label(),
             config.paths.products_dir,
             config.paths.products_dir,
             mode.as_str(),
             mode.label(lang),
+            authoring,
             approval_mode_guidance(mode, lang),
         ),
         AgentLanguage::En => format!(
-            "{MARKER_START}\n## Project preferences\n\n- **UI / agent language**: {}\n- **Products directory**: `{}/`\n- **Decisions**: `{}/<product>/decisions/{{adr,pdr}}/`{product_line}\n- **Pipeline approval**: `{}` ({})\n\n### Stage completion\n\n{}\n{MARKER_END}",
+            "{MARKER_START}\n## Project preferences\n\n- **UI / agent language**: {}\n- **Products directory**: `{}/`\n- **Decisions**: `{}/<product>/decisions/{{adr,pdr}}/`{product_line}\n- **Pipeline approval**: `{}` ({})\n- **Issue / doc copy**: {}\n\n### Stage completion\n\n{}\n{MARKER_END}",
             lang.label(),
             config.paths.products_dir,
             config.paths.products_dir,
             mode.as_str(),
             mode.label(lang),
+            authoring,
             approval_mode_guidance(mode, lang),
         ),
     }
@@ -437,6 +548,21 @@ mod tests {
         assert_eq!(parsed.version, 1);
         assert_eq!(parsed.paths.products_dir, "products");
         assert_eq!(parsed.workflow.approval_mode, ApprovalMode::Manual);
+    }
+
+    #[test]
+    fn workflow_profile_default_pipelines() {
+        assert_eq!(WorkflowProfile::DailyDev.default_pipeline("bug"), "bugfix");
+        assert_eq!(
+            WorkflowProfile::DailyDev.default_pipeline("technical"),
+            "slice-delivery"
+        );
+        assert_eq!(
+            WorkflowProfile::Migration.default_pipeline("technical"),
+            "slice-spec"
+        );
+        let map = default_pipelines_by_type(WorkflowProfile::OpcFull);
+        assert_eq!(map.get("bug").map(String::as_str), Some("bugfix"));
     }
 
     #[test]

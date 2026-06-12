@@ -19,11 +19,20 @@ pub struct ProjectInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct TaskOptionDto {
+    pub task_id: String,
+    pub title: String,
+    pub journey_stage: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct CreateIssueFormOptions {
     pub default_product: String,
     pub product_options: Vec<String>,
     pub pipeline_options: Vec<String>,
     pub default_pipeline_by_type: std::collections::BTreeMap<String, String>,
+    pub workflow_profile: String,
+    pub task_options: Vec<TaskOptionDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +41,7 @@ pub struct ProjectConfigDto {
     pub products_dir: String,
     pub default_product: String,
     pub product_options: Vec<String>,
+    pub workflow_profile: String,
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
     pub approval_mode: String,
@@ -46,6 +56,15 @@ pub struct ProjectsList {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct IssueTaskLinkDto {
+    pub role: String,
+    pub task_id: Option<String>,
+    pub proposed_title: Option<String>,
+    pub journey_stage: Option<String>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct IssueInfo {
     pub key: String,
     pub title: String,
@@ -55,6 +74,9 @@ pub struct IssueInfo {
     pub product_id: String,
     pub pipeline: Option<String>,
     pub description: String,
+    /// Deprecated: first linked task id; prefer `task_links`.
+    pub epic_task_id: Option<String>,
+    pub task_links: Vec<IssueTaskLinkDto>,
     pub active_run_id: Option<String>,
     pub run_ids: Vec<String>,
 }
