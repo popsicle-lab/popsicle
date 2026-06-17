@@ -14,6 +14,11 @@ cd "$ROOT"
 
 TARGET="${CARGO_BUILD_TARGET:-}"
 
+if [[ -f "$HOME/Library/Keychains/build.keychain-db" ]]; then
+  # shellcheck source=/dev/null
+  source "$(dirname "$0")/activate-signing-keychain.sh"
+fi
+
 bash packaging/macos/generate-icons.sh
 
 echo "==> npm build (ui/)"

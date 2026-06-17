@@ -120,6 +120,7 @@ jobs:
           CARGO_BUILD_TARGET: ${{ matrix.rust_target }}
           POPSICLE_DMG_ARCH: ${{ matrix.arch }}
           POPSICLE_DMG_OUT_DIR: ${{ github.workspace }}/dist
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
