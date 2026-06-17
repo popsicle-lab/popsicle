@@ -20,22 +20,31 @@ echo
 
 extract_pem_from_p12() {
   local use_legacy="$1"
+  local cert_err="$DIR/cert.err" key_err="$DIR/key.err"
 
-  rm -f "$DIR/cert.pem" "$DIR/key.pem"
+  rm -f "$DIR/cert.pem" "$DIR/key.pem" "$cert_err" "$key_err"
   if [[ "$use_legacy" == "true" ]]; then
     openssl pkcs12 -in "$IN" -nokeys -out "$DIR/cert.pem" \
-      -passin "pass:$PASS_IN" -legacy
+      -passin "pass:$PASS_IN" -legacy 2>"$cert_err" || true
     openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" \
-      -passin "pass:$PASS_IN" -legacy
+      -passin "pass:$PASS_IN" -legacy 2>"$key_err" || true
   else
     openssl pkcs12 -in "$IN" -nokeys -out "$DIR/cert.pem" \
-      -passin "pass:$PASS_IN"
+      -passin "pass:$PASS_IN" 2>"$cert_err" || true
     openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" \
-      -passin "pass:$PASS_IN"
+      -passin "pass:$PASS_IN" 2>"$key_err" || true
   fi
 
-  grep -q "BEGIN CERTIFICATE" "$DIR/cert.pem" \
-    && grep -q "BEGIN.*PRIVATE KEY" "$DIR/key.pem"
+  if grep -q "BEGIN CERTIFICATE" "$DIR/cert.pem" \
+    && grep -q "BEGIN.*PRIVATE KEY" "$DIR/key.pem"; then
+    return 0
+  fi
+
+  [[ -s "$cert_err" ]] && echo "cert extract: $(head -1 "$cert_err")" >&2
+  [[ -s "$key_err" ]] && echo "key extract: $(head -1 "$key_err")" >&2
+  [[ -f "$DIR/cert.pem" ]] && echo "cert.pem size: $(wc -c <"$DIR/cert.pem" | tr -d ' ') bytes" >&2
+  [[ -f "$DIR/key.pem" ]] && echo "key.pem size: $(wc -c <"$DIR/key.pem" | tr -d ' ') bytes" >&2
+  return 1
 }
 
 if extract_pem_from_p12 true; then
@@ -44,7 +53,8 @@ elif extract_pem_from_p12 false; then
   echo "==> extracted certificate + private key (modern OpenSSL)"
 else
   echo "error: could not extract certificate and private key from .p12" >&2
-  echo "hint: wrong password, or export Developer ID Application + private key from Keychain" >&2
+  echo "hint: wrong password, or .p12 was exported without the private key" >&2
+  echo "hint: bash packaging/macos/export-p12-from-keychain.sh ~/Documents/popsicle-cert/popsicle-ci.p12" >&2
   exit 1
 fi
 
