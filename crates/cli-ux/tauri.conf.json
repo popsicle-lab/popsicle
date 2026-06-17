@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Popsicle",
   "version": "0.6.2",
-  "identifier": "com.popsicle.app",
+  "identifier": "com.popsicle-lab.app",
   "build": {
     "frontendDist": "../../ui/dist"
   },
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Popsicle — Spec-Driven Development",
+        "title": "Popsicle — Intent-Driven Development",
         "width": 1280,
         "height": 800,
         "minWidth": 960,
@@ -34,7 +34,8 @@
       "icons/icon.png"
     ],
     "macOS": {
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "entitlements": "Entitlements.plist"
     }
   }
 }

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Build Popsicle.app + popsicle CLI + custom DMG (macOS only, unsigned MVP).
+# Build Popsicle.app + popsicle CLI + custom DMG (macOS).
+# When APPLE_SIGNING_IDENTITY is set, signs staging artifacts and notarizes the DMG
+# if Apple notarization credentials are also present.
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -24,16 +26,23 @@ else
   cargo build --release --features ui -p cli-ux
 fi
 
-if ! command -v cargo-tauri >/dev/null 2>&1; then
-  echo "==> installing tauri-cli"
-  cargo install tauri-cli --locked --version "^2.0.0"
-fi
+tauri_build() {
+  if [[ -n "$TARGET" ]]; then
+    npx --yes @tauri-apps/cli@2 build --features ui --bundles app --target "$TARGET"
+  else
+    npx --yes @tauri-apps/cli@2 build --features ui --bundles app
+  fi
+}
 
 echo "==> tauri build (app bundle)"
-if [[ -n "$TARGET" ]]; then
-  (cd crates/cli-ux && cargo tauri build --features ui --bundles app --target "$TARGET")
+# Sign during bundle; defer notarization until after intent injection + DMG packaging.
+if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+  echo "==> code signing enabled ($APPLE_SIGNING_IDENTITY)"
+  unset APPLE_ID APPLE_PASSWORD APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
+  (cd crates/cli-ux && tauri_build)
 else
-  (cd crates/cli-ux && cargo tauri build --features ui --bundles app)
+  echo "==> code signing disabled (set APPLE_SIGNING_IDENTITY to enable)"
+  (cd crates/cli-ux && tauri_build)
 fi
 
 if [[ -n "$TARGET" ]]; then
@@ -95,11 +104,58 @@ OUT="$OUT_DIR/Popsicle_${VERSION}_${ARCH}.dmg"
 mkdir -p "$OUT_DIR"
 rm -f "$OUT"
 
+ENTITLEMENTS="$ROOT/crates/cli-ux/Entitlements.plist"
+
+sign_staging_if_configured() {
+  local identity="${APPLE_SIGNING_IDENTITY:-}"
+  [[ -n "$identity" ]] || return 0
+
+  echo "==> signing DMG staging artifacts"
+  codesign --force --options runtime --sign "$identity" "$STAGING/popsicle"
+  if [[ -x "$STAGING/intent" ]]; then
+    codesign --force --options runtime --sign "$identity" "$STAGING/intent"
+  fi
+  codesign --force --options runtime --entitlements "$ENTITLEMENTS" \
+    --sign "$identity" --deep "$STAGING/Popsicle.app"
+  codesign --verify --deep --strict "$STAGING/Popsicle.app"
+}
+
+notarize_dmg_if_configured() {
+  local dmg="$1"
+  if [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_ISSUER:-}" && -f "${APPLE_API_KEY_PATH:-}" ]]; then
+    echo "==> notarizing DMG (App Store Connect API key)"
+    xcrun notarytool submit "$dmg" \
+      --key "$APPLE_API_KEY_PATH" \
+      --key-id "$APPLE_API_KEY" \
+      --issuer "$APPLE_API_ISSUER" \
+      --wait
+  elif [[ -n "${APPLE_ID:-}" && -n "${APPLE_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+    echo "==> notarizing DMG (Apple ID)"
+    xcrun notarytool submit "$dmg" \
+      --apple-id "$APPLE_ID" \
+      --team-id "$APPLE_TEAM_ID" \
+      --password "$APPLE_PASSWORD" \
+      --wait
+  else
+    echo "==> skipping DMG notarization (no Apple notarization credentials)"
+    return 0
+  fi
+  xcrun stapler staple "$dmg"
+  xcrun stapler validate "$dmg"
+}
+
+sign_staging_if_configured
+
 echo "==> creating DMG: $OUT"
 hdiutil create -volname "Popsicle" -srcfolder "$STAGING" -ov -format UDZO "$OUT" >/dev/null
 
+notarize_dmg_if_configured "$OUT"
+
 echo "DMG ready: $OUT"
 ls -lh "$OUT"
+if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+  spctl -a -vv "$OUT" 2>&1 || true
+fi
 echo ""
 echo "Note: make build-dmg does NOT install into your shell PATH."
 echo "  • Open Popsicle.app from Applications once (double-click), or"
