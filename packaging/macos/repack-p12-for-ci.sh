@@ -18,13 +18,17 @@ echo
 read -rsp "Password for output .p12 (CI secret): " PASS_OUT
 echo
 
-legacy=( -legacy )
-if openssl pkcs12 -info -in "$IN" -passin "pass:$PASS_IN" -noout 2>/dev/null; then
-  legacy=()
-fi
+extract_p12() {
+  if openssl pkcs12 -info -in "$IN" -passin "pass:$PASS_IN" -noout 2>/dev/null; then
+    openssl pkcs12 -in "$IN" -clcerts -nokeys -out "$DIR/cert.pem" -passin "pass:$PASS_IN"
+    openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" -passin "pass:$PASS_IN"
+  else
+    openssl pkcs12 -in "$IN" -clcerts -nokeys -out "$DIR/cert.pem" -passin "pass:$PASS_IN" -legacy
+    openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" -passin "pass:$PASS_IN" -legacy
+  fi
+}
 
-openssl pkcs12 -in "$IN" -clcerts -nokeys -out "$DIR/cert.pem" -passin "pass:$PASS_IN" "${legacy[@]}"
-openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" -passin "pass:$PASS_IN" "${legacy[@]}"
+extract_p12
 
 if ! grep -q "BEGIN.*PRIVATE KEY" "$DIR/key.pem"; then
   echo "error: input .p12 has no private key; export certificate + private key from Keychain Access" >&2
