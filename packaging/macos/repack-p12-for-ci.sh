@@ -18,20 +18,33 @@ echo
 read -rsp "Password for output .p12 (CI secret): " PASS_OUT
 echo
 
-extract_p12() {
-  if openssl pkcs12 -info -in "$IN" -passin "pass:$PASS_IN" -noout 2>/dev/null; then
-    openssl pkcs12 -in "$IN" -clcerts -nokeys -out "$DIR/cert.pem" -passin "pass:$PASS_IN"
-    openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" -passin "pass:$PASS_IN"
+extract_pem_from_p12() {
+  local use_legacy="$1"
+
+  rm -f "$DIR/cert.pem" "$DIR/key.pem"
+  if [[ "$use_legacy" == "true" ]]; then
+    openssl pkcs12 -in "$IN" -nokeys -out "$DIR/cert.pem" \
+      -passin "pass:$PASS_IN" -legacy
+    openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" \
+      -passin "pass:$PASS_IN" -legacy
   else
-    openssl pkcs12 -in "$IN" -clcerts -nokeys -out "$DIR/cert.pem" -passin "pass:$PASS_IN" -legacy
-    openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" -passin "pass:$PASS_IN" -legacy
+    openssl pkcs12 -in "$IN" -nokeys -out "$DIR/cert.pem" \
+      -passin "pass:$PASS_IN"
+    openssl pkcs12 -in "$IN" -nocerts -nodes -out "$DIR/key.pem" \
+      -passin "pass:$PASS_IN"
   fi
+
+  grep -q "BEGIN CERTIFICATE" "$DIR/cert.pem" \
+    && grep -q "BEGIN.*PRIVATE KEY" "$DIR/key.pem"
 }
 
-extract_p12
-
-if ! grep -q "BEGIN.*PRIVATE KEY" "$DIR/key.pem"; then
-  echo "error: input .p12 has no private key; export certificate + private key from Keychain Access" >&2
+if extract_pem_from_p12 true; then
+  echo "==> extracted certificate + private key (legacy OpenSSL)"
+elif extract_pem_from_p12 false; then
+  echo "==> extracted certificate + private key (modern OpenSSL)"
+else
+  echo "error: could not extract certificate and private key from .p12" >&2
+  echo "hint: wrong password, or export Developer ID Application + private key from Keychain" >&2
   exit 1
 fi
 

@@ -45,11 +45,15 @@ repack_for_modern_openssl() {
   local repacked="$WORKDIR/repacked.p12"
   echo "==> repacking .p12 with modern encryption for CI import"
 
-  openssl pkcs12 -in "$CERT_PATH" -clcerts -nokeys -out "$WORKDIR/cert.pem" \
+  openssl pkcs12 -in "$CERT_PATH" -nokeys -out "$WORKDIR/cert.pem" \
     -passin "pass:$APPLE_CERTIFICATE_PASSWORD" $legacy_flag
   openssl pkcs12 -in "$CERT_PATH" -nocerts -nodes -out "$WORKDIR/key.pem" \
     -passin "pass:$APPLE_CERTIFICATE_PASSWORD" $legacy_flag
 
+  if ! grep -q "BEGIN CERTIFICATE" "$WORKDIR/cert.pem"; then
+    echo "error: .p12 contains no certificate after extraction" >&2
+    exit 1
+  fi
   if ! grep -q "BEGIN.*PRIVATE KEY" "$WORKDIR/key.pem"; then
     echo "error: .p12 contains no private key" >&2
     echo "hint: in Keychain Access export Developer ID Application with its private key (Export 2 items)" >&2
