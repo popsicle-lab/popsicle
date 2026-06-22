@@ -107,7 +107,7 @@ fn main() {
         let err = CliError::actionable(
             "feature-disabled",
             "ui",
-            "rebuild with `cargo build --features ui -p cli-ux`",
+            "rebuild with `cargo build -p cli-ux` (ui is enabled by default; use `--no-default-features` for headless CLI)",
             "desktop UI requires the `ui` Cargo feature",
         );
         print_error(&err, format);

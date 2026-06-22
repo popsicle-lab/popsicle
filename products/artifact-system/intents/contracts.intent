@@ -21,6 +21,7 @@ goal "guard upstream 判定经 artifact-owned 端口注入且回传 GuardResult"
   rationale: "product-debate 方案 C + arch-debate 方案 A：upstream_approved 依赖 pipeline/run/registry（属 skill-runtime），但端口定义在 artifact-system 以保持依赖方向 skill-runtime→artifact-system 无环；回传 GuardResult 而非 bool 以保 strangler golden 字节对账"
   stakeholder: ["ai-coding-agent", "migration", "security"]
   measure: "UpstreamApprovalChecker 端口签名仅引用 Document/GuardResult；check_guard 接 Option<&dyn UpstreamApprovalChecker>；upstream_approved 分派回传注入实现的 GuardResult；缺 checker 时回传确定性 InvalidSkillDef，绝不 panic"
+  realized_by: [DocumentRoundTrips, GuardChecklistCompleteIffNoUnchecked, UnknownGuardIsInvalid, EvaluateGuard]
 }
 
 // ------------------------------------------------------------
@@ -34,6 +35,7 @@ goal "guard 与 extractor 对任意输入全函数、不 panic" {
   rationale: "unsafe-risk-report：extractor.rs 19 处 production unwrap（Regex::new().unwrap() + post-find .captures().unwrap()）；迁移到 crates/artifact-system 须 total 化，使任一文档输入不会 panic 把整个 run 带崩"
   stakeholder: ["ai-coding-agent", "security", "migration"]
   measure: "check_guard 对未知 guard 字符串返回 InvalidSkillDef（guard.rs:92-95 语义保持）；extractor 三函数对无匹配文档返回空 Vec、对任意输入不 panic；0 production unwrap"
+  realized_by: [UnknownGuardIsInvalid, EvaluateGuard, ExtractPreservesKind]
 }
 
 // ------------------------------------------------------------
@@ -47,12 +49,14 @@ goal "ContextLayer 运行时注册且装配序确定性、与注册顺序无关"
   rationale: "arch-debate 方案 A：MemoriesLayer 依赖 memory 故由 skill-runtime 运行时注册；为保 golden 对账，装配序必须确定，不得受注册/迭代顺序影响"
   stakeholder: ["ai-coding-agent", "migration"]
   measure: "register_layer 后 assemble_layers 输出顺序由 (Relevance 降序, 固定优先级, 稳定 id) 唯一决定；同一组 layer 任意注册顺序产出同一装配序；High→全文/Low→摘要语义保持（context.rs:52-77）"
+  realized_by: [ContextAssemblyOrdersByRelevance]
 }
 
 // ============================================================
 // 自检：
 //   - 每个契约都有 goal（rationale/stakeholder/measure）且标 [ADR-004 Accepted 2026-06-09]
+//   - 每个 goal 的 realized_by 指向 acceptance / invariants 中已声明的 safety / intent
 //   - 无性能/时间数字进入 goal 字段（D2）
 //   - 契约 2/3 的不变量（total / 装配序确定性）最终落 invariants.intent，由 intent-spec-writer 收紧
-//   - `intent check` 本文件 → 解析通过，0 VC，exit 0
+//   - 单文件 `intent check` 会对 realized_by 报 W0010（跨文件引用）；合并 products/<product>/intents/ 后通过
 // ============================================================

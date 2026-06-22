@@ -24,11 +24,11 @@ bash packaging/macos/generate-icons.sh
 echo "==> npm build (ui/)"
 (cd ui && npm ci && npm run build)
 
-echo "==> cargo build --release --features ui -p cli-ux"
+echo "==> cargo build --release -p cli-ux (default features include ui)"
 if [[ -n "$TARGET" ]]; then
-  cargo build --release --features ui -p cli-ux --target "$TARGET"
+  cargo build --release -p cli-ux --target "$TARGET"
 else
-  cargo build --release --features ui -p cli-ux
+  cargo build --release -p cli-ux
 fi
 
 tauri_build() {
@@ -39,7 +39,7 @@ tauri_build() {
   fi
 }
 
-echo "==> tauri build (app bundle)"
+echo "==> tauri build (app bundle; ui feature from tauri.conf.json + crate defaults)"
 # Sign during bundle; defer notarization until after intent injection + DMG packaging.
 if [[ -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
   echo "==> code signing enabled ($APPLE_SIGNING_IDENTITY)"

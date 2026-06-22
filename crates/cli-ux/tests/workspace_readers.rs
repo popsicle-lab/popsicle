@@ -40,6 +40,20 @@ fn product_for_spec_maps_slice_to_cli_ux() {
         product_for_spec("slice-3-cli-ux", &products).as_deref(),
         Some("cli-ux")
     );
+    assert_eq!(
+        product_for_spec("slice-4-ui", &products).as_deref(),
+        Some("cli-ux")
+    );
+}
+
+#[test]
+fn backfill_issue_products_normalizes_legacy_product_id() {
+    let ws = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut product_id = "slice-4-ui".into();
+    let mut spec_id = "slice-4-ui".into();
+    cli_ux::workspace_readers::backfill_issue_products(&ws, &mut product_id, &mut spec_id);
+    assert_eq!(product_id, "cli-ux");
+    assert_eq!(spec_id, "cli-ux");
 }
 
 #[test]

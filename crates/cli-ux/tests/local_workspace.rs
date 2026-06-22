@@ -589,6 +589,28 @@ stages:
 }
 
 #[test]
+fn bugfix_create_rejects_intent_spec_mismatch() {
+    let root = temp_workspace();
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open");
+    let err = store
+        .create_issue(
+            "product",
+            "补 realized_by",
+            "cli-ux",
+            Some("bugfix"),
+            "medium",
+            "改 products/cli-ux/intents/contracts.intent",
+            None,
+            &[],
+            &[],
+        )
+        .expect_err("expected bugfix-gate");
+    let msg = err.to_string();
+    assert!(msg.contains("bugfix-gate:product-type") || msg.contains("bugfix-gate:intent-content"));
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn slice_delivery_create_rejects_proposed_with_delivery_pipeline() {
     let root = temp_workspace();
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open");

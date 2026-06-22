@@ -174,10 +174,19 @@ export interface IntentBlockNode {
   file: string;
 }
 
+export interface IntentDiagramView {
+  id: string;
+  label: string;
+  description: string;
+  mermaid: string;
+}
+
 export interface IntentGraph {
   blocks: IntentBlockNode[];
   mermaid: string | null;
+  diagrams: IntentDiagramView[];
   source: string;
+  parse_error: string | null;
 }
 
 export function useRefresh(callback: () => void) {

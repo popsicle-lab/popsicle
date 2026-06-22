@@ -4,10 +4,17 @@ pub mod cli_install;
 pub mod global_config;
 pub mod i18n;
 mod intent_coder_bundle;
+mod intent_goal_trace;
 mod pipeline_gate;
 pub mod project_config;
 pub mod self_host;
 pub mod workspace_readers;
+
+#[cfg(feature = "ui")]
+mod intent_visualizer;
+
+#[cfg(feature = "ui")]
+mod mermaid_sanitize;
 
 #[cfg(feature = "ui")]
 pub mod ui;

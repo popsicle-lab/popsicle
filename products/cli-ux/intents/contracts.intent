@@ -11,4 +11,19 @@ goal "CLI shell delegates domain behavior to domain crates" {
   rationale: "cli-ux keeps command handlers thin so pipeline/session semantics stay in skill-runtime, document/guard/context semantics stay in artifact-system, and persistence-facing behavior stays in storage"
   stakeholder: ["ai-coding-agent", "maintainer", "migration"]
   measure: "command handlers parse argv, call domain crates, format output, and produce actionable errors; they do not implement pipeline state-machine, document parser, guard evaluator, context assembly, extractor logic, or storage schema logic"
+  realized_by: [
+    RemovedCommandsStayRemoved,
+    RenderTopLevelHelp,
+    WorkflowSmokeDoesNotDependOnParentBinary,
+    SelfHostSmokeUsesCurrentWorkspaceBinary,
+    ErrorsAreActionable,
+    IssueStartCreatesRun,
+    DocCommandWritesArtifact,
+    StageAdvanceReflectsState,
+    AdminCommandsAreExplicit,
+    SelfHostedWorkflowSmokePasses,
+    BinaryProvenanceVisible
+  ]
 }
+
+// 单文件 intent check 会对 realized_by 报 W0010（跨文件引用）；合并 products/cli-ux/intents/ 后通过。

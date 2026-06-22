@@ -27,6 +27,7 @@ goal "{一句话：本契约为什么存在}" {
   rationale: "{谁消费这条契约 + 它解耦/保证了什么}"
   stakeholder: ["{consumer-a}", "{consumer-b}", "security"]
   measure: "{怎么衡量契约被遵守——无绕过路径 / 无非法记录等，非性能数字}"
+  realized_by: []   // intent-spec-writer 合并 acceptance/invariants 后必填；种子阶段可留空
 }
 
 // ------------------------------------------------------------
@@ -38,6 +39,7 @@ goal "{一句话：本契约为什么存在}" {
 // ============================================================
 // 自检：
 //   - 每个跨产品契约都有 goal（rationale/stakeholder/measure）
+//   - realized_by 在 intent-spec-writer 合并后必填（种子可 []）
 //   - 内部契约明确标 [Awaiting ADR-XXXX]，不偷偷写完
 //   - 无性能/时间数字进入 goal 字段（D2）
 //   - `intent check` 本文件 → 解析通过，0 VC，exit 0

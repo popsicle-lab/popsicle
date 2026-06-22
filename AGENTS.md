@@ -124,10 +124,15 @@ templates self-heal: bundled definitions are installed on demand, and a
 `slice-delivery` is **not** a substitute for spec work. Do not use it for greenfield
 features or incremental UI/CLI capabilities until `acceptance.intent` covers them.
 
+**CLI hard gate (`issue create`):** rejects `slice-delivery` + `--proposed-task` together.
+Rejects **`bugfix` misuse** (`bugfix-gate:*`) when `--type product` + `bugfix`, or when
+title/description indicates intent file edits, intent-coder skill-chain work, or new UI
+capabilities (not single-point fixes). See `intent-coder/skills/issue-author/guide.md` § bugfix 硬门禁.
+
 **CLI hard gate (`issue start`):** `slice-delivery` is rejected when the issue has
 `proposed` task links, no `linked` tasks, `description` omits a linked `task_id`, or
 linked tasks lack resolvable `related_intents` in `products/<product>/intents/`.
-`issue create` rejects `slice-delivery` + `--proposed-task` together.
+`issue create` rejects `slice-delivery` + `--proposed-task` together (see above for `bugfix-gate`).
 
 **intent-coder module (ADR-017):** compiled into the `popsicle` binary (`include_dir!`).
 `popsicle init` extracts it to `.popsicle/modules/intent-coder/`. In the popsicle

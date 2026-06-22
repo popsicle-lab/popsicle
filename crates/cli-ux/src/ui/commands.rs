@@ -16,10 +16,10 @@ use crate::self_host::{
     binary_provenance_for, list_installed_pipeline_names, load_pipeline_def, Workspace,
 };
 use crate::workspace_readers::{
-    guidance_for_issue, intent_fallback_mermaid, list_products, read_intent_file, read_task,
-    resolve_intent_ref, scan_intents, scan_product_health, scan_product_tasks, scan_tasks,
-    task_graph_mermaid, IntentBlockDetail, IntentFileFull, IntentGraph, IssueGuidance,
-    ProductHealthReport, TaskFull, TaskGraph,
+    guidance_for_issue, intent_graph_mermaid as render_intent_graph_mermaid, list_products,
+    read_intent_file, read_task, resolve_intent_ref, scan_intents, scan_product_health,
+    scan_product_tasks, scan_tasks, task_graph_mermaid, IntentBlockDetail, IntentFileFull,
+    IntentGraph, IssueGuidance, ProductHealthReport, TaskFull, TaskGraph,
 };
 use crate::LocalWorkspace;
 
@@ -514,10 +514,7 @@ pub fn scan_intent_graph(product: String, state: State<AppState>) -> Result<Inte
 pub fn intent_graph_mermaid(product: String, state: State<AppState>) -> Result<String, String> {
     let dir = get_dir(&state)?;
     let graph = scan_intents(&dir, &product).map_err(|e| e.to_string())?;
-    if let Some(m) = graph.mermaid {
-        return Ok(m);
-    }
-    Ok(intent_fallback_mermaid(&graph))
+    Ok(render_intent_graph_mermaid(&graph))
 }
 
 #[tauri::command]

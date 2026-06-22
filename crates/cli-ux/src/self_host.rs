@@ -432,14 +432,18 @@ impl LocalWorkspace {
     ) -> Result<Self, WorkspaceError> {
         let backend = detect_backend(&workspace);
         let mut state = load_state(&workspace, backend)?;
-        normalize_issue_rows(&workspace, &mut state);
+        let normalized = normalize_issue_rows(&workspace, &mut state);
         normalize_issue_tasks(&mut state);
-        Ok(Self {
+        let store = Self {
             workspace,
             workspace_source,
             backend,
             state,
-        })
+        };
+        if normalized {
+            store.save()?;
+        }
+        Ok(store)
     }
 
     pub fn backend(&self) -> StateBackend {
@@ -601,6 +605,7 @@ impl WorkspaceStore for LocalWorkspace {
     ) -> Result<IssueRow, WorkspaceError> {
         parse_issue_type(issue_type)?;
         crate::pipeline_gate::validate_slice_delivery_create(pipeline, proposed_tasks)?;
+        crate::pipeline_gate::validate_bugfix_create(issue_type, pipeline, title, description)?;
         let product_id =
             crate::workspace_readers::resolve_product_id(&self.workspace.root, product_id)?;
         let key = format!("PROJ-{}", self.state.next_issue_num);
@@ -1272,7 +1277,21 @@ pub fn run_intent_validate(
     args.insert("path".into(), path.to_string());
     args.insert("format".into(), format.to_string());
     args.insert("include_asis".into(), String::new());
-    run_tool(workspace, "intent-validate", &args)
+    let code = run_tool(workspace, "intent-validate", &args)?;
+    if code != 0 {
+        return Ok(code);
+    }
+    let findings = crate::intent_goal_trace::check_products_goal_trace(&workspace.root, path)
+        .map_err(WorkspaceError::InvalidState)?;
+    if findings.is_empty() {
+        return Ok(0);
+    }
+    if format == "json" {
+        crate::intent_goal_trace::print_goal_trace_json(&findings);
+    } else {
+        crate::intent_goal_trace::print_goal_trace_text(&findings);
+    }
+    Ok(1)
 }
 
 /// Backend detection: an existing db wins; a legacy `state.tsv` keeps TSV;
@@ -1420,14 +1439,32 @@ fn count_occurrences(haystack: &str, needle: &str) -> usize {
     haystack.matches(needle).count()
 }
 
-fn normalize_issue_rows(workspace: &Workspace, state: &mut StoreState) {
+fn normalize_issue_rows(workspace: &Workspace, state: &mut StoreState) -> bool {
+    let mut changed = false;
     for row in state.issues.values_mut() {
+        let before_product = row.product_id.clone();
+        let before_spec = row.spec_id.clone();
         crate::workspace_readers::backfill_issue_products(
             &workspace.root,
             &mut row.product_id,
             &mut row.spec_id,
         );
+        if row.product_id != before_product || row.spec_id != before_spec {
+            changed = true;
+        }
     }
+    for run in state.runs.values_mut() {
+        let before = run.spec_id.clone();
+        if let Ok(resolved) =
+            crate::workspace_readers::resolve_product_id(&workspace.root, &run.spec_id)
+        {
+            run.spec_id = resolved;
+        }
+        if run.spec_id != before {
+            changed = true;
+        }
+    }
+    changed
 }
 
 fn normalize_issue_tasks(state: &mut StoreState) {
@@ -2254,6 +2291,25 @@ impl crate::CliDomain for SelfHostDomain {
         tool: &str,
         args: &BTreeMap<String, String>,
     ) -> Result<i32, crate::CliError> {
+        if tool == "intent-validate" {
+            let path = args.get("path").map(String::as_str).unwrap_or("");
+            let format = args.get("format").map(String::as_str).unwrap_or("json");
+            return run_intent_validate(&self.store.workspace, path, format).map_err(|e| match e {
+                WorkspaceError::NotFound(name) => crate::CliError::actionable(
+                    "not-found",
+                    tool,
+                    "run `popsicle admin sync-intent-coder` or add intent-coder/tools/<name>/tool.yaml",
+                    format!("unknown tool: {name}"),
+                ),
+                WorkspaceError::InvalidState(msg) => crate::CliError::actionable(
+                    "invalid-args",
+                    tool,
+                    format!("popsicle tool run {tool} --help"),
+                    &msg,
+                ),
+                other => ws_err(other),
+            });
+        }
         run_tool(&self.store.workspace, tool, args).map_err(|e| match e {
             WorkspaceError::NotFound(name) => crate::CliError::actionable(
                 "not-found",

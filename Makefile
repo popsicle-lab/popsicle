@@ -13,17 +13,17 @@ fmt-fix:
 	cargo fmt --all
 
 clippy:
-	RUSTFLAGS="-Dwarnings" cargo clippy --all-targets
+	RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --no-default-features
 
 test:
-	RUSTFLAGS="-Dwarnings" cargo test --all-targets
+	RUSTFLAGS="-Dwarnings" cargo test --all-targets --no-default-features
 
 build:
-	cargo build --release
+	cargo build --release --no-default-features
 
 build-ui:
 	cd ui && npm ci && npm run build
-	cargo build --features ui -p cli-ux
+	cargo build -p cli-ux
 
 ui-dev:
 	cd ui && npm run dev
@@ -41,7 +41,7 @@ golden:
 
 # Intent validation over product specs (requires intent v0.1.1+ on PATH; Z3 bundled).
 intent:
-	cargo build -p cli-ux
+	cargo build -p cli-ux --no-default-features
 	./target/debug/popsicle tool run intent-validate path=products
 
 install:

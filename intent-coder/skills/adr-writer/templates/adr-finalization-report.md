@@ -56,10 +56,10 @@ query_anchors:
 
 > 现在可以收紧的逻辑保证（contracts 契约的前后置 → acceptance/invariants）。
 
-| 契约 goal | 可收紧为 | 目标文件 | 形态 |
-|---|---|---|---|
-| "{goal 名}" | {intent 名} | acceptance.intent | require/ensure |
-| "{goal 名}" | {safety 名} | invariants.intent | safety + primed |
+| 契约 goal | 可收紧为 | 目标文件 | 形态 | realized_by（合并后）|
+|---|---|---|---|---|
+| "{goal 名}" | {intent 名} | acceptance.intent | require/ensure | 含 {intent 名} |
+| "{goal 名}" | {safety 名} | invariants.intent | safety + primed | 含 {safety 名} |
 
 ## Intent Impact 核对
 

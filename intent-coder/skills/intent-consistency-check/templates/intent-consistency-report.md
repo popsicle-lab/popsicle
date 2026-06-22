@@ -46,6 +46,24 @@ query_anchors:
 |---|---|---|---|---|---|
 | products/auth/intents/invariants.intent | 0 | 0 | 0 | 0 | ✅ |
 
+## Goal Trace（合并 realized_by）
+
+> `popsicle tool run intent-validate path=products/<product>/intents` 在 per-file Z3 通过后
+> 自动合并该 product 下全部 `.intent` 并检查 L4 goal 追溯。
+
+| 指标 | 值 |
+|---|---|
+| 检查的 product | {product} |
+| 孤儿 goal（realized_by 空）| 0 |
+| 未知引用 | 0 |
+| goal 追溯结论 | PASS / FAIL |
+
+失败明细（逐条抄 tool 输出）：
+
+```
+（粘贴 E_GOAL_UNLINKED / E_GOAL_UNKNOWN_REF）
+```
+
 ## Failures
 
 > 每个 `status == failed` 的 VC：名字 + 文件 + Z3 反例**原文** + 处置建议。

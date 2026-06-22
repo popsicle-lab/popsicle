@@ -191,10 +191,15 @@ export function PipelineView({ runId, setPage }: Props) {
             edges={flow.edges}
             onNodeClick={(_, n) => setSelected(n.id)}
             fitView
+            fitViewOptions={{ padding: 0.2 }}
             proOptions={{ hideAttribution: true }}
           >
             <Background color="var(--border)" gap={20} />
-            <Controls showInteractive={false} />
+            <Controls
+              showInteractive={false}
+              position="bottom-right"
+              className="graph-flow-controls"
+            />
           </ReactFlow>
         </div>
 

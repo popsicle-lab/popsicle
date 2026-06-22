@@ -156,6 +156,13 @@ prompts:
 
     Step 3 —— 填 report 各段；勾完「检查清单」。
 
+    Step 4 —— 回填 `realized_by`（合并后）：
+      - 在 products/{target_product}/intents/contracts.intent 每个 goal 上补
+        `realized_by: [SafetyOrIntent, ...]`
+      - 引用名必须已在同 product 的 acceptance / invariants（及同目录其它 .intent）中声明
+      - 跑 `popsicle tool run intent-validate path=products/{target_product}/intents format=text`
+        须 exit 0（Z3 + 合并 goal 追溯闸）
+
     纪律：report 里每个「verified / skipped / failed」都来自真实 tool 输出，不臆造。
 
     ## 检查清单
@@ -166,6 +173,7 @@ prompts:
     - [ ] 四条硬规则逐条自查通过
     - [ ] 无重复声明 / 命名冲突
     - [ ] 合并计划写明追加位置与类型复用方式
+    - [ ] 每个 contracts goal 已回填 realized_by（合并后 intent-validate goal 追溯闸 exit 0）
 
   review: |
     把 `{slug}.acceptance-formal.intent` + `{slug}.intent-spec-report.md` 呈给用户。

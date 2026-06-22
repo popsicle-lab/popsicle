@@ -93,7 +93,7 @@ popsicle issue create --type technical \
 ### 文档门禁（进入 implement 前）
 
 - [ ] 目标能力在 `products/<product>/intents/*.intent` 有 acceptance block
-- [ ] `popsicle tool run intent-validate path=products` 通过（或 observe 零失败）
+- [ ] `popsicle tool run intent-validate path=products` 通过（Z3 + 合并 goal 追溯：`realized_by` 非空且可解析）
 - [ ] 相关 ADR File Manifest 列出将改动的路径
 - [ ] 若跳过 spec 链，必须在 cutover ADR 的 Divergence 表登记（如 D-6xx）
 
@@ -118,6 +118,22 @@ popsicle issue create --type technical \
 | 已交付能力 retro spec 却开 `slice-spec` | 误跑 facts/debate 全链 | **直接**写 PDR + task + `acceptance.intent` |
 | 未安装 intent-coder module 就指望 skill 模板 | `doc create` 只有空壳 | `popsicle init` + `admin sync-intent-coder` |
 | 只 linked 邻近 task 却交付新能力 | 错开 delivery，spec 后置 | 新能力用 `--proposed-task` + `slice-spec` |
+| **`--pipeline bugfix` 滥用**（PROJ-49～51 教训） | spec/技能链绕过审批与 traceability | 见下方「bugfix 硬门禁」 |
+
+## bugfix 硬门禁（PROJ-53，`issue create` CLI 强制）
+
+`bugfix` 仅用于**单点回归 / UI·CLI 缺陷**。`issue create` 在下列情况 **拒绝** `--pipeline bugfix`（错误码 `bugfix-gate:*`）：
+
+| 规则 | 触发 | 应改用 |
+|---|---|---|
+| `product-type` | `--type product` + `bugfix` | `greenfield-product-spec` 或 retro spec |
+| `intent-content` | title/description 触达 `products/*/intents`、`*.intent`、`realized_by` | retro spec 或 `slice-spec`；已定 spec → `slice-delivery` + `--tasks` |
+| `skill-chain` | 触达 `intent-coder/skills/` 或技能名 + `intent-coder` | `--type technical` + `tech-decision` 或 `slice-spec` |
+| `ui-capability` | 接入 visualizer / 多图等新 UI 能力（非「修复」措辞） | `slice-spec` 或 `slice-delivery` |
+
+**允许 bugfix 的例子**：关系图缩放/对比度、控件不可见、CLI 回归、Z3 误报修复（不改 intent 文件语义）。
+
+实现 `bugfix-gate` 本身的 Issue 可在 description 含 `bugfix-gate` / `pipeline_gate` 时豁免（meta）。
 
 ## 已交付能力补 spec（retro，无 pipeline）
 
@@ -162,6 +178,7 @@ popsicle tool run mermaid-diagram action=scaffold type=flowchart title="本 Issu
 | 读 `doctor` 的 `agent_context` 语言偏好 | 英文 title（除非用户要求） |
 | `--description` 写明每个 `--tasks` id | 只 linked 邻近 task 却交付新能力 |
 | 新旅程用 `--proposed-task` + `slice-spec` | `--pipeline slice-delivery` + proposed |
+| 单点缺陷用 `--type bug` + `bugfix` | 用 `bugfix` 改 intent 文件 / intent-coder 技能链 / 新 UI 能力 |
 
 ## 下游检查
 

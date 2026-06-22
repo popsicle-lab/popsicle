@@ -853,6 +853,49 @@ body {
   background: var(--bg-secondary);
 }
 
+/* React Flow controls — visible on dark graph backgrounds */
+.graph-panel .react-flow__controls,
+.graph-flow-controls {
+  z-index: 10;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--radius-sm) !important;
+  overflow: hidden;
+  background: var(--bg-elevated) !important;
+}
+
+.graph-panel .react-flow__controls-button,
+.graph-flow-controls .react-flow__controls-button {
+  background: var(--bg-elevated) !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text-primary) !important;
+  width: 2rem !important;
+  height: 2rem !important;
+}
+
+.graph-panel .react-flow__controls-button:last-child,
+.graph-flow-controls .react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.graph-panel .react-flow__controls-button:hover,
+.graph-flow-controls .react-flow__controls-button:hover {
+  background: var(--bg-hover) !important;
+}
+
+.graph-panel .react-flow__controls-button svg,
+.graph-flow-controls .react-flow__controls-button svg {
+  fill: var(--text-primary) !important;
+  max-width: 14px;
+  max-height: 14px;
+}
+
+.graph-panel .react-flow__controls-button path,
+.graph-flow-controls .react-flow__controls-button path {
+  fill: var(--text-primary) !important;
+}
+
 .explorer-split {
   display: grid;
   gap: 0.75rem;
@@ -1772,5 +1815,397 @@ body {
 
   .issue-modal-shell {
     max-height: 92vh;
+  }
+}
+
+/* Intent visualization (Products → 关系图) — layout inspired by intent-lang HTML gallery */
+.intent-viz-panel {
+  min-height: 420px;
+}
+
+.intent-viz-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.intent-viz-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.intent-viz-tab {
+  padding: 0.75rem 1.1rem;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.intent-viz-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.intent-viz-tab-active {
+  color: var(--accent);
+  background: var(--bg-elevated);
+  border-bottom-color: var(--accent);
+}
+
+.intent-viz-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+}
+
+.intent-viz-tabs-spacer {
+  flex: 1;
+}
+
+.intent-viz-source-badge {
+  align-self: center;
+  margin-right: 0.5rem;
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+}
+
+.intent-viz-body {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+}
+
+.intent-viz-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 0.75rem;
+}
+
+.intent-viz-sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.intent-viz-search {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 0.45rem 0.6rem;
+}
+
+.intent-viz-search:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.intent-viz-block-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.intent-viz-block-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.6rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.intent-viz-block-row:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.intent-viz-block-kind {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.intent-viz-block-name {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.intent-viz-block-file {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 10px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.intent-viz-main {
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.intent-viz-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 100%;
+  min-height: 0;
+  padding: 1rem 1.1rem 1.1rem;
+}
+
+.intent-viz-section-title {
+  margin: 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--accent);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.intent-viz-section-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.intent-viz-warn {
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  background: rgba(234, 179, 8, 0.08);
+  padding: 0.5rem 0.65rem;
+  font-size: 12px;
+  color: var(--accent-yellow);
+}
+
+.intent-viz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.intent-viz-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.intent-viz-legend-swatch {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 2px solid;
+}
+
+.intent-viz-diagram {
+  flex: 1;
+  min-height: 360px;
+}
+
+/* Mermaid diagram canvas */
+.mermaid-canvas {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #121214;
+  overflow: hidden;
+}
+
+.mermaid-canvas:fullscreen,
+.mermaid-canvas-fullscreen {
+  border: none;
+  border-radius: 0;
+  background: #0a0a0c;
+}
+
+.mermaid-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  z-index: 2;
+}
+
+.mermaid-canvas-zoom-label {
+  min-width: 3rem;
+  margin-right: 0.25rem;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.mermaid-canvas-hint {
+  margin-left: 0.35rem;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.mermaid-canvas-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.mermaid-canvas-tool:hover {
+  background: var(--bg-hover);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.mermaid-canvas-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  overflow: auto;
+  padding: 1rem;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 0)
+    0 0 / 16px 16px,
+    #121214;
+  cursor: grab;
+  touch-action: none;
+}
+
+.mermaid-canvas-viewport:active {
+  cursor: grabbing;
+}
+
+.mermaid-canvas-pan-layer {
+  display: inline-block;
+  min-width: min-content;
+}
+
+.mermaid-canvas-content {
+  display: inline-block;
+  min-width: min-content;
+}
+
+.mermaid-canvas-content svg,
+.mermaid-canvas-content .mermaid-svg {
+  display: block;
+  max-width: none !important;
+  height: auto !important;
+  overflow: visible;
+}
+
+/* Readable labels: light node fills → dark text; SVG text → light on dark fills */
+.mermaid-canvas-content foreignObject .nodeLabel,
+.mermaid-canvas-content foreignObject span,
+.mermaid-canvas-content foreignObject p,
+.mermaid-canvas-content foreignObject div {
+  color: #18181b !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
+}
+
+.mermaid-canvas-content svg .nodeLabel,
+.mermaid-canvas-content svg .label {
+  overflow: visible;
+}
+
+.mermaid-canvas-content svg .edgeLabel .label,
+.mermaid-canvas-content svg .edgeLabel text {
+  fill: #e4e4e7 !important;
+}
+
+.mermaid-canvas-content svg .edgeLabel rect {
+  fill: #27272a !important;
+  stroke: #52525b !important;
+}
+
+.mermaid-canvas-content svg .marker {
+  fill: #a1a1aa !important;
+  stroke: #a1a1aa !important;
+}
+
+.mermaid-canvas-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.mermaid-canvas-error-pre {
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+@media (max-width: 900px) {
+  .intent-viz-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(180px, 220px) minmax(360px, 1fr);
+  }
+
+  .intent-viz-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
   }
 }

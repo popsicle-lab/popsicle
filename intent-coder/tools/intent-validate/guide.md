@@ -21,8 +21,8 @@ popsicle tool，供 `intent-consistency-check` skill 和 CI 闸门调用。
 
 | exit | 含义 |
 |---|---|
-| `0` | 全部 VC `verified` 或合理 `skipped`（如 struct-typed theorem 尚未实现、`@asis` 默认跳过） |
-| `1` | 解析错误、类型错误，或任一 VC `failed` / `unknown` / `error` |
+| `0` | 全部 VC `verified` 或合理 `skipped`（如 struct-typed theorem 尚未实现、`@asis` 默认跳过）；且（path 在 `products/` 下时）合并 goal 追溯通过 |
+| `1` | 解析错误、类型错误，或任一 VC `failed` / `unknown` / `error`；或合并后存在孤儿 goal / 未知 `realized_by` 引用 |
 | `127` | 环境缺失：找不到 `intent` 可执行文件（安装 v0.1.1+ release 或 DMG 捆绑版） |
 
 ## JSON 输出结构
@@ -42,6 +42,17 @@ popsicle tool，供 `intent-consistency-check` skill 和 CI 闸门调用。
 - 当 `path` 指向目录时，tool 会按路径排序逐个输出每个 `.intent` 文件的原生结果；
   任一文件非 0 则整体非 0。`format=text` 适合人工报告，`format=json` 适合上层 skill
   逐段解析。
+
+## 合并 Goal 追溯闸（popsicle 内置）
+
+当通过 `popsicle tool run intent-validate` 调用且 `path` 落在 `products/` 下时，CLI 在
+per-file Z3 **全部通过**后还会：
+
+1. 合并每个 product 的 `intents/*.intent`
+2. 要求每个 `goal` 的 `realized_by` 非空，且引用已声明的 safety/intent/theorem
+
+失败时额外输出 `E_GOAL_UNLINKED` / `E_GOAL_UNKNOWN_REF` 并 **exit 1**。单文件
+`intent check` 对跨文件 `realized_by` 仅 W0010 warning——合并闸才是交付标准。
 
 ## 与 intent-lang 能力边界
 

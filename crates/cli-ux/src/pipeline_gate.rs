@@ -1,4 +1,4 @@
-//! Pre-flight gates for pipeline routing (`issue-author` guide § slice-delivery 硬门禁).
+//! Pre-flight gates for pipeline routing (`issue-author` guide § slice-delivery / bugfix 硬门禁).
 
 use std::path::Path;
 
@@ -21,6 +21,104 @@ pub fn validate_slice_delivery_create(
         ));
     }
     Ok(())
+}
+
+/// Reject obvious `bugfix` pipeline misuse at issue create time (PROJ-53).
+pub fn validate_bugfix_create(
+    issue_type: &str,
+    pipeline: Option<&str>,
+    title: &str,
+    description: &str,
+) -> Result<(), WorkspaceError> {
+    if pipeline != Some("bugfix") {
+        return Ok(());
+    }
+
+    let haystack = format!("{title}\n{description}").to_lowercase();
+
+    // Allow issues that implement or document this gate itself.
+    if haystack.contains("bugfix-gate")
+        || haystack.contains("pipeline_gate")
+        || haystack.contains("pipeline gate")
+    {
+        return Ok(());
+    }
+
+    if issue_type == "product" {
+        return Err(WorkspaceError::InvalidState(
+            "bugfix-gate:product-type:--type product 不可与 --pipeline bugfix 同用；新产品用 greenfield-product-spec，已交付能力补 spec 见 issue-author/guide.md § retro".into(),
+        ));
+    }
+
+    if touches_intent_spec_content(&haystack) {
+        return Err(WorkspaceError::InvalidState(
+            "bugfix-gate:intent-content:description 触达 products/*/intents 或 realized_by；请用 slice-spec、retro spec（issue-author § retro），或 spec 已定后 slice-delivery + --tasks".into(),
+        ));
+    }
+
+    if touches_intent_coder_skill_chain(&haystack) {
+        return Err(WorkspaceError::InvalidState(
+            "bugfix-gate:skill-chain:description 触达 intent-coder 技能链；请用 --type technical --pipeline tech-decision 或 slice-spec，见 issue-author/guide.md".into(),
+        ));
+    }
+
+    if touches_major_ui_capability(&haystack) {
+        return Err(WorkspaceError::InvalidState(
+            "bugfix-gate:ui-capability:新 UI/可视化能力不宜 bugfix；spec 已覆盖用 slice-delivery + --tasks，未覆盖用 slice-spec 或 retro spec".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn touches_intent_spec_content(haystack: &str) -> bool {
+    if haystack.contains("realized_by") {
+        return true;
+    }
+    if haystack.contains("acceptance.intent")
+        || haystack.contains("contracts.intent")
+        || haystack.contains("invariants.intent")
+    {
+        return true;
+    }
+    if haystack.contains("/intents/") || haystack.contains("intents/*.intent") {
+        return true;
+    }
+    if haystack.contains("products/") && haystack.contains(".intent") {
+        return true;
+    }
+    false
+}
+
+fn touches_intent_coder_skill_chain(haystack: &str) -> bool {
+    if haystack.contains("intent-coder/skills") || haystack.contains("intent-coder/skills/") {
+        return true;
+    }
+    if haystack.contains("intent-coder") {
+        let skill_marker = [
+            "intent-spec-writer",
+            "rfc-writer",
+            "adr-writer",
+            "prd-writer",
+            "issue-author",
+            "skill.yaml",
+            "guide.md",
+        ];
+        if skill_marker.iter().any(|m| haystack.contains(m)) {
+            return true;
+        }
+    }
+    false
+}
+
+fn touches_major_ui_capability(haystack: &str) -> bool {
+    if haystack.contains("intent-lang-visualizer") {
+        return true;
+    }
+    (haystack.contains("visualizer") || haystack.contains("多图") || haystack.contains("关系图"))
+        && (haystack.contains("接入") || haystack.contains("完善") || haystack.contains("新"))
+        && !haystack.contains("修复")
+        && !haystack.contains("fix")
 }
 
 /// Hard gate before starting a `slice-delivery` run (`issue start`).
@@ -141,6 +239,76 @@ intent GateTestIntent(r: GateTestResult) {
         )
         .expect_err("expected reject");
         assert!(err.to_string().contains("create-proposed"));
+    }
+
+    #[test]
+    fn bugfix_rejects_product_type() {
+        let err = validate_bugfix_create(
+            "product",
+            Some("bugfix"),
+            "补 realized_by",
+            "改 products/foo/intents",
+        )
+        .expect_err("expected reject");
+        assert!(err.to_string().contains("bugfix-gate:product-type"));
+    }
+
+    #[test]
+    fn bugfix_rejects_intent_content() {
+        let err = validate_bugfix_create(
+            "bug",
+            Some("bugfix"),
+            "补链",
+            "为 contracts.intent 补 realized_by",
+        )
+        .expect_err("expected reject");
+        assert!(err.to_string().contains("bugfix-gate:intent-content"));
+    }
+
+    #[test]
+    fn bugfix_rejects_skill_chain() {
+        let err = validate_bugfix_create(
+            "technical",
+            Some("bugfix"),
+            "技能",
+            "更新 intent-coder/skills/intent-spec-writer/guide.md",
+        )
+        .expect_err("expected reject");
+        assert!(err.to_string().contains("bugfix-gate:skill-chain"));
+    }
+
+    #[test]
+    fn bugfix_rejects_visualizer_capability() {
+        let err = validate_bugfix_create(
+            "bug",
+            Some("bugfix"),
+            "接入 visualizer",
+            "接入 intent-lang-visualizer 完善 UI",
+        )
+        .expect_err("expected reject");
+        assert!(err.to_string().contains("bugfix-gate:ui-capability"));
+    }
+
+    #[test]
+    fn bugfix_allows_ui_regression_fix() {
+        validate_bugfix_create(
+            "bug",
+            Some("bugfix"),
+            "修复关系图缩放",
+            "修复 Products 关系图 Mermaid 缩放与对比度",
+        )
+        .expect("true bugfix should pass");
+    }
+
+    #[test]
+    fn bugfix_allows_gate_meta_issue() {
+        validate_bugfix_create(
+            "technical",
+            Some("bugfix"),
+            "bugfix-gate",
+            "实现 pipeline_gate bugfix-gate；触达 products/intents 关键词仅用于门禁本身",
+        )
+        .expect("meta gate issue should pass");
     }
 
     #[test]

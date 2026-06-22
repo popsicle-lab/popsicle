@@ -91,6 +91,18 @@ query_anchors:
 3. invariants / contracts 增量分别落到对应文件（见分层归位）
 4. 合并后跑 intent-consistency-check 做闸
 
+## Goal 追溯（realized_by）
+
+> 合并 acceptance / invariants **之后**回填 `contracts.intent` 每个 goal 的 `realized_by`。
+
+| goal 名 | realized_by（safety / intent 名）| 依据（ADR / PRD 行）|
+|---|---|---|
+| "{goal 名}" | {SafetyOrIntent}, … | ADR-XXX § … / PRD row N |
+
+- [ ] 每个 goal 的 `realized_by` 非空
+- [ ] 引用的符号均在合并后的 `products/{target_product}/intents/` 可解析
+- [ ] `popsicle tool run intent-validate path=products/{target_product}/intents` exit 0（含 goal 追溯闸）
+
 ## 检查清单
 
 - [ ] formal .intent 单独 intent check 通过（exit 0）
@@ -100,3 +112,4 @@ query_anchors:
 - [ ] 四规则审查全过
 - [ ] 无重复声明 / 命名冲突
 - [ ] 合并计划写明追加位置与类型复用方式
+- [ ] 每个 contracts goal 已回填 `realized_by`（见 Goal 追溯段）

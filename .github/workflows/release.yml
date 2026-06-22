@@ -48,7 +48,7 @@ jobs:
           save-if: true
 
       - name: Build release binary
-        run: cargo build --release --bin popsicle --target ${{ matrix.target }}
+        run: cargo build --release --bin popsicle --target ${{ matrix.target }} --no-default-features
 
       - name: Package (tar.gz)
         if: matrix.archive == 'tar.gz'

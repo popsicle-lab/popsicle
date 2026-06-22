@@ -128,6 +128,7 @@ prompts:
 
     ## contracts 种子起草纪律
     - 用 `goal` 块声明每个模块间契约的**意图**（intent-lang 的 goal，0 VC）。
+    - 种子阶段 `realized_by: []` 占位；**intent-spec-writer 合并 acceptance/invariants 后必填**。
     - 顶部注释登记 `[Awaiting ADR-XXXX]`——在对应 ADR Accepted 前，**不收紧成可验证
       的 intent/safety**（那一步由 adr-writer 解锁、intent-spec-writer 执行）。
     - 技术细节（协议、版本、字段）放注释，保持 goal 块本身简洁、可 `intent check`。

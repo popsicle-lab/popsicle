@@ -5,7 +5,7 @@
 | Item | Purpose |
 |---|---|
 | `Popsicle.app` | Tauri desktop UI |
-| `popsicle` | CLI binary (same build, `--features ui`); **embeds intent-coder** at compile time (ADR-017) |
+| `popsicle` | CLI binary (default `ui` feature: Tauri + intent-lang-visualizer); **embeds intent-coder** at compile time (ADR-017) |
 | `intent` | [intent-lang](https://github.com/popsicle-lab/intent-lang) CLI from `packaging/intent-lang-pin.toml` (v0.1.1+ bundles Z3) |
 | `Install CLI.command` | Optional fallback: copies `popsicle` + `intent` to `~/.local/bin` |
 | `Applications` | Drag target symlink |

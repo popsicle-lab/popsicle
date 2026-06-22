@@ -1,5 +1,6 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import mermaid from "mermaid";
+import { sanitizeMermaidChart } from "../lib/mermaidSanitize";
 
 mermaid.initialize({
   startOnLoad: false,
@@ -17,12 +18,14 @@ export function MermaidRenderer({ chart, className }: Props) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const safeChart = useMemo(() => sanitizeMermaidChart(chart), [chart]);
+
   useEffect(() => {
     let cancelled = false;
     setSvg(null);
     setError(null);
     mermaid
-      .render(`mmd-${id}`, chart)
+      .render(`mmd-${id}`, safeChart)
       .then(({ svg: rendered }) => {
         if (!cancelled) setSvg(rendered);
       })
@@ -32,7 +35,7 @@ export function MermaidRenderer({ chart, className }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [chart, id]);
+  }, [safeChart, id]);
 
   if (error) {
     return (

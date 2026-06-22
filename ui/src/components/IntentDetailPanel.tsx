@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import {
-  intentGraphMermaid,
-  readIntentFile,
-  type IntentFileFull,
-} from "../hooks/useTauri";
+import { ArrowLeft, GitBranch } from "lucide-react";
+import { readIntentFile, type IntentFileFull } from "../hooks/useTauri";
 import { IntentCodeBlock } from "./IntentCodeBlock";
-import { MermaidRenderer } from "./MermaidRenderer";
 import type { Page } from "../App";
 
 interface Props {
@@ -16,6 +11,7 @@ interface Props {
   returnTo?: Page;
   setPage: (p: Page) => void;
   showBack?: boolean;
+  onOpenGraph?: () => void;
 }
 
 function backLabel(returnTo?: Page): string {
@@ -33,22 +29,16 @@ export function IntentDetailPanel({
   returnTo,
   setPage,
   showBack,
+  onOpenGraph,
 }: Props) {
   const [intent, setIntent] = useState<IntentFileFull | null>(null);
-  const [mermaid, setMermaid] = useState<string | null>(null);
   const [viewFull, setViewFull] = useState(!block);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setError(null);
-    Promise.all([
-      readIntentFile(product, file),
-      intentGraphMermaid(product).catch(() => null),
-    ])
-      .then(([f, mm]) => {
-        setIntent(f);
-        setMermaid(mm);
-      })
+    readIntentFile(product, file)
+      .then(setIntent)
       .catch((e) => setError(String(e)));
   }, [product, file]);
 
@@ -93,7 +83,7 @@ export function IntentDetailPanel({
           <ArrowLeft size={15} /> {backLabel(returnTo)}
         </button>
       )}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold font-mono">{intent.file}</h2>
           {selected && (
@@ -102,7 +92,16 @@ export function IntentDetailPanel({
             </p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {onOpenGraph && (
+            <button
+              type="button"
+              onClick={onOpenGraph}
+              className="btn btn-ghost gap-1.5 px-3 py-1 text-xs"
+            >
+              <GitBranch size={14} /> 关系图
+            </button>
+          )}
           <button
             onClick={() => setViewFull(false)}
             disabled={!block}
@@ -118,11 +117,6 @@ export function IntentDetailPanel({
           </button>
         </div>
       </div>
-      {mermaid && (
-        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 overflow-auto max-h-48">
-          <MermaidRenderer chart={mermaid} />
-        </div>
-      )}
       <IntentCodeBlock
         code={displayCode}
         highlightBlock={!viewFull && selected ? selected.name : undefined}

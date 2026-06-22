@@ -9,7 +9,6 @@ import {
 } from "@xyflow/react";
 import {
   getProductHealth,
-  intentGraphMermaid,
   listProductNames,
   scanIntentGraph,
   scanProductTaskGraph,
@@ -18,7 +17,7 @@ import {
   type TaskNode,
 } from "../hooks/useTauri";
 import { IntentDetailPanel } from "../components/IntentDetailPanel";
-import { MermaidRenderer } from "../components/MermaidRenderer";
+import { IntentVisualizationPanel } from "../components/IntentVisualizationPanel";
 import { ProductHealthPanel } from "../components/ProductHealthPanel";
 import { TaskDetailPanel } from "../components/TaskDetailPanel";
 import type { Page } from "../App";
@@ -40,6 +39,7 @@ const JOURNEY_LABELS: Record<string, string> = {
 };
 
 type Tab = "tasks" | "intents" | "graph";
+type GraphSubTab = "tasks" | "intents";
 
 interface Props {
   setPage: (p: Page) => void;
@@ -118,9 +118,11 @@ export function ProductExplorerView({
   const [products, setProducts] = useState<string[]>([]);
   const [product, setProduct] = useState(initialProduct ?? "");
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [graphSubTab, setGraphSubTab] = useState<GraphSubTab>("intents");
   const [tasks, setTasks] = useState<TaskNode[]>([]);
-  const [intentBlocks, setIntentBlocks] = useState<IntentBlockNode[]>([]);
-  const [mermaid, setMermaid] = useState<string | null>(null);
+  const [intentGraph, setIntentGraph] = useState<
+    Awaited<ReturnType<typeof scanIntentGraph>> | null
+  >(null);
   const [selectedTaskId, setSelectedTaskId] = useState(initialTaskId ?? "");
   const [selectedIntentFile, setSelectedIntentFile] = useState(
     initialIntentFile ?? ""
@@ -156,13 +158,11 @@ export function ProductExplorerView({
     Promise.all([
       scanProductTaskGraph(product),
       scanIntentGraph(product),
-      intentGraphMermaid(product).catch(() => null),
       getProductHealth(product).catch(() => null),
     ])
-      .then(([tg, ig, mm, h]) => {
+      .then(([tg, ig, h]) => {
         setTasks(tg.nodes);
-        setIntentBlocks(ig.blocks);
-        setMermaid(mm);
+        setIntentGraph(ig);
         setHealth(h);
       })
       .catch((e) => setError(String(e)));
@@ -172,6 +172,7 @@ export function ProductExplorerView({
     load();
   }, [load]);
 
+  const intentBlocks = intentGraph?.blocks ?? [];
   const journeyGroups = useMemo(() => groupByJourney(tasks), [tasks]);
   const intentFileGroups = useMemo(
     () => groupIntentsByFile(intentBlocks),
@@ -184,12 +185,18 @@ export function ProductExplorerView({
     ...[...journeyGroups.keys()].filter((s) => !JOURNEY_ORDER.includes(s)),
   ];
 
+  const handleSelectIntentBlock = useCallback((file: string, block: string) => {
+    setTab("intents");
+    setSelectedIntentFile(file);
+    setSelectedIntentBlock(block);
+  }, []);
+
   const tabHint =
     tab === "tasks"
       ? "按旅程阶段浏览 task 文档"
       : tab === "intents"
-        ? "按 intent 文件浏览 acceptance 块"
-        : "任务依赖图 + intent 关系图";
+        ? "按 intent 文件浏览块，点击查看源码"
+        : "任务依赖图与 intent-lang 形式化关系图";
 
   if (error) {
     return (
@@ -210,6 +217,9 @@ export function ProductExplorerView({
           <div className="flex items-center gap-3 text-[12px] text-[var(--text-muted)]">
             <span>{tasks.length} tasks</span>
             <span>{intentBlocks.length} intent blocks</span>
+            {intentGraph?.diagrams.length ? (
+              <span>{intentGraph.diagrams.length} 图</span>
+            ) : null}
           </div>
         </div>
         {health && <ProductHealthPanel health={health} />}
@@ -240,7 +250,7 @@ export function ProductExplorerView({
               onClick={() => setTab(t)}
               className={`tab-btn capitalize ${tab === t ? "tab-btn-active" : ""}`}
             >
-              {t}
+              {t === "graph" ? "关系图" : t}
             </button>
           ))}
         </div>
@@ -355,12 +365,26 @@ export function ProductExplorerView({
                   file={selectedIntentFile}
                   block={selectedIntentBlock || undefined}
                   setPage={setPage}
+                  onOpenGraph={() => {
+                    setTab("graph");
+                    setGraphSubTab("intents");
+                  }}
                 />
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
                   <p className="text-[13px] font-medium text-[var(--text-secondary)]">
                     选择 intent 块或文件
                   </p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost mt-2 text-[12px]"
+                    onClick={() => {
+                      setTab("graph");
+                      setGraphSubTab("intents");
+                    }}
+                  >
+                    打开关系图
+                  </button>
                 </div>
               )}
             </div>
@@ -370,26 +394,53 @@ export function ProductExplorerView({
 
       {tab === "graph" && (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <div className="graph-panel min-h-[280px] flex-1">
-            <ReactFlow
-              nodes={taskFlow.nodes}
-              edges={taskFlow.edges}
-              onNodeClick={(_, n) => {
-                setTab("tasks");
-                setSelectedTaskId(n.id);
-              }}
-              fitView
-              proOptions={{ hideAttribution: true }}
+          <div className="tab-group w-fit">
+            <button
+              type="button"
+              onClick={() => setGraphSubTab("intents")}
+              className={`tab-btn ${graphSubTab === "intents" ? "tab-btn-active" : ""}`}
             >
-              <Background color="var(--border)" gap={16} />
-              <Controls />
-            </ReactFlow>
+              Intent 关系
+            </button>
+            <button
+              type="button"
+              onClick={() => setGraphSubTab("tasks")}
+              className={`tab-btn ${graphSubTab === "tasks" ? "tab-btn-active" : ""}`}
+            >
+              任务依赖
+            </button>
           </div>
-          {mermaid && (
-            <div className="card shrink-0 overflow-auto p-4">
-              <h3 className="section-label mb-2">Intent diagram</h3>
-              <MermaidRenderer chart={mermaid} />
+
+          {graphSubTab === "tasks" ? (
+            <div className="graph-panel min-h-[320px] flex-1">
+              <ReactFlow
+                nodes={taskFlow.nodes}
+                edges={taskFlow.edges}
+                onNodeClick={(_, n) => {
+                  setTab("tasks");
+                  setSelectedTaskId(n.id);
+                }}
+                fitView
+                fitViewOptions={{ padding: 0.2 }}
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background color="var(--border)" gap={16} />
+                <Controls
+                  showInteractive={false}
+                  position="bottom-right"
+                  className="graph-flow-controls"
+                />
+              </ReactFlow>
             </div>
+          ) : (
+            <IntentVisualizationPanel
+              diagrams={intentGraph?.diagrams ?? []}
+              blocks={intentBlocks}
+              source={intentGraph?.source ?? "parsed"}
+              parseError={intentGraph?.parse_error ?? null}
+              onRefresh={load}
+              onSelectBlock={handleSelectIntentBlock}
+            />
           )}
         </div>
       )}

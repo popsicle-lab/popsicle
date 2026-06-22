@@ -4,7 +4,8 @@
   "version": "0.6.3",
   "identifier": "com.popsicle-lab.app",
   "build": {
-    "frontendDist": "../../ui/dist"
+    "frontendDist": "../../ui/dist",
+    "features": ["ui"]
   },
   "app": {
     "withGlobalTauri": true,

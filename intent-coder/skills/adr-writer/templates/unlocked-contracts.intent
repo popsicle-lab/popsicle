@@ -19,6 +19,7 @@ goal "{一句话：本契约为什么存在}" {
   rationale: "{谁消费 + 解耦/保证了什么}"
   stakeholder: ["{consumer-a}", "{consumer-b}", "security"]
   measure: "{怎么衡量契约被遵守——非性能数字}"
+  realized_by: []   // intent-spec-writer 合并 acceptance/invariants 后回填
 }
 
 // ============================================================
@@ -30,6 +31,7 @@ goal "{一句话：本契约为什么存在}" {
 //   契约 "{goal 名}"
 //     → acceptance.intent: intent {名}(...) { require ... ensure ...' }
 //     → invariants.intent:  safety {名}(...) { invariant ...' }   // 若有跨操作不变量
+//     → contracts.intent:   goal.realized_by: [{名}, ...]         // 合并后回填
 //
 // 收紧后由 intent-consistency-check 过 Z3 闸。
 //

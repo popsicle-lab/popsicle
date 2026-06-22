@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
 use storage::WorkspaceError;
@@ -34,10 +33,21 @@ pub struct IntentBlockNode {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct IntentDiagramView {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    pub mermaid: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct IntentGraph {
     pub blocks: Vec<IntentBlockNode>,
+    /// Primary diagram (goal graph when visualizer is available).
     pub mermaid: Option<String>,
+    pub diagrams: Vec<IntentDiagramView>,
     pub source: String,
+    pub parse_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,10 +201,9 @@ fn parse_str_list(v: serde_yaml::Value) -> Option<Vec<String>> {
     }
 }
 
-/// Build an intent graph: try `intent goals --diagram`, else parse `.intent` files.
+/// Build an intent graph: merge product `.intent` files and render diagrams.
 pub fn scan_intents(workspace_root: &Path, product: &str) -> Result<IntentGraph, WorkspaceError> {
     let products_dir = workspace_root.join("products").join(product);
-    let mermaid = try_intent_cli_diagram(&products_dir);
     let mut blocks = Vec::new();
     let intents_dir = products_dir.join("intents");
     if intents_dir.is_dir() {
@@ -208,16 +217,84 @@ pub fn scan_intents(workspace_root: &Path, product: &str) -> Result<IntentGraph,
             blocks.extend(parse_intent_blocks(&content, product, &path));
         }
     }
-    let source = if mermaid.is_some() {
-        "intent-cli".into()
-    } else {
-        "parsed".into()
-    };
-    Ok(IntentGraph {
-        blocks,
-        mermaid,
-        source,
+
+    #[cfg(feature = "ui")]
+    {
+        if let Some(source) = read_merged_intent_sources(&intents_dir) {
+            match crate::intent_visualizer::render_product_diagrams(&source) {
+                Ok(diagrams) => {
+                    let mermaid = diagrams
+                        .iter()
+                        .find(|d| d.id == "goal-graph")
+                        .map(|d| d.mermaid.clone())
+                        .or_else(|| diagrams.first().map(|d| d.mermaid.clone()));
+                    return Ok(IntentGraph {
+                        blocks,
+                        mermaid,
+                        diagrams,
+                        source: "visualizer".into(),
+                        parse_error: None,
+                    });
+                }
+                Err(e) => {
+                    let graph = IntentGraph {
+                        blocks: blocks.clone(),
+                        mermaid: None,
+                        diagrams: Vec::new(),
+                        source: "fallback".into(),
+                        parse_error: Some(e),
+                    };
+                    return Ok(IntentGraph {
+                        mermaid: Some(intent_fallback_mermaid(&graph)),
+                        ..graph
+                    });
+                }
+            }
+        }
+    }
+
+    Ok({
+        let graph = IntentGraph {
+            blocks,
+            mermaid: None,
+            diagrams: Vec::new(),
+            source: "parsed".into(),
+            parse_error: None,
+        };
+        IntentGraph {
+            mermaid: Some(intent_fallback_mermaid(&graph)),
+            ..graph
+        }
     })
+}
+
+#[cfg(feature = "ui")]
+fn read_merged_intent_sources(intents_dir: &Path) -> Option<String> {
+    if !intents_dir.is_dir() {
+        return None;
+    }
+    let mut paths: Vec<PathBuf> = fs::read_dir(intents_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("intent"))
+        .collect();
+    if paths.is_empty() {
+        return None;
+    }
+    paths.sort();
+    let mut merged = String::new();
+    for path in paths {
+        if let Ok(content) = fs::read_to_string(&path) {
+            merged.push_str(&content);
+            merged.push('\n');
+        }
+    }
+    if merged.trim().is_empty() {
+        None
+    } else {
+        Some(merged)
+    }
 }
 
 /// Resolve a CLI/UI product id, accepting legacy slice-style spec names.
@@ -251,10 +328,15 @@ pub fn backfill_issue_products(
     product_id: &mut String,
     spec_id: &mut String,
 ) {
-    if product_id.is_empty() {
-        let products = list_products(workspace_root).unwrap_or_default();
-        *product_id = product_for_spec(spec_id, &products).unwrap_or_else(|| spec_id.clone());
-    }
+    let products = list_products(workspace_root).unwrap_or_default();
+    let raw = if !product_id.is_empty() {
+        product_id.as_str()
+    } else if !spec_id.is_empty() {
+        spec_id.as_str()
+    } else {
+        return;
+    };
+    *product_id = product_for_spec(raw, &products).unwrap_or_else(|| raw.to_string());
     *spec_id = product_id.clone();
 }
 
@@ -271,10 +353,18 @@ pub fn resolve_default_product(workspace_root: &Path, raw: &str) -> Option<Strin
     product_for_spec(trimmed, &products)
 }
 
+/// Known migration slice spec ids → product directory (ADR-021 backfill).
+const LEGACY_SPEC_ALIASES: &[(&str, &str)] = &[("slice-4-ui", "cli-ux")];
+
 /// Map legacy issue `spec_id` to a `products/<name>/` directory.
 pub fn product_for_spec(spec_id: &str, products: &[String]) -> Option<String> {
     if products.iter().any(|p| p == spec_id) {
         return Some(spec_id.to_string());
+    }
+    for (legacy, product) in LEGACY_SPEC_ALIASES {
+        if spec_id == *legacy && products.iter().any(|p| p == *product) {
+            return Some((*product).to_string());
+        }
     }
     let mut best: Option<(usize, String)> = None;
     for p in products {
@@ -626,46 +716,11 @@ pub fn list_products(workspace_root: &Path) -> Result<Vec<String>, WorkspaceErro
     Ok(names)
 }
 
-fn try_intent_cli_diagram(products_product_dir: &Path) -> Option<String> {
-    if !products_product_dir.is_dir() {
-        return None;
+pub fn intent_graph_mermaid(graph: &IntentGraph) -> String {
+    if let Some(m) = &graph.mermaid {
+        return m.clone();
     }
-    let intent_cli = which_intent_cli()?;
-    let output = Command::new(intent_cli)
-        .args([
-            "goals",
-            "--diagram",
-            &format!("path={}", products_product_dir.display()),
-        ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout).into_owned();
-    if text.contains("graph ") || text.contains("flowchart ") {
-        Some(text)
-    } else {
-        None
-    }
-}
-
-fn which_intent_cli() -> Option<PathBuf> {
-    let candidates = [
-        PathBuf::from("./target/debug/intent"),
-        PathBuf::from("intent"),
-    ];
-    for c in candidates {
-        if c.is_file() {
-            return Some(c);
-        }
-    }
-    Command::new("which")
-        .arg("intent")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()))
+    intent_fallback_mermaid(graph)
 }
 
 fn parse_intent_blocks(content: &str, product: &str, path: &Path) -> Vec<IntentBlockNode> {
