@@ -1,14 +1,14 @@
 # cli-ux — Tasks 索引
 
-> **Status**: 16/16 task 已实现（含 T-CU-0014/0015 PROJ-46/48）；Roadmap P1–P6 + issue_tasks 已交付（PROJ-42/43 / ADR-022/023）
-> **Last-Updated**: 2026-06-11
+> **Status**: 18/18 task 已实现（含 T-CU-0017 PROJ-57）；Roadmap P1–P6 + issue_tasks 已交付（PROJ-42/43 / ADR-022/023）
+> **Last-Updated**: 2026-06-23
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
 
 | 旅程阶段 | 任务数 | 已实施 | 健康度 |
 |---|---|---|---|
-| `onboarding/` | 5 | 5 | 🟢 implemented |
-| `daily-ops/` | 6 | 6 | 🟢 implemented |
+| `onboarding/` | 6 | 6 | 🟢 implemented |
+| `daily-ops/` | 7 | 7 | 🟢 implemented |
 | `troubleshooting/` | 1 | 1 | 🟢 implemented |
 | `admin/` | 1 | 1 | 🟢 implemented |
 | `lifecycle/` | 2 | 2 | 🟢 implemented |
@@ -32,6 +32,8 @@
 | T-CU-0013 | onboarding | 配置本项目 Agent 偏好 | ADR-019 / project.yaml |
 | T-CU-0014 | daily-ops | 导出当前筛选 Issue 列表 Markdown 简报 | IssueExportMarkdownBrief |
 | T-CU-0015 | daily-ops | 维护 Issue 与 Task 关联（issue link） | IssueTaskLinksMutable |
+| T-CU-0016 | daily-ops | 工程画像（PROJECT_CONTEXT）与 weekly 健康巡检 | ProjectContextEditableInSettings / WeeklyHealthCheckPipeline / AgentContextIncludesProjectContext |
+| T-CU-0017 | onboarding | 浏览 intent-coder 工作流帮助（Pipeline / Skill） | WorkflowHelpCenterBrowsable |
 
 ## 命名约定
 

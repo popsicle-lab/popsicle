@@ -2,9 +2,9 @@
 
 > **Layer**: L2（用户可见行为）
 > **Audience**: PM、销售、客户成功、AI Copilot
-> **Status**: cutover-done + 多项目/UI/DMG + 工作流画像/健康仪表盘/Epic 关联（ADR-014–022 Accepted 2026-06-11）
-> **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-022（PROJ-42 Roadmap P1–P6）
+> **Status**: cutover-done + 多项目/UI/DMG + 工作流画像/健康仪表盘/Epic 关联 + **工作流帮助中心**（ADR-014–022、ADR-027 Accepted 2026-06-23）
+> **Last-Updated**: 2026-06-23
+> **Last-Decision-Ref**: ADR-027（PROJ-57 工作流帮助）
 
 ## 一行用途
 
@@ -15,7 +15,7 @@
 - `popsicle init` / `doctor`：准备 workspace 并校验二进制/工作区来源。
 - `popsicle issue` / `pipeline`：完整生命周期（create/list/show/start/**close** · status/next/stage complete）；issue 类型默认管线全部 bundled（含最小 `bugfix` 模板，ADR-012）；可选 `--epic-task` 绑定 task（ADR-022）。
 - **工作流画像**（`workflow.profile` in `project.yaml`）：`daily-dev` / `migration` / `pm-spec-only` / `opc-full` 切换默认 pipeline 与审批模式（ADR-022）。
-- **桌面 UI**：Products 健康信号、Issue 按 product/pipeline 分组、task 正文 Mermaid、无 pipeline Issue retro 横幅（ADR-022）；Issues 列表可按当前筛选**导出 Markdown 简报**至剪贴板（PDR-004 / T-CU-0014）。
+- **桌面 UI**：Products 健康信号、Issue 按 product/pipeline 分组、task 正文 Mermaid、无 pipeline Issue retro 横幅（ADR-022）；Issues 列表可按当前筛选**导出 Markdown 简报**至剪贴板（PDR-004 / T-CU-0014）；**工作流帮助**侧栏页浏览 Pipeline/Skill 目录，并从 Issue 上下文高亮当前 stage（PDR-007 / T-CU-0017）。
 - `popsicle doc`：生产、召回与**校验** stage artifact（create/list/show/**check**——frontmatter/实文/占位符/checkbox）。
 - `popsicle tool run intent-validate`：Z3 intent 校验（仓库内严格解析）。
 - `popsicle admin`：低频维护（migrate/reinit），不污染主路径。
@@ -29,7 +29,7 @@
 
 > 5 个旅程阶段的入口（v0.2 任务图）。具体 task 文件由 prd-writer 写到 `tasks/<stage>/` 下。
 
-- [Onboarding](tasks/onboarding/) — 初始化、DMG 安装、UI 选项目、嵌入 intent-coder（4 task）
+- [Onboarding](tasks/onboarding/) — 初始化、DMG 安装、UI 选项目、嵌入 intent-coder、**工作流帮助**（6 task）
 - [Daily-Ops](tasks/daily-ops/) — 创建 issue/run、doc、stage 推进、多项目切换（4 task）
 - [Troubleshooting](tasks/troubleshooting/) — guard/lock/not-found 错误诊断（1 task）
 - [Admin](tasks/admin/) — 低频维护命令（1 task）

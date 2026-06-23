@@ -149,7 +149,7 @@ prompts:
     - `docs/invariants/README.md`（空索引）
     - `docs/baseline/.gitkeep`
     - `docs/glossary.md`（骨架）
-    - `docs/PROJECT_CONTEXT.md`（骨架，稍后由 living-doc-author 填）
+    - `docs/PROJECT_CONTEXT.md`（骨架 §工程画像；bootstrap 后 Settings/人工填；§现在状态由 weekly-health-check 刷）
     - `docs/user-journeys/README.md`（**v0.2 任务图：跨 product 旅程的全局层**；
       首切片完成后再考虑填内容，bootstrap 时只铺空索引）
     - `docs/user-journeys/.gitkeep`

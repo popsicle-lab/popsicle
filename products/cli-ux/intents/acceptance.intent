@@ -1,8 +1,8 @@
 // Product: cli-ux
 // Layer: L2 acceptance（验收契约 —— PDR-001 + PDR-002 + PDR-003 retro）
 // Status: draft formal seed — 待 intent-spec-writer 收紧 / intent-check
-// Last-Updated: 2026-06-11
-// Source PDR: PDR-001, PDR-002, PDR-003（PROJ-35）
+// Last-Updated: 2026-06-23
+// Source PDR: PDR-001, PDR-002, PDR-003, PDR-006（PROJ-55）
 
 type InitResult {
   workspaceReady: Bool
@@ -271,4 +271,99 @@ intent IssueTaskLinksMutable(r: IssueTaskLinkResult) {
   ensure r.linksUpdated' == true
   ensure r.linkedCount' == true
   ensure r.taskFileValidated' == true
+}
+
+type ProjectContextUiResult {
+  pathFixed: Bool
+  readWriteOk: Bool
+  savedToRepo: Bool
+}
+
+type WeeklyHealthResult {
+  pipelineInstalled: Bool
+  stageRunnable: Bool
+  noRequiresApproval: Bool
+}
+
+type AgentContextProjectResult {
+  includesPreferences: Bool
+  includesProjectContext: Bool
+  respectsInjectFlag: Bool
+}
+
+// ---- Block 15 ----
+// task:          T-CU-0016
+// pdr:           PDR-006
+// journey_stage: daily-ops
+// source:        PDR-006 § Intent Impact
+// query_anchors:
+//   - "在哪里编辑工程画像 PROJECT_CONTEXT？"
+//   - "Settings 能否保存 docs/PROJECT_CONTEXT.md？"
+@source("PDR-006", section: "Intent Impact")
+@tobe
+intent ProjectContextEditableInSettings(r: ProjectContextUiResult) {
+  require true
+  ensure r.pathFixed' == true
+  ensure r.readWriteOk' == true
+  ensure r.savedToRepo' == true
+}
+
+// ---- Block 16 ----
+// task:          T-CU-0016
+// pdr:           PDR-006
+// journey_stage: daily-ops
+// source:        PDR-006 § Intent Impact
+// query_anchors:
+//   - "weekly 活文档 pipeline 叫什么？"
+//   - "weekly-health-check 要不要人工审批？"
+@source("PDR-006", section: "Intent Impact")
+@tobe
+intent WeeklyHealthCheckPipeline(r: WeeklyHealthResult) {
+  require true
+  ensure r.pipelineInstalled' == true
+  ensure r.stageRunnable' == true
+  ensure r.noRequiresApproval' == true
+}
+
+// ---- Block 17 ----
+// task:          T-CU-0016
+// pdr:           PDR-006
+// journey_stage: daily-ops
+// source:        PDR-006 § Intent Impact
+// query_anchors:
+//   - "issue start 会注入 PROJECT_CONTEXT 吗？"
+//   - "agent_context 含工程画像吗？"
+@source("PDR-006", section: "Intent Impact")
+@tobe
+intent AgentContextIncludesProjectContext(r: AgentContextProjectResult) {
+  require true
+  ensure r.includesPreferences' == true
+  ensure r.includesProjectContext' == true
+  ensure r.respectsInjectFlag' == true
+}
+
+type WorkflowHelpCenterResult {
+  catalogLoads: Bool
+  pipelinesListed: Bool
+  skillsListed: Bool
+  issueStageContext: Bool
+}
+
+// ---- Block 18 ----
+// task:          T-CU-0017
+// pdr:           PDR-007
+// journey_stage: onboarding
+// source:        PROJ-57 slice-delivery
+// query_anchors:
+//   - "UI 在哪里看 pipeline 模板？"
+//   - "intent-coder skill 目录怎么浏览？"
+//   - "Issue 当前 pipeline 阶段在哪看？"
+@source("PROJ-57", section: "Workflow Help Center")
+@tobe
+intent WorkflowHelpCenterBrowsable(r: WorkflowHelpCenterResult) {
+  require true
+  ensure r.catalogLoads' == true
+  ensure r.pipelinesListed' == true
+  ensure r.skillsListed' == true
+  ensure r.issueStageContext' == true
 }

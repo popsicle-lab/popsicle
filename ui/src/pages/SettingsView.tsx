@@ -1,29 +1,45 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getProjectConfig,
+  getProjectContextMd,
   saveProjectConfig,
+  saveProjectContextMd,
   type ProjectConfigDto,
+  type ProjectContextDto,
 } from "../hooks/useTauri";
 import { normalizeLocale, useLocale } from "../i18n/LocaleContext";
+import type { Page } from "../App";
 
 interface Props {
+  setPage?: (p: Page) => void;
   onSaved?: () => void;
 }
 
-export function SettingsView({ onSaved }: Props) {
+export function SettingsView({ setPage, onSaved }: Props) {
   const { m, setLocale } = useLocale();
   const [config, setConfig] = useState<ProjectConfigDto | null>(null);
+  const [projectContext, setProjectContext] = useState<ProjectContextDto | null>(
+    null
+  );
+  const [contextDraft, setContextDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingContext, setSavingContext] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [contextSaved, setContextSaved] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const cfg = await getProjectConfig();
+      const [cfg, ctx] = await Promise.all([
+        getProjectConfig(),
+        getProjectContextMd(),
+      ]);
       setConfig(cfg);
+      setProjectContext(ctx);
+      setContextDraft(ctx.content);
       setLocale(normalizeLocale(cfg.language));
     } catch (e) {
       setError(String(e));
@@ -69,6 +85,21 @@ export function SettingsView({ onSaved }: Props) {
       setError(String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveContext = async () => {
+    setSavingContext(true);
+    setError(null);
+    try {
+      const next = await saveProjectContextMd(contextDraft);
+      setProjectContext(next);
+      setContextDraft(next.content);
+      setContextSaved(true);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSavingContext(false);
     }
   };
 
@@ -169,6 +200,15 @@ export function SettingsView({ onSaved }: Props) {
           <p className="mt-1 text-[12px] text-[var(--text-muted)]">
             {m.settings.workflowProfileHint}
           </p>
+          {setPage && (
+            <button
+              type="button"
+              className="mt-2 text-[12px] text-[var(--accent)] hover:underline"
+              onClick={() => setPage({ kind: "workflows", tab: "pipelines" })}
+            >
+              {m.settings.browseWorkflows}
+            </button>
+          )}
         </div>
 
         <div>
@@ -216,6 +256,46 @@ export function SettingsView({ onSaved }: Props) {
             {m.settings.injectOnRun}
           </label>
         </div>
+      </section>
+
+      <section className="card space-y-4 p-5">
+        <div>
+          <h3 className="text-[14px] font-semibold">{m.settings.projectContext}</h3>
+          <p className="mt-1 text-[12px] text-[var(--text-muted)]">
+            {m.settings.projectContextHint}
+          </p>
+        </div>
+        <textarea
+          className="input min-h-[280px] w-full font-mono text-[12px] leading-relaxed"
+          value={contextDraft}
+          onChange={(e) => {
+            setContextDraft(e.target.value);
+            setContextSaved(false);
+          }}
+          spellCheck={false}
+        />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={savingContext}
+            onClick={handleSaveContext}
+          >
+            {savingContext
+              ? m.settings.projectContextSaving
+              : m.settings.projectContextSave}
+          </button>
+          {contextSaved && (
+            <span className="text-[13px] text-[var(--accent-green)]">
+              {m.settings.projectContextSaved}
+            </span>
+          )}
+        </div>
+        {projectContext && (
+          <p className="text-[12px] text-[var(--text-muted)]">
+            {m.settings.projectContextPath}：{projectContext.path}
+          </p>
+        )}
       </section>
 
       <div className="flex items-center gap-3">

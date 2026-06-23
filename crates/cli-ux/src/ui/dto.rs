@@ -49,6 +49,13 @@ pub struct ProjectConfigDto {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ProjectContextDto {
+    pub path: String,
+    pub content: String,
+    pub exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ProjectsList {
     pub projects: Vec<ProjectInfo>,
     pub default_path: Option<String>,

@@ -102,6 +102,7 @@ The bundled pipeline templates are:
 | `greenfield-product-spec` | new product/module with no legacy code | `product` |
 | `slice-spec` | spec chain for a migration slice (facts → debate → prd → arch → rfc → adr → intent) | — |
 | `slice-delivery` | implement → equivalence → cutover → living-docs for a decided slice | — |
+| `weekly-health-check` | periodic tasks-index + PROJECT_CONTEXT §现在状态 refresh | — |
 | `tech-decision` | architecture/technical decision (arch-debate → rfc → adr) | `technical`, `idea` |
 | `bugfix` | minimal fix loop (implement → verify, no approvals) | `bug` |
 | `migration-bootstrap` | first-time migration bootstrap | — |

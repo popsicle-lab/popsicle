@@ -62,6 +62,9 @@ pub fn run(project: Option<String>) {
             commands::get_product_health,
             commands::get_project_config,
             commands::save_project_config_cmd,
+            commands::get_project_context_md,
+            commands::save_project_context_md,
+            commands::get_workflow_catalog,
         ])
         .setup(|app| {
             app.manage(watcher::ProjectWatcher {

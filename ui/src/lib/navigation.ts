@@ -9,6 +9,7 @@ export interface CrumbLabels {
   issues: string;
   settings: string;
   products: string;
+  workflows: string;
   pipeline: string;
   document: string;
 }
@@ -24,6 +25,8 @@ export function pageCrumbs(page: Page, labels: CrumbLabels): Crumb[] {
   switch (page.kind) {
     case "settings":
       return [{ label: labels.settings }];
+    case "workflows":
+      return [{ label: labels.workflows }];
     case "issues":
       return page.selectedKey
         ? [
@@ -127,6 +130,8 @@ export function pageBack(page: Page): Page | null {
     case "document":
       return { kind: "issues" };
     case "products":
+      return null;
+    case "workflows":
       return null;
     case "task":
       if (page.returnTo) return page.returnTo;

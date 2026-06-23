@@ -44,5 +44,6 @@ stages:
       刷新 implementation-status / architecture-manifest / product-header；
       回填 tasks/README「已实施」列。建议 --target
       implementation-status,architecture-manifest,product-header。
+      **不含** tasks-index / product-context（见 weekly-health-check pipeline）。
     depends_on: [cutover]
     requires_approval: true

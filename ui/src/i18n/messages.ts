@@ -9,7 +9,14 @@ export function normalizeLocale(raw: string): Locale {
 }
 
 export type Messages = {
-  nav: { issues: string; products: string; settings: string; tagline: string; footer: string };
+  nav: {
+    issues: string;
+    products: string;
+    workflows: string;
+    settings: string;
+    tagline: string;
+    footer: string;
+  };
   header: {
     expandSidebar: string;
     collapseSidebar: string;
@@ -20,6 +27,7 @@ export type Messages = {
     issues: string;
     settings: string;
     products: string;
+    workflows: string;
     pipeline: string;
     document: string;
   };
@@ -51,6 +59,44 @@ export type Messages = {
     saved: string;
     configPath: string;
     loadError: string;
+    projectContext: string;
+    projectContextHint: string;
+    projectContextSave: string;
+    projectContextSaving: string;
+    projectContextSaved: string;
+    projectContextPath: string;
+    browseWorkflows: string;
+  };
+  workflows: {
+    title: string;
+    intro: string;
+    loading: string;
+    tabPipelines: string;
+    tabSkills: string;
+    recommended: string;
+    recommendedForProfile: string;
+    stages: string;
+    approvalStages: string;
+    selectPipeline: string;
+    selectSkill: string;
+    noDescription: string;
+    stageGuide: string;
+    issueContext: string;
+    currentStage: string;
+    openPipelineRun: string;
+    standalone: string;
+    standaloneHint: string;
+    artifacts: string;
+    stateMachine: string;
+    usedInPipelines: string;
+    categories: {
+      catSpec: string;
+      catDelivery: string;
+      catBugfix: string;
+      catMigration: string;
+      catBootstrap: string;
+      catPeriodic: string;
+    };
   };
   issues: {
     selectIssue: string;
@@ -126,6 +172,7 @@ export type Messages = {
     exportMarkdown: string;
     exportCopied: string;
     exportFailed: string;
+    openWorkflowHelp: string;
   };
   project: {
     bootstrap: {
@@ -142,6 +189,7 @@ const zhCN: Messages = {
   nav: {
     issues: "Issues",
     products: "Products",
+    workflows: "工作流帮助",
     settings: "设置",
     tagline: "Spec 工作区",
     footer: "Spec-driven development",
@@ -156,6 +204,7 @@ const zhCN: Messages = {
     issues: "Issues",
     settings: "设置",
     products: "Products",
+    workflows: "工作流帮助",
     pipeline: "Pipeline",
     document: "Document",
   },
@@ -189,6 +238,45 @@ const zhCN: Messages = {
     saved: "已保存",
     configPath: "配置文件",
     loadError: "无法加载项目配置",
+    projectContext: "工程画像（PROJECT_CONTEXT）",
+    projectContextHint:
+      "写入 docs/PROJECT_CONTEXT.md。§现在状态 由 weekly 巡检刷新；此处编辑 §工程画像 等正文。",
+    projectContextSave: "保存工程画像",
+    projectContextSaving: "保存中…",
+    projectContextSaved: "工程画像已保存",
+    projectContextPath: "文件路径",
+    browseWorkflows: "打开工作流帮助 →",
+  },
+  workflows: {
+    title: "intent-coder 工作流帮助",
+    intro: "帮助开发人员了解 Pipeline 模板与 Skill 技能；可从 Issue 上下文查看当前阶段。",
+    loading: "加载目录…",
+    tabPipelines: "Pipeline 模板",
+    tabSkills: "Skills 技能",
+    recommended: "推荐",
+    recommendedForProfile: "当前画像推荐",
+    stages: "阶段",
+    approvalStages: "需审批",
+    selectPipeline: "选择一个 Pipeline 了解其阶段与 skill",
+    selectSkill: "选择一个 Skill 了解产出物与状态机",
+    noDescription: "（无描述）",
+    stageGuide: "阶段说明",
+    issueContext: "Issue 上下文",
+    currentStage: "当前阶段",
+    openPipelineRun: "打开 Pipeline 运行页 →",
+    standalone: "独立",
+    standaloneHint: "不在 Pipeline 模板中引用；用于 Issue 创建等独立流程（如 issue-author）。",
+    artifacts: "产出 artifact",
+    stateMachine: "Skill 状态机",
+    usedInPipelines: "出现于 Pipeline",
+    categories: {
+      catSpec: "Spec 链",
+      catDelivery: "交付",
+      catBugfix: "缺陷修复",
+      catMigration: "迁移",
+      catBootstrap: "引导",
+      catPeriodic: "周期巡检",
+    },
   },
   issues: {
     selectIssue: "选择一条 Issue",
@@ -265,6 +353,7 @@ const zhCN: Messages = {
     exportMarkdown: "导出 Markdown",
     exportCopied: "已复制到剪贴板",
     exportFailed: "复制失败，请检查浏览器权限",
+    openWorkflowHelp: "查看工作流帮助",
   },
   project: {
     bootstrap: {
@@ -285,6 +374,7 @@ const en: Messages = {
   nav: {
     issues: "Issues",
     products: "Products",
+    workflows: "Workflow guide",
     settings: "Settings",
     tagline: "Spec workspace",
     footer: "Spec-driven development",
@@ -299,6 +389,7 @@ const en: Messages = {
     issues: "Issues",
     settings: "Settings",
     products: "Products",
+    workflows: "Workflow guide",
     pipeline: "Pipeline",
     document: "Document",
   },
@@ -335,6 +426,45 @@ const en: Messages = {
     saved: "Saved",
     configPath: "Config file",
     loadError: "Failed to load project config",
+    projectContext: "Engineering profile (PROJECT_CONTEXT)",
+    projectContextHint:
+      "Saved to docs/PROJECT_CONTEXT.md. §现在状态 is refreshed by weekly-health-check; edit §工程画像 here.",
+    projectContextSave: "Save profile",
+    projectContextSaving: "Saving…",
+    projectContextSaved: "Profile saved",
+    projectContextPath: "File path",
+    browseWorkflows: "Open workflow guide →",
+  },
+  workflows: {
+    title: "intent-coder workflow guide",
+    intro: "Browse pipeline templates and skills; open from an Issue to see the current stage.",
+    loading: "Loading catalog…",
+    tabPipelines: "Pipeline templates",
+    tabSkills: "Skills",
+    recommended: "Recommended",
+    recommendedForProfile: "Recommended for profile",
+    stages: "stages",
+    approvalStages: "approval",
+    selectPipeline: "Select a pipeline to read stage and skill help",
+    selectSkill: "Select a skill to read artifacts and state machine",
+    noDescription: "(no description)",
+    stageGuide: "Stage guide",
+    issueContext: "Issue context",
+    currentStage: "Current stage",
+    openPipelineRun: "Open pipeline run →",
+    standalone: "standalone",
+    standaloneHint: "Not referenced in pipeline templates; used for issue create and other standalone flows.",
+    artifacts: "Artifacts",
+    stateMachine: "State machine",
+    usedInPipelines: "Used in pipelines",
+    categories: {
+      catSpec: "Spec chain",
+      catDelivery: "Delivery",
+      catBugfix: "Bugfix",
+      catMigration: "Migration",
+      catBootstrap: "Bootstrap",
+      catPeriodic: "Periodic",
+    },
   },
   issues: {
     selectIssue: "Select an issue",
@@ -411,6 +541,7 @@ const en: Messages = {
     exportMarkdown: "Export Markdown",
     exportCopied: "Copied to clipboard",
     exportFailed: "Copy failed — check browser permissions",
+    openWorkflowHelp: "Open workflow guide",
   },
   project: {
     bootstrap: {

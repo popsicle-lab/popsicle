@@ -19,6 +19,7 @@ import { ProductExplorerView } from "./pages/ProductExplorerView";
 import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { IntentDetailPage } from "./pages/IntentDetailPage";
 import { SettingsView } from "./pages/SettingsView";
+import { WorkflowsView } from "./pages/WorkflowsView";
 import {
   LocaleProvider,
   normalizeLocale,
@@ -47,7 +48,16 @@ export type Page =
       block?: string;
       returnTo?: Page;
     }
-  | { kind: "settings" };
+  | { kind: "settings" }
+  | {
+      kind: "workflows";
+      tab?: "pipelines" | "skills";
+      pipeline?: string;
+      skill?: string;
+      contextRunId?: string;
+      contextIssueKey?: string;
+      highlightStage?: string;
+    };
 
 export default function App() {
   const {
@@ -261,9 +271,18 @@ export default function App() {
               />
             )}
             {page.kind === "settings" && (
-              <SettingsView
-                key={refreshKey}
-                onSaved={() => setRefreshKey((k) => k + 1)}
+              <SettingsView key={refreshKey} setPage={setPage} onSaved={() => setRefreshKey((k) => k + 1)} />
+            )}
+            {page.kind === "workflows" && (
+              <WorkflowsView
+                key={`${page.tab ?? "pipelines"}-${page.contextRunId ?? ""}-${refreshKey}`}
+                setPage={setPage}
+                tab={page.tab}
+                pipeline={page.pipeline}
+                skill={page.skill}
+                contextRunId={page.contextRunId}
+                contextIssueKey={page.contextIssueKey}
+                highlightStage={page.highlightStage}
               />
             )}
           </main>

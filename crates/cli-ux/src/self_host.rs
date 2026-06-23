@@ -67,6 +67,10 @@ const BUNDLED_PIPELINES: &[(&str, &str)] = &[
         "bugfix",
         include_str!("../assets/pipelines/bugfix.pipeline.yaml"),
     ),
+    (
+        "weekly-health-check",
+        include_str!("../assets/pipelines/weekly-health-check.pipeline.yaml"),
+    ),
 ];
 
 /// Names of all pipelines bundled into the binary.

@@ -661,3 +661,45 @@ pub fn save_project_config_cmd(
     }
     Ok(config_to_dto(&dir, &cfg))
 }
+
+#[tauri::command]
+pub fn get_project_context_md(state: State<AppState>) -> Result<ProjectContextDto, String> {
+    let dir = get_dir(&state)?;
+    let path = crate::project_context::project_context_path(&dir);
+    let exists = path.is_file();
+    let content = if exists {
+        crate::project_context::load_project_context(&dir).map_err(|e| e.to_string())?
+    } else {
+        String::new()
+    };
+    Ok(ProjectContextDto {
+        path: path.display().to_string(),
+        content,
+        exists,
+    })
+}
+
+#[derive(serde::Deserialize)]
+pub struct SaveProjectContextInput {
+    pub content: String,
+}
+
+#[tauri::command]
+pub fn save_project_context_md(
+    input: SaveProjectContextInput,
+    state: State<AppState>,
+) -> Result<ProjectContextDto, String> {
+    let dir = get_dir(&state)?;
+    crate::project_context::save_project_context(&dir, &input.content)
+        .map_err(|e| e.to_string())?;
+    get_project_context_md(state)
+}
+
+#[tauri::command]
+pub fn get_workflow_catalog(
+    state: State<AppState>,
+) -> Result<crate::workflow_catalog::WorkflowCatalog, String> {
+    let dir = get_dir(&state)?;
+    let workspace = Workspace { root: dir };
+    crate::workflow_catalog::build_workflow_catalog(&workspace).map_err(|e| e.to_string())
+}

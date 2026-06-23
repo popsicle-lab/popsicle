@@ -39,6 +39,7 @@
 | README Roadmap P1–P6（workflow_profile / health / epic）| `project_config.rs` + `workspace_readers.rs` + `ui/` components | cli-ux | ADR-022 | `docs/baseline/2026-06-11/cli-ux-roadmap-workflow/` | cutover-done |
 | `epic_task_id` 0/1 task 绑定 | `issue_tasks` 多对多 + `issue-author` skill | cli-ux | ADR-023 | `docs/baseline/2026-06-11/cli-ux-issue-tasks/` | cutover-done |
 | PROJ-49～51 dogfood 误走 `bugfix` pipeline | 交付物已合并；spec trace 不完整 | cli-ux | — | PROJ-53 `bugfix-gate` + issue-author § retro | audit（不重跑 pipeline）|
+| legacy `context scan` + `.popsicle/project-context.md` | `docs/PROJECT_CONTEXT.md` + Settings UI + weekly-health-check + agent inject | cli-ux | ADR-026 | `docs/baseline/2026-06-23/cli-ux-weekly-health/` | cutover-done |
 
 ## 规则
 

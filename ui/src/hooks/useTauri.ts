@@ -478,4 +478,75 @@ export async function saveProjectConfig(
   return invoke("save_project_config_cmd", { input });
 }
 
+export interface ProjectContextDto {
+  path: string;
+  content: string;
+  exists: boolean;
+}
+
+export async function getProjectContextMd(): Promise<ProjectContextDto> {
+  return invoke("get_project_context_md");
+}
+
+export async function saveProjectContextMd(
+  content: string
+): Promise<ProjectContextDto> {
+  return invoke("save_project_context_md", { input: { content } });
+}
+
+export interface StageCatalogEntry {
+  name: string;
+  skills: string[];
+  description: string;
+  depends_on: string[];
+  requires_approval: boolean;
+}
+
+export interface PipelineCatalogEntry {
+  name: string;
+  description: string;
+  scale: string;
+  keywords: string[];
+  category: string;
+  stage_count: number;
+  approval_count: number;
+  stages: StageCatalogEntry[];
+  recommended: boolean;
+}
+
+export interface SkillArtifactEntry {
+  artifact_type: string;
+  description: string;
+}
+
+export interface SkillStateEntry {
+  name: string;
+  requires_approval: boolean;
+  is_initial: boolean;
+  is_final: boolean;
+}
+
+export interface SkillCatalogEntry {
+  name: string;
+  version: string;
+  description: string;
+  artifacts: SkillArtifactEntry[];
+  workflow_states: SkillStateEntry[];
+  used_in_pipelines: string[];
+  standalone: boolean;
+  guide_path: string;
+}
+
+export interface WorkflowCatalog {
+  workflow_profile: string;
+  workflow_profile_label: string;
+  default_pipeline_by_type: Record<string, string>;
+  pipelines: PipelineCatalogEntry[];
+  skills: SkillCatalogEntry[];
+}
+
+export async function getWorkflowCatalog(): Promise<WorkflowCatalog> {
+  return invoke("get_workflow_catalog");
+}
+
 export type IssueGroupBy = "none" | "product" | "pipeline" | "epic";

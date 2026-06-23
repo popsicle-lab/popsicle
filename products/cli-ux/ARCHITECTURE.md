@@ -2,9 +2,9 @@
 
 > **Layer**: L4（实现视角）
 > **Audience**: 工程师、AI agent
-> **Status**: cutover-done + issue_tasks（ADR-023 Accepted 2026-06-11）
-> **Last-Updated**: 2026-06-11
-> **Last-Decision-Ref**: ADR-023（PROJ-43 issue-author + issue_tasks）
+> **Status**: cutover-done + issue_tasks + workflow help center（ADR-023、ADR-027 Accepted 2026-06-23）
+> **Last-Updated**: 2026-06-23
+> **Last-Decision-Ref**: ADR-027（PROJ-57 workflow help center）
 
 ## 责任边界
 
@@ -44,6 +44,9 @@ cli-ux (bin: popsicle)
 | `intent-coder/guides/retro-doc-checklist.md` | retro 文档闭环指南 | cutover-done（ADR-022）|
 | `products/cli-ux/decisions/adr/ADR-022-roadmap-workflow-enhancements.md` | Roadmap P1–P6 cutover | Accepted |
 | `products/cli-ux/decisions/adr/ADR-023-issue-task-linking.md` | issue_tasks + issue-author | Accepted |
+| `crates/cli-ux/src/workflow_catalog.rs` | Pipeline/Skill catalog 读模型 | cutover-done（ADR-027）|
+| `ui/src/pages/WorkflowsView.tsx` | 工作流帮助中心 | cutover-done（ADR-027）|
+| `products/cli-ux/decisions/adr/ADR-027-workflow-help-center-ui.md` | 工作流帮助 UI cutover | Accepted |
 
 > 由 rfc-writer 写到 RFC 文档的 "ARCHITECTURE.md 增量" 章节，再在 RFC 接受时合并到本表。
 

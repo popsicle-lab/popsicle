@@ -95,8 +95,7 @@ stages:
   - name: living-docs
     skill: living-doc-author
     description: >-
-      首切片落地后保活：扫描 doc-code drift（过期/断链/孤儿/未验证），刷新
-      tasks/README 健康度、task 反向引用、frontmatter last_verified。刷新需人审，
-      避免误改正文。
+      首切片 delivery 三 target：implementation-status, architecture-manifest,
+      product-header。tasks-index / product-context 见 weekly-health-check。
     depends_on: [intent-check]
     requires_approval: true

@@ -22,14 +22,20 @@
 | `tasks-index` | `products/{p}/tasks/README.md` 索引表 + 健康度统计 |
 | `task-backrefs` | 各 task 文件「反向引用」节 |
 | `last-verified` | task frontmatter `last_verified`（用 intent-consistency-report 回填）|
-| `product-context` | `docs/PROJECT_CONTEXT.md` 的「现在状态」类章节 |
-| `implementation-status` | `tasks/README.md`「已实施」列（用 implementation-coverage 回填）|
-| `architecture-manifest` | `ARCHITECTURE.md` § File Manifest（合并 ADR Consequences）|
-| `product-header` | `PRODUCT.md` 双行头（PDR-001 模板）|
-| `all`（缺省）| 以上全部 |
+| `product-context` | `docs/PROJECT_CONTEXT.md` §现在状态（weekly-health-check） |
+
+## 频率分组
+
+| 分组 | targets | 触发 |
+|---|---|---|
+| **delivery** | `implementation-status`, `architecture-manifest`, `product-header` | slice-delivery `living-docs` |
+| **post-intent-check** | `last-verified`, `task-backrefs` | intent-check 通过后 |
+| **weekly** | `tasks-index`, `product-context` | `weekly-health-check` pipeline / cron |
 
 `slice-delivery` 末尾建议：
 `living-doc-author --target implementation-status,architecture-manifest,product-header`
+
+**不要**在 slice 末尾跑 `tasks-index` / `product-context` —— 见 `weekly-health-check` pipeline。
 
 ## Proposed task 晋升（issue-author 下游）
 

@@ -64,6 +64,7 @@
 | **migration-bootstrap** ✅ | **仓库级 Day-1 一次**：`init → facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`（10 stage，7 审批点）。定义见 [`pipelines/migration-bootstrap.pipeline.yaml`](pipelines/migration-bootstrap.pipeline.yaml)。 |
 | **slice-spec** ✅（v0.4） | **每 slice spec**（无 init）：`facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check`。仓库已 bootstrap 后跑，避免重复 10 stage。见 [`pipelines/slice-spec.pipeline.yaml`](pipelines/slice-spec.pipeline.yaml)。 |
 | **slice-delivery** ✅（v0.4） | **每 slice 交付**：`implement → equivalence → cutover → living-docs`。前置：spec 已完成。见 [`pipelines/slice-delivery.pipeline.yaml`](pipelines/slice-delivery.pipeline.yaml)。 |
+| **weekly-health-check** ✅ | **周期性巡检**：`living-doc-author --target tasks-index,product-context`（无 approval）。见 [`pipelines/weekly-health-check.pipeline.yaml`](pipelines/weekly-health-check.pipeline.yaml)。 |
 | **greenfield-product-spec** ✅（v0.4） | **新产品 / 新模块 spec**：`debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`。从 product brief 开始，不要求 legacy fact baseline。见 [`pipelines/greenfield-product-spec.pipeline.yaml`](pipelines/greenfield-product-spec.pipeline.yaml)。 |
 
 ## 使用

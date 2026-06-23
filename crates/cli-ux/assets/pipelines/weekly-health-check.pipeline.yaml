@@ -1,0 +1,19 @@
+name: weekly-health-check
+description: >-
+  周期性活文档健康巡检（建议每周 cron 或手动 Issue）。刷新 tasks/README 索引与
+  docs/PROJECT_CONTEXT.md §现在状态；不修改工程画像正文。无 requires_approval。
+scale: full
+keywords:
+  - weekly
+  - health
+  - living-doc
+  - tasks-index
+  - product-context
+
+stages:
+  - name: health-sync
+    skill: living-doc-author
+    description: >-
+      运行 living-doc-author，--target tasks-index,product-context。
+      扫描 doc-code drift，刷新 tasks/README 健康度与 PROJECT_CONTEXT §现在状态。
+    depends_on: []

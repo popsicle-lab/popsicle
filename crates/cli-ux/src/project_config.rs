@@ -398,11 +398,18 @@ pub fn approval_mode_guidance(mode: ApprovalMode, lang: AgentLanguage) -> &'stat
 
 /// Inject into CLI JSON / artifact frontmatter when `workflow.inject_on_run` is enabled.
 pub fn agent_prompt_context(workspace_root: &Path) -> String {
-    load_project_config(workspace_root)
+    let Some(config) = load_project_config(workspace_root)
         .ok()
         .filter(|c| c.workflow.inject_on_run)
-        .map(|c| prompt_context_block(&c))
-        .unwrap_or_default()
+    else {
+        return String::new();
+    };
+    let mut out = prompt_context_block(&config);
+    out.push_str(&crate::project_context::project_context_injection_block(
+        workspace_root,
+        crate::project_context::DEFAULT_INJECTION_MAX_BYTES,
+    ));
+    out
 }
 
 pub fn prompt_context_block(config: &ProjectConfig) -> String {

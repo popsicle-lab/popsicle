@@ -7,7 +7,7 @@ import {
   type Node,
   MarkerType,
 } from "@xyflow/react";
-import { FileText, ShieldAlert } from "lucide-react";
+import { FileText, ShieldAlert, BookOpen } from "lucide-react";
 import {
   completeStage,
   getPipelineStatus,
@@ -19,6 +19,7 @@ import {
 } from "../hooks/useTauri";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
+import { useLocale } from "../i18n/LocaleContext";
 import type { Page } from "../App";
 
 interface Props {
@@ -103,6 +104,7 @@ function layoutStages(stages: StageStatusInfo[]): { nodes: Node[]; edges: Edge[]
 }
 
 export function PipelineView({ runId, setPage }: Props) {
+  const { m } = useLocale();
   const [status, setStatus] = useState<PipelineStatusFull | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -176,12 +178,31 @@ export function PipelineView({ runId, setPage }: Props) {
 
   return (
     <div className="page-frame flex h-full flex-col gap-3">
-      <div className="shrink-0">
-        <p className="text-[13px] font-semibold">{status.pipeline_name}</p>
-        <p className="text-[12px] text-[var(--text-muted)]">
-          {status.issue_key} · {status.run_status}
-          {status.current_stage ? ` · ${status.current_stage}` : ""}
-        </p>
+      <div className="shrink-0 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-[13px] font-semibold">{status.pipeline_name}</p>
+          <p className="text-[12px] text-[var(--text-muted)]">
+            {status.issue_key} · {status.run_status}
+            {status.current_stage ? ` · ${status.current_stage}` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-secondary shrink-0 text-[12px]"
+          onClick={() =>
+            setPage({
+              kind: "workflows",
+              tab: "pipelines",
+              pipeline: status.pipeline_name,
+              contextRunId: runId,
+              contextIssueKey: status.issue_key,
+              highlightStage: selected ?? status.current_stage ?? undefined,
+            })
+          }
+        >
+          <BookOpen size={14} className="mr-1 inline" />
+          {m.issues.openWorkflowHelp}
+        </button>
       </div>
 
       <div className="pipeline-split min-h-0 flex-1">
@@ -211,7 +232,30 @@ export function PipelineView({ runId, setPage }: Props) {
                 <StatusBadge status={stage.state} />
               </div>
               <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
-                {stage.description || stage.skills.join(", ")}
+                {stage.description || (
+                  <span className="flex flex-wrap gap-1">
+                    {stage.skills.map((sk) => (
+                      <button
+                        key={sk}
+                        type="button"
+                        onClick={() =>
+                          setPage({
+                            kind: "workflows",
+                            tab: "skills",
+                            skill: sk,
+                            contextRunId: runId,
+                            contextIssueKey: status.issue_key,
+                            pipeline: status.pipeline_name,
+                            highlightStage: stage.name,
+                          })
+                        }
+                        className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[var(--accent)] hover:underline"
+                      >
+                        {sk}
+                      </button>
+                    ))}
+                  </span>
+                )}
               </p>
               <div className="space-y-0.5">
                 {stage.documents.map((doc) => (

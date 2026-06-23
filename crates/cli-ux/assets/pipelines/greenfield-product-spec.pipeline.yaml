@@ -68,6 +68,7 @@ stages:
   - name: living-docs
     skill: living-doc-author
     description: >-
-      Sync product headers, task indexes, last verified metadata, and doc drift.
+      Delivery targets only: implementation-status, architecture-manifest,
+      product-header. Weekly targets use weekly-health-check pipeline.
     depends_on: [intent-check]
     requires_approval: true

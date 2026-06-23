@@ -14,6 +14,7 @@ import { RetroDocBanner } from "../components/RetroDocBanner";
 import { IssueTypeBadge } from "../components/IssueTypeBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import type { Page } from "../App";
+import { useLocale } from "../i18n/LocaleContext";
 
 interface Props {
   issueKey: string;
@@ -26,6 +27,7 @@ export function IssueDetailView({
   setPage,
   variant = "page",
 }: Props) {
+  const { m } = useLocale();
   const [issue, setIssue] = useState<IssueInfo | null>(null);
   const [docsByRun, setDocsByRun] = useState<Record<string, DocInfo[]>>({});
   const [guidance, setGuidance] = useState<IssueGuidance | null>(null);
@@ -294,16 +296,52 @@ export function IssueDetailView({
                 {issue.active_run_id.slice(0, 8)}…
               </code>
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                setPage({ kind: "pipeline", runId: issue.active_run_id! })
-              }
-              className="btn btn-secondary text-[12px]"
-            >
-              Open pipeline
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setPage({
+                    kind: "workflows",
+                    tab: "pipelines",
+                    pipeline: issue.pipeline ?? undefined,
+                    contextRunId: issue.active_run_id ?? undefined,
+                    contextIssueKey: issue.key,
+                  })
+                }
+                className="btn btn-secondary text-[12px]"
+              >
+                <BookOpen size={14} className="mr-1 inline" />
+                {m.issues.openWorkflowHelp}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPage({ kind: "pipeline", runId: issue.active_run_id! })
+                }
+                className="btn btn-secondary text-[12px]"
+              >
+                Open pipeline
+              </button>
+            </div>
           </div>
+        )}
+
+        {!issue.active_run_id && issue.pipeline && (
+          <button
+            type="button"
+            onClick={() =>
+              setPage({
+                kind: "workflows",
+                tab: "pipelines",
+                pipeline: issue.pipeline ?? undefined,
+                contextIssueKey: issue.key,
+              })
+            }
+            className="btn btn-secondary text-[12px]"
+          >
+            <BookOpen size={14} className="mr-1 inline" />
+            {m.issues.openWorkflowHelp}
+          </button>
         )}
 
         <div>

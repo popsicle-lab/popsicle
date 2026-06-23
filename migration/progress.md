@@ -11,7 +11,7 @@
 | 1 | `skill-runtime` | `crates/popsicle-core/src/{model,engine/hooks,registry,memory}/` 大部分 + `issue` 实体 + `model/pipeline.rs::PipelineRun` | **cutover-done** | `slice-1-skill-runtime` | PROJ-4 slice-delivery ✓ | ADR-005 Accepted · lib golden 6/6 · CLI 仍 legacy（cli-ux）|
 | 2 | `artifact-system` | `crates/popsicle-core/src/{model/document, engine/markdown,engine/guard,engine/context,engine/context_layer,engine/extractor}.rs` + `namespace` 实体 + `task_chunk_entity`（旧 `work_item` 重命名）+ doc/extract/summarize 命令族 | **cutover-done** | `slice-2-artifact-system` | PROJ-5 slice-delivery ✓ | ADR-006 Accepted · lib golden 6/6 · CLI 仍 legacy（cli-ux）|
 | 3 | `cli-ux` | `crates/popsicle-cli/` + `crates/popsicle-core/src/commands/` + `prompt/migrate/admin` 命令族 + **`ui/` Tauri 壳** | **cutover-done** | `slice-3-cli-ux` / `slice-4-ui` | PROJ-43 living-docs ✓ | ADR-008~023 · issue_tasks + issue-author · golden 57/57 · **dogfood-usable** |
-| 4 | ~~`sync-collab`~~ | ~~`crates/popsicle-sync/`~~ | **decided: dropped** | — | — | PDR-001 整砍 · 触发条件文档 = `docs/PROJECT_CONTEXT.md §未来 collab 触发条件`（待 living-doc）|
+| 4 | ~~`sync-collab`~~ | ~~`crates/popsicle-sync/`~~ | **decided: dropped** | — | — | PDR-001 整砍 · 触发条件见 `docs/PROJECT_CONTEXT.md` §未来 collab 触发条件（ADR-026）|
 
 ## 状态语义
 

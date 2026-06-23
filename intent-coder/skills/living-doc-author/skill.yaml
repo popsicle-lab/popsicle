@@ -1,5 +1,5 @@
 name: living-doc-author
-description: 活文档保活 / 对账 skill。扫描 doc-code drift 信号（过期、断链、孤儿、未验证），刷新 tasks/README.md 健康度统计、task 文件反向引用、frontmatter last_verified，并填充 project-init 留下的 PROJECT_CONTEXT 骨架。**不创作新内容**（那是 prd-writer 的活）——只做对账与刷新，让活文档永远代表「现在」。多处模板已挂钩 `popsicle skill start living-doc-author --target <target>`。
+description: 活文档保活 / 对账 skill。按 --target 分组：slice 交付（implementation-status 等）、intent-check 后（last-verified）、weekly（tasks-index + product-context §现在状态）。**不创作**工程画像正文。多处模板已挂钩 `popsicle skill start living-doc-author --target <target>`。
 version: "0.1.0"
 
 # 主要消费**文件系统现状**（现有 tasks/*.md、intents/*.intent、PRODUCT.md、PDR），
@@ -89,12 +89,11 @@ prompts:
       - tasks-index            → 刷新 products/{p}/tasks/README.md 索引 + 健康度
       - task-backrefs          → 刷新各 task 文件「反向引用」节
       - last-verified          → 用 intent-consistency-report 回填 task frontmatter last_verified
-      - product-context        → 填 docs/PROJECT_CONTEXT.md（project-init 留的骨架）
+      - product-context        → 刷 docs/PROJECT_CONTEXT.md §现在状态（product 清单、活跃 task、最近 PDR）；**不**改 §工程画像
       - implementation-status  → 用 implementation-coverage 回填 tasks/README「已实施」列
       - architecture-manifest  → 合并 RFC/ADR Consequences 到 ARCHITECTURE.md § File Manifest
       - product-header         → 写 PRODUCT.md 双行头（一行用途 ≤25 字 + 用户场景 ≤35 字）
-      - all                    → 以上全部（slice-delivery 末尾建议：
-        implementation-status,architecture-manifest,product-header）
+      - all                    → 以上全部（**不推荐**一次性跑；按频率分组见 guide.md）
 
     Step 2 —— 枚举：products/*/tasks/**/T-*.md、products/*/intents/*.intent、
       products/*/PRODUCT.md、decisions/pdr/PDR-*.md、最近的 *.intent-consistency-report.md。
@@ -144,8 +143,12 @@ prompts:
       task，把 frontmatter `last_verified: ~` 改为报告日期。**只回填 verified**；
       failed/unknown/skipped 不回填（保持 ~），并在 report 里点名。
 
-    - **product-context**：填 docs/PROJECT_CONTEXT.md 的「现在状态」类章节
-      （product 清单、活跃 task 数、最近 PDR），骨架保留。
+    - **product-context**：刷 docs/PROJECT_CONTEXT.md §现在状态（product 清单、活跃 task 数、最近 PDR）。**不**修改 §工程画像（由 Settings UI / 人工维护）。
+
+    **频率分组**（见 guide.md）：
+    - delivery：implementation-status, architecture-manifest, product-header
+    - post-intent-check：last-verified, task-backrefs
+    - weekly：tasks-index, product-context
 
     - **implementation-status**：读最近 `*.implementation-coverage.md`，更新
       products/{p}/tasks/README.md 的「已实施」列（及索引表若适用）。

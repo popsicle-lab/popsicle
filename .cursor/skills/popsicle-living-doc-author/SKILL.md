@@ -1,6 +1,6 @@
 ---
 name: popsicle-living-doc-author
-description: 活文档保活 / 对账 skill。扫描 doc-code drift 信号（过期、断链、孤儿、未验证），刷新 tasks/README.md 健康度统计、task 文件反向引用、frontmatter last_verified，并填充 project-init 留下的 PROJECT_CONTEXT 骨架。**不创作新内容**（那是 prd-writer 的活）——只做对账与刷新，让活文档永远代表「现在」。多处模板已挂钩 `popsicle skill start living-doc-author --target <target>`。 (from module: intent-coder)
+description: 活文档保活 / 对账 skill。按频率分组：slice 交付（implementation-status 等）、intent-check 后（last-verified）、weekly（tasks-index + product-context §现在状态）。不创作工程画像正文。 (from module: intent-coder)
 ---
 
 > This skill is provided by the **intent-coder** module.

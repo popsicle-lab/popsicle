@@ -7,7 +7,9 @@ mod intent_coder_bundle;
 mod intent_goal_trace;
 mod pipeline_gate;
 pub mod project_config;
+pub mod project_context;
 pub mod self_host;
+pub mod workflow_catalog;
 pub mod workspace_readers;
 
 #[cfg(feature = "ui")]
@@ -22,10 +24,11 @@ pub mod ui;
 pub use global_config::WorkspaceSource;
 pub use self_host::{
     binary_provenance_for, bootstrap_workspace_at, bundled_pipeline_names,
-    install_intent_coder_module, intent_coder_module_version, run_tool, IntentCoderInstallResult,
-    IntentCoderSource, LocalWorkspace, SelfHostDomain, StateBackend, Workspace,
-    WorkspaceBootstrapOutcome,
+    install_intent_coder_module, intent_coder_module_version, list_installed_pipeline_names,
+    run_tool, IntentCoderInstallResult, IntentCoderSource, LocalWorkspace, SelfHostDomain,
+    StateBackend, Workspace, WorkspaceBootstrapOutcome,
 };
+pub use workflow_catalog::build_workflow_catalog;
 
 use std::collections::BTreeMap;
 

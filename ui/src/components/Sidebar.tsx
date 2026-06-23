@@ -1,4 +1,4 @@
-import { ClipboardList, Layers, Package, Settings } from "lucide-react";
+import { BookOpen, ClipboardList, Layers, Package, Settings } from "lucide-react";
 import type { Page } from "../App";
 import type { ProjectInfo } from "../hooks/useTauri";
 import { useLocale } from "../i18n/LocaleContext";
@@ -29,6 +29,7 @@ export function Sidebar({
   }[] = [
     { kind: "issues", label: m.nav.issues, icon: ClipboardList },
     { kind: "products", label: m.nav.products, icon: Package },
+    { kind: "workflows", label: m.nav.workflows, icon: BookOpen },
     { kind: "settings", label: m.nav.settings, icon: Settings },
   ];
 
@@ -47,6 +48,9 @@ export function Sidebar({
         page.kind === "task" ||
         page.kind === "intent"
       );
+    }
+    if (kind === "workflows") {
+      return page.kind === "workflows";
     }
     if (kind === "settings") {
       return page.kind === "settings";
@@ -105,6 +109,8 @@ export function Sidebar({
                   setPage({ kind: "products", tab: "tasks" });
                 } else if (item.kind === "settings") {
                   setPage({ kind: "settings" });
+                } else if (item.kind === "workflows") {
+                  setPage({ kind: "workflows", tab: "pipelines" });
                 } else {
                   setPage({ kind: "issues" });
                 }
