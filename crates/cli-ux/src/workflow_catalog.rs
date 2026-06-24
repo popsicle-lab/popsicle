@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use skill_runtime::PipelineDef;
 use storage::WorkspaceError;
 
+use crate::intent_coder_resolve::intent_coder_skills_dir;
+use crate::pipeline_taxonomy::pipeline_domain;
 use crate::project_config::{default_pipelines_by_type, load_project_config, WorkflowProfile};
-use crate::self_host::{list_installed_pipeline_names, load_pipeline_def, Workspace};
+use crate::workspace::{list_installed_pipeline_names, load_pipeline_def, Workspace};
 
 const STANDALONE_SKILLS: &[&str] = &["issue-author"];
 
@@ -107,31 +109,12 @@ fn default_version() -> String {
     "0.1.0".into()
 }
 
-fn pipeline_category(name: &str, keywords: &[String]) -> &'static str {
-    if name == "weekly-health-check" {
-        return "periodic";
-    }
-    if name == "bugfix" {
-        return "bugfix";
-    }
-    if name == "slice-delivery" {
-        return "delivery";
-    }
-    if name.contains("bootstrap") {
-        return "bootstrap";
-    }
-    if keywords.iter().any(|k| k == "migration") {
-        return "migration";
-    }
-    "spec"
+fn pipeline_category(name: &str, _keywords: &[String]) -> &'static str {
+    pipeline_domain(name)
 }
 
 fn skills_dir(workspace: &Workspace) -> PathBuf {
-    let live = workspace.intent_coder_source().join("skills");
-    if live.is_dir() {
-        return live;
-    }
-    workspace.intent_coder_module_dir().join("skills")
+    intent_coder_skills_dir(&workspace.root)
 }
 
 fn load_skill_entries(skills_dir: &Path) -> Result<Vec<SkillCatalogEntry>, WorkspaceError> {
@@ -227,7 +210,7 @@ fn pipeline_to_entry(
 fn recommended_pipeline_names(profile: WorkflowProfile) -> BTreeSet<String> {
     default_pipelines_by_type(profile)
         .into_values()
-        .chain(std::iter::once("weekly-health-check".into()))
+        .chain(std::iter::once("doc-sync-weekly".into()))
         .collect()
 }
 
@@ -284,7 +267,7 @@ mod tests {
                 .as_nanos()
         ));
         fs::create_dir_all(root.join(".popsicle/pipelines")).unwrap();
-        fs::create_dir_all(root.join(".popsicle/self-host")).unwrap();
+        fs::create_dir_all(root.join(".popsicle")).unwrap();
         Workspace::at(root)
     }
 
@@ -294,7 +277,7 @@ mod tests {
         ws.install_bundled_pipelines().unwrap();
         crate::install_intent_coder_module(&ws, false).unwrap();
         let cat = build_workflow_catalog(&ws).unwrap();
-        assert!(cat.pipelines.iter().any(|p| p.name == "slice-delivery"));
+        assert!(cat.pipelines.iter().any(|p| p.name == "feature-delivery"));
         assert!(cat.skills.iter().any(|s| s.name == "shadow-implementer"));
     }
 }

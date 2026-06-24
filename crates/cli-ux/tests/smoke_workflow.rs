@@ -66,7 +66,7 @@ fn field(stdout: &str, key: &str) -> String {
 }
 
 #[test]
-fn self_host_workflow_smoke_passes() {
+fn workspace_workflow_smoke_passes() {
     let home = isolated_home();
     let ws = temp_workspace();
     ok_in(&ws, &home, &["init"]);

@@ -16,6 +16,35 @@ fn io_err(e: impl ToString) -> WorkspaceError {
 /// Compiled from `intent-coder/` at build time (`crates/cli-ux/../../intent-coder`).
 pub static EMBEDDED_INTENT_CODER: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../intent-coder");
 
+/// Pipeline template names from the compile-time `intent-coder/pipelines/` tree.
+pub fn embedded_pipeline_names() -> Vec<String> {
+    let Some(pipelines) = EMBEDDED_INTENT_CODER.get_dir("pipelines") else {
+        return Vec::new();
+    };
+    pipelines
+        .entries()
+        .iter()
+        .filter_map(|entry| {
+            let DirEntry::File(file) = entry else {
+                return None;
+            };
+            file.path()
+                .file_name()?
+                .to_str()?
+                .strip_suffix(".pipeline.yaml")
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// Raw YAML bytes for a bundled pipeline template.
+pub fn embedded_pipeline_content(name: &str) -> Option<&'static [u8]> {
+    let rel = format!("pipelines/{name}.pipeline.yaml");
+    EMBEDDED_INTENT_CODER
+        .get_file(rel.as_str())
+        .map(|file| file.contents())
+}
+
 pub fn embedded_module_version() -> Option<String> {
     let content = EMBEDDED_INTENT_CODER
         .get_file("module.yaml")?

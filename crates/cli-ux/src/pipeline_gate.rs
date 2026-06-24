@@ -1,15 +1,20 @@
-//! Pre-flight gates for pipeline routing (`issue-author` guide § slice-delivery / bugfix 硬门禁).
+//! Pre-flight gates for pipeline routing (`issue-author` guide § migration-slice-delivery / fix-regression 硬门禁).
 
 use std::path::Path;
 
 use storage::{IssueTaskLink, WorkspaceError};
 
-/// Reject `slice-delivery` + `--proposed-task` at issue create time.
+use crate::pipeline_taxonomy::{is_fix_regression, is_migration_slice_delivery};
+
+/// Reject migration slice delivery + `--proposed-task` at issue create time.
 pub fn validate_slice_delivery_create(
     pipeline: Option<&str>,
     proposed_tasks: &[(String, Option<String>)],
 ) -> Result<(), WorkspaceError> {
-    if pipeline != Some("slice-delivery") {
+    let Some(name) = pipeline else {
+        return Ok(());
+    };
+    if !is_migration_slice_delivery(name) {
         return Ok(());
     }
     let has_proposed = proposed_tasks
@@ -17,20 +22,23 @@ pub fn validate_slice_delivery_create(
         .any(|(title, _)| !title.trim().is_empty());
     if has_proposed {
         return Err(WorkspaceError::InvalidState(
-            "slice-delivery-gate:create-proposed:--pipeline slice-delivery 不可与 --proposed-task 同用；新能力用 slice-spec（见 intent-coder/skills/issue-author/guide.md）".into(),
+            "migration-slice-delivery-gate:create-proposed:--pipeline migration-slice-delivery 不可与 --proposed-task 同用；新能力用 feature-spec 或 migration-slice-spec（见 issue-author/guide.md）".into(),
         ));
     }
     Ok(())
 }
 
-/// Reject obvious `bugfix` pipeline misuse at issue create time (PROJ-53).
+/// Reject obvious fix-regression pipeline misuse at issue create time (PROJ-53).
 pub fn validate_bugfix_create(
     issue_type: &str,
     pipeline: Option<&str>,
     title: &str,
     description: &str,
 ) -> Result<(), WorkspaceError> {
-    if pipeline != Some("bugfix") {
+    let Some(name) = pipeline else {
+        return Ok(());
+    };
+    if !is_fix_regression(name) {
         return Ok(());
     }
 
@@ -46,25 +54,25 @@ pub fn validate_bugfix_create(
 
     if issue_type == "product" {
         return Err(WorkspaceError::InvalidState(
-            "bugfix-gate:product-type:--type product 不可与 --pipeline bugfix 同用；新产品用 greenfield-product-spec，已交付能力补 spec 见 issue-author/guide.md § retro".into(),
+            "fix-regression-gate:product-type:--type product 不可与 --pipeline fix-regression 同用；新产品用 product-greenfield-spec，已交付能力补 spec 见 doc-retro-spec".into(),
         ));
     }
 
     if touches_intent_spec_content(&haystack) {
         return Err(WorkspaceError::InvalidState(
-            "bugfix-gate:intent-content:description 触达 products/*/intents 或 realized_by；请用 slice-spec、retro spec（issue-author § retro），或 spec 已定后 slice-delivery + --tasks".into(),
+            "fix-regression-gate:intent-content:description 触达 products/*/intents 或 realized_by；请用 feature-spec、doc-retro-spec，或 spec 已定后 feature-delivery / migration-slice-delivery + --tasks".into(),
         ));
     }
 
     if touches_intent_coder_skill_chain(&haystack) {
         return Err(WorkspaceError::InvalidState(
-            "bugfix-gate:skill-chain:description 触达 intent-coder 技能链；请用 --type technical --pipeline tech-decision 或 slice-spec，见 issue-author/guide.md".into(),
+            "fix-regression-gate:skill-chain:description 触达 intent-coder 技能链；请用 arch-decision 或 feature-spec，见 issue-author/guide.md".into(),
         ));
     }
 
     if touches_major_ui_capability(&haystack) {
         return Err(WorkspaceError::InvalidState(
-            "bugfix-gate:ui-capability:新 UI/可视化能力不宜 bugfix；spec 已覆盖用 slice-delivery + --tasks，未覆盖用 slice-spec 或 retro spec".into(),
+            "fix-regression-gate:ui-capability:新 UI/可视化能力不宜 fix-regression；spec 已覆盖用 feature-delivery + --tasks，未覆盖用 feature-spec 或 doc-retro-spec".into(),
         ));
     }
 
@@ -131,7 +139,7 @@ pub fn validate_slice_delivery_start(
     let proposed: Vec<_> = task_links.iter().filter(|l| l.role == "proposed").collect();
     if !proposed.is_empty() {
         return Err(WorkspaceError::InvalidState(format!(
-            "slice-delivery-gate:proposed-task:{}:Issue 含 proposed task，须改用 --pipeline slice-spec 或先晋升 task；见 issue-author/guide.md",
+            "migration-slice-delivery-gate:proposed-task:{}:Issue 含 proposed task，须改用 feature-spec / migration-slice-spec 或先晋升 task；见 issue-author/guide.md",
             proposed.len()
         )));
     }
@@ -144,14 +152,14 @@ pub fn validate_slice_delivery_start(
 
     if linked_ids.is_empty() {
         return Err(WorkspaceError::InvalidState(
-            "slice-delivery-gate:no-tasks:须先执行 issue-author，create 时传 --tasks <id>；description 须引用每个 task_id".into(),
+            "migration-slice-delivery-gate:no-tasks:须先执行 issue-author，create 时传 --tasks <id>；description 须引用每个 task_id".into(),
         ));
     }
 
     for task_id in &linked_ids {
         if !description.contains(task_id) {
             return Err(WorkspaceError::InvalidState(format!(
-                "slice-delivery-gate:description-missing-task:{task_id}:--description 须写明本 run 实现的 task_id；新能力用 --proposed-task + slice-spec"
+                "migration-slice-delivery-gate:description-missing-task:{task_id}:--description 须写明本 run 实现的 task_id；新能力用 --proposed-task + feature-spec"
             )));
         }
 
@@ -165,7 +173,7 @@ pub fn validate_slice_delivery_start(
 
         if related.is_empty() {
             return Err(WorkspaceError::InvalidState(format!(
-                "slice-delivery-gate:no-related-intents:{task_id}:task frontmatter 缺少 related_intents"
+                "migration-slice-delivery-gate:no-related-intents:{task_id}:task frontmatter 缺少 related_intents"
             )));
         }
 
@@ -179,7 +187,7 @@ pub fn validate_slice_delivery_start(
         });
         if !intent_ok {
             return Err(WorkspaceError::InvalidState(format!(
-                "slice-delivery-gate:intent-missing:{task_id}:related_intents 须在 products/{product_id}/intents/ 可解析"
+                "migration-slice-delivery-gate:intent-missing:{task_id}:related_intents 须在 products/{product_id}/intents/ 可解析"
             )));
         }
     }
@@ -250,7 +258,7 @@ intent GateTestIntent(r: GateTestResult) {
             "改 products/foo/intents",
         )
         .expect_err("expected reject");
-        assert!(err.to_string().contains("bugfix-gate:product-type"));
+        assert!(err.to_string().contains("fix-regression-gate:product-type"));
     }
 
     #[test]
@@ -262,7 +270,9 @@ intent GateTestIntent(r: GateTestResult) {
             "为 contracts.intent 补 realized_by",
         )
         .expect_err("expected reject");
-        assert!(err.to_string().contains("bugfix-gate:intent-content"));
+        assert!(err
+            .to_string()
+            .contains("fix-regression-gate:intent-content"));
     }
 
     #[test]
@@ -274,7 +284,7 @@ intent GateTestIntent(r: GateTestResult) {
             "更新 intent-coder/skills/intent-spec-writer/guide.md",
         )
         .expect_err("expected reject");
-        assert!(err.to_string().contains("bugfix-gate:skill-chain"));
+        assert!(err.to_string().contains("fix-regression-gate:skill-chain"));
     }
 
     #[test]
@@ -286,7 +296,9 @@ intent GateTestIntent(r: GateTestResult) {
             "接入 intent-lang-visualizer 完善 UI",
         )
         .expect_err("expected reject");
-        assert!(err.to_string().contains("bugfix-gate:ui-capability"));
+        assert!(err
+            .to_string()
+            .contains("fix-regression-gate:ui-capability"));
     }
 
     #[test]

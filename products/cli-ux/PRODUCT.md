@@ -13,7 +13,7 @@
 ## 用户视角的入口（实现面 = 宣传面，ADR-011）
 
 - `popsicle init` / `doctor`：准备 workspace 并校验二进制/工作区来源。
-- `popsicle issue` / `pipeline`：完整生命周期（create/list/show/start/**close** · status/next/stage complete）；issue 类型默认管线全部 bundled（含最小 `bugfix` 模板，ADR-012）；可选 `--epic-task` 绑定 task（ADR-022）。
+- `popsicle issue` / `pipeline`：完整生命周期（create/list/show/start/**close** · status/next/stage complete）；issue 类型默认管线全部 bundled（含最小 `fix-regression` 模板，ADR-012）；可选 `--epic-task` 绑定 task（ADR-022）。
 - **工作流画像**（`workflow.profile` in `project.yaml`）：`daily-dev` / `migration` / `pm-spec-only` / `opc-full` 切换默认 pipeline 与审批模式（ADR-022）。
 - **桌面 UI**：Products 健康信号、Issue 按 product/pipeline 分组、task 正文 Mermaid、无 pipeline Issue retro 横幅（ADR-022）；Issues 列表可按当前筛选**导出 Markdown 简报**至剪贴板（PDR-004 / T-CU-0014）；**工作流帮助**侧栏页浏览 Pipeline/Skill 目录，并从 Issue 上下文高亮当前 stage（PDR-007 / T-CU-0017）。
 - `popsicle doc`：生产、召回与**校验** stage artifact（create/list/show/**check**——frontmatter/实文/占位符/checkbox）。
@@ -51,9 +51,9 @@
 - ADR-010：self-host Phase 1（TSV workspace + IDD workflow + doctor provenance）。
 - ADR-011：命令面对齐——help 收敛到实现面、`--format json` 全局化、工具解析仓库内严格化、根 AGENTS.md 与实现面绑定。
 - ADR-012：可用性闭环——`doc check` / `issue close` 落地、默认管线 bundled 化（D-101）+ 模板自愈、smoke 隔离与残留清理（O-102）。
-- ADR-013：SQLite Phase 2 存储——`.popsicle/self-host/state.db`（避开 legacy popsicle.db）、后端自动检测 + TSV 兼容、`admin migrate` 真迁移（幂等留底）、doctor 后端动态报告。PROJ-11 关闭。
+- ADR-013 / ADR-032：SQLite 存储——`.popsicle/state.db` + `.popsicle/runs/`（自动从 legacy `self-host/` 上提）、TSV 兼容、`admin migrate` / `admin relocate-workspace`、doctor 动态报告。PROJ-11 / PROJ-62 关闭。
 - ADR-014：DevOps 工具链迁移——Makefile（check/golden/intent）、install.sh（裁剪 UI/completions）、pre-commit hook、CI/Release workflows（纯 Rust 矩阵）；fmt/clippy 欠账清零。
-- ADR-015：Tauri 2 桌面 UI（MVP+）— `popsicle ui`，Cargo feature `ui`，直连 `SelfHostDomain`。
+- ADR-015：Tauri 2 桌面 UI（MVP+）— `popsicle ui`，Cargo feature `ui`，直连 `WorkspaceDomain`。
 - ADR-016：UI 项目切换器 + MRU，桥接 `global.json`；`.app` 零参数启动 UI。
 - ADR-018：UI modern layout — collapsible sidebar、breadcrumb、Issues/Pipeline/Products master-detail split（≥1100px）；D-701 美学 divergence。
 - ADR-017：intent-coder 编译期嵌入，`init` 解压到 `.popsicle/modules/intent-coder/`（DMG 无独立 module 目录）。

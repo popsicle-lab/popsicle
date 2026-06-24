@@ -1,0 +1,29 @@
+name: doc-retro-spec
+description: >-
+  文档域 · 代码已合并后的 spec 补债：PDR + task + intent block + 活文档。
+  替代 retro-doc-checklist 无 pipeline 路径（见 issue-author § retro）。
+scale: light
+keywords:
+  - doc
+  - retro
+  - spec
+  - backfill
+
+stages:
+  - name: retro-spec
+    skill: prd-writer
+    description: >-
+      按 retro-doc-checklist 写 PDR、task、acceptance.intent block（不跑 facts/debate）。
+    depends_on: []
+
+  - name: intent-check
+    skill: intent-consistency-check
+    description: >-
+      intent-validate path=products/<product>/intents 必须通过。
+    depends_on: [retro-spec]
+
+  - name: doc-sync
+    skill: living-doc-author
+    description: >-
+      --target implementation-status,product-header；可选 tasks-index。
+    depends_on: [intent-check]

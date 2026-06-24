@@ -15,8 +15,8 @@ use cli_ux::global_config::{
     add_project, list_recent_projects, load_global_config, open_project, resolve_workspace_root,
     set_default_project, WorkspaceSource,
 };
-use cli_ux::self_host::{binary_provenance_for, Workspace};
-use cli_ux::{parse_cli, run_command_stateless, SelfHostDomain};
+use cli_ux::workspace::{binary_provenance_for, Workspace};
+use cli_ux::{parse_cli, run_command_stateless, WorkspaceDomain};
 
 fn isolated_home() -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -31,7 +31,7 @@ fn isolated_home() -> PathBuf {
 }
 
 fn write_workspace(root: &Path) {
-    fs::create_dir_all(root.join(".popsicle/self-host")).unwrap();
+    fs::create_dir_all(root.join(".popsicle")).unwrap();
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn cli_project_flag_overrides_default() {
         "json",
     ])
     .unwrap();
-    let domain = SelfHostDomain::open_with(parsed.globals.project.as_deref()).unwrap();
+    let domain = WorkspaceDomain::open_with(parsed.globals.project.as_deref()).unwrap();
     assert!(domain.workspace_root().ends_with("proj-b"));
     assert_eq!(domain.workspace_source(), WorkspaceSource::CliFlag);
 
@@ -175,7 +175,7 @@ fn doctor_reports_workspace_source() {
 
     let prev_cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(&home).unwrap();
-    let domain = SelfHostDomain::open_with(None).unwrap();
+    let domain = WorkspaceDomain::open_with(None).unwrap();
     std::env::set_current_dir(prev_cwd).unwrap();
     let prov = binary_provenance_for(
         &Workspace::at(domain.workspace_root().to_path_buf()),

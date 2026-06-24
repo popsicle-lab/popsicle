@@ -1,8 +1,8 @@
 //! SQLite single-file state backend (ADR-009 Phase 2, PROJ-11).
 //!
 //! Owns the indexed workspace state (meta counters, issues, runs, documents)
-//! at `.popsicle/popsicle.db`. Pipeline session working files intentionally
-//! stay as per-run JSON (human-inspectable, atomic per run) — see ADR-013.
+//! at `.popsicle/state.db`. Pipeline session working files intentionally
+//! stay as per-run JSON under `.popsicle/runs/` — see ADR-013 / ADR-032.
 //! Document bodies live in artifact files, not in the db.
 
 use std::path::Path;

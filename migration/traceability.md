@@ -1,7 +1,7 @@
 # Migration Traceability
 
 > **Status**: skill-runtime + artifact-system + cli-ux cutover-done
-> **Last-Updated**: 2026-06-11（PROJ-43）
+> **Last-Updated**: 2026-06-23（PROJ-59）
 
 | Legacy 路径（`legacy/popsicle/`）| 新位置（`popsicle-new`）| 责任 Spec | 切流 ADR | 等价性 baseline | 状态 |
 |---|---|---|---|---|---|
@@ -40,6 +40,8 @@
 | `epic_task_id` 0/1 task 绑定 | `issue_tasks` 多对多 + `issue-author` skill | cli-ux | ADR-023 | `docs/baseline/2026-06-11/cli-ux-issue-tasks/` | cutover-done |
 | PROJ-49～51 dogfood 误走 `bugfix` pipeline | 交付物已合并；spec trace 不完整 | cli-ux | — | PROJ-53 `bugfix-gate` + issue-author § retro | audit（不重跑 pipeline）|
 | legacy `context scan` + `.popsicle/project-context.md` | `docs/PROJECT_CONTEXT.md` + Settings UI + weekly-health-check + agent inject | cli-ux | ADR-026 | `docs/baseline/2026-06-23/cli-ux-weekly-health/` | cutover-done |
+| `crates/cli-ux/assets/pipelines/*.yaml`（独立 include_str） | `intent-coder/pipelines/` + 嵌入包 `embedded_pipeline_*` | cli-ux | ADR-028 | `intent_coder_resolve` + `workflow_catalog` tests | cutover-done |
+| pipeline 旧名（`slice-*`/`bugfix`/…） | ADR-029 canonical + alias（`pipeline_taxonomy`） | cli-ux | ADR-029 | `pipeline_taxonomy` + `pipeline_gate` + `make check` | cutover-done |
 
 ## 规则
 

@@ -1,5 +1,7 @@
 //! Property tests mirroring `products/cli-ux/intents/*`.
 
+use std::collections::BTreeMap;
+
 use cli_ux::{
     complete_pipeline_stage, contains_removed_top_level_command, create_document_artifact,
     parse_args, run_command, start_issue_run, top_level_help, AdminCommand, AdminResult, CliDomain,
@@ -81,6 +83,45 @@ impl CliDomain for TestDomain {
             explicit_workspace: false,
             workspace: "/tmp".into(),
             details: Default::default(),
+        })
+    }
+
+    fn admin_backfill_pipeline_names(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<AdminResult, CliError> {
+        Ok(AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: !workspace.is_empty(),
+            workspace: workspace.to_string(),
+            details: BTreeMap::from([("dry_run".into(), dry_run.to_string())]),
+        })
+    }
+
+    fn admin_purge_legacy_workspace(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<AdminResult, CliError> {
+        Ok(AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: !workspace.is_empty(),
+            workspace: workspace.to_string(),
+            details: BTreeMap::from([("dry_run".into(), dry_run.to_string())]),
+        })
+    }
+
+    fn admin_relocate_workspace(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<AdminResult, CliError> {
+        Ok(AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: !workspace.is_empty(),
+            workspace: workspace.to_string(),
+            details: BTreeMap::from([("dry_run".into(), dry_run.to_string())]),
         })
     }
 }

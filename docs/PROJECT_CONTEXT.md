@@ -1,8 +1,8 @@
 # Project Context
 
-> **Last-Updated**: 2026-06-23
-> **Last-Decision-Ref**: ADR-026
-> **Owner**: 仓库维护者 + Settings UI；§现在状态 由 weekly-health-check 刷新
+> **Last-Updated**: 2026-06-24
+> **Last-Decision-Ref**: ADR-032
+> **Owner**: 仓库维护者 + Settings UI；§现在状态 由 doc-sync-weekly 刷新
 
 `docs/PROJECT_CONTEXT.md` 是本仓库**唯一的工程画像权威源**（git 追踪）。Agent 在 `inject_on_run: true` 时通过 `issue start` / `doc create` 的 `agent_context` 注入 §工程画像（不含 §现在状态）。
 
@@ -13,7 +13,7 @@
 - **语言**：Rust（workspace，`rust-toolchain.toml` pin）
 - **前端**：Tauri 2 + React + TypeScript（`ui/`，`cargo build --features ui -p cli-ux`）
 - **形式化**：IntentLang + Z3（`intent-validate` / `make intent`）
-- **存储**：SQLite @ `.popsicle/self-host/state.db`（ADR-013）
+- **存储**：SQLite @ `.popsicle/state.db`（ADR-013 / ADR-032）
 
 ### 仓库布局（目标态）
 
@@ -24,16 +24,15 @@
 | `crates/cli-ux/` | `popsicle` CLI + Tauri IPC |
 | `crates/storage/` | DocumentRow / WorkspaceStore |
 | `products/<product>/` | IDD 四件套（PRODUCT / ARCHITECTURE / intents / decisions） |
-| `legacy/popsicle/` | Legacy submodule（equivalence baseline 对照） |
-| `migration/` | 切流 traceability + progress 看板 |
-| `docs/` | CHARTER、PROJECT_CONTEXT、baseline |
+| `migration/` | 切流 traceability + progress 看板（历史归档） |
+| `docs/` | CHARTER、PROJECT_CONTEXT、baseline（含 legacy 冻结快照） |
 
 Workspace members：`crates/*`（ADR-003）。
 
 ### DevOps 标准
 
 - **本地门禁**：`make check`（fmt + clippy + test，`-Dwarnings`）
-- **Golden**：`make golden`（legacy vs new 对账链）
+- **Golden**：`make golden`（self-host 回归链，见 `docs/baseline/`）
 - **Intent**：`make intent` / `popsicle tool run intent-validate path=products`
 - **Hooks**：`make install-hooks`（pre-commit fmt/clippy/test）
 - **CI/Release**：GitHub Actions 纯 Rust 矩阵 + 可选 UI job（ADR-014）
@@ -42,12 +41,12 @@ Workspace members：`crates/*`（ADR-003）。
 ### 关键约束
 
 - Pipeline 审批：`workflow.approval_mode`（默认 `delegate-dangerous`）；危险阶段 `cutover`、`living-docs`
-- Spec 门禁：新能力须 `slice-spec` → `slice-delivery`；`bugfix` 不得滥用（PROJ-53）
+- Spec 门禁：新能力须 `feature-spec` / `migration-slice-spec` → `feature-delivery` / `migration-slice-delivery`；`fix-regression` 不得滥用（PROJ-53）
 - 活文档：只用现在时；历史进 ADR/PDR / `migration/traceability.md`
 
 ## 现在状态
 
-> 由 `weekly-health-check` pipeline + `living-doc-author --target product-context` 机械刷新。请勿在 Settings 中手工编辑本节。
+> 由 `doc-sync-weekly` pipeline + `living-doc-author --target product-context` 机械刷新。请勿在 Settings 中手工编辑本节。
 
 | 指标 | 值 |
 |---|---|

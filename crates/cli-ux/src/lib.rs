@@ -4,12 +4,14 @@ pub mod cli_install;
 pub mod global_config;
 pub mod i18n;
 mod intent_coder_bundle;
+mod intent_coder_resolve;
 mod intent_goal_trace;
 mod pipeline_gate;
+mod pipeline_taxonomy;
 pub mod project_config;
 pub mod project_context;
-pub mod self_host;
 pub mod workflow_catalog;
+pub mod workspace;
 pub mod workspace_readers;
 
 #[cfg(feature = "ui")]
@@ -22,13 +24,13 @@ mod mermaid_sanitize;
 pub mod ui;
 
 pub use global_config::WorkspaceSource;
-pub use self_host::{
+pub use workflow_catalog::build_workflow_catalog;
+pub use workspace::{
     binary_provenance_for, bootstrap_workspace_at, bundled_pipeline_names,
     install_intent_coder_module, intent_coder_module_version, list_installed_pipeline_names,
-    run_tool, IntentCoderInstallResult, IntentCoderSource, LocalWorkspace, SelfHostDomain,
-    StateBackend, Workspace, WorkspaceBootstrapOutcome,
+    run_tool, IntentCoderInstallResult, IntentCoderSource, LocalWorkspace, StateBackend, Workspace,
+    WorkspaceBootstrapOutcome, WorkspaceDomain,
 };
-pub use workflow_catalog::build_workflow_catalog;
 
 use std::collections::BTreeMap;
 
@@ -36,14 +38,14 @@ use artifact_system::Document;
 use skill_runtime::{Issue, IssueType, PipelineDef, PipelineSession, PipelineStageDef};
 use storage::{DocumentRow, MemoryDocumentStore};
 
-/// The implemented self-host command surface (PROJ-17 re-adjudication of
+/// The implemented workspace command surface (PROJ-17 re-adjudication of
 /// PDR-001). Help must only advertise commands that `parse_args` accepts.
 pub const TOP_LEVEL_COMMANDS: &[&str] = &[
     "init", "doctor", "issue", "pipeline", "doc", "tool", "admin", "project", "ui",
 ];
 
 /// Legacy commands PDR-001 marked "preserve" but that are not part of the
-/// self-host MVP. They fail with an actionable error instead of a generic
+/// workspace MVP. They fail with an actionable error instead of a generic
 /// "unknown command" so agents following stale docs get redirected.
 pub const DEFERRED_TOP_LEVEL_COMMANDS: &[&str] = &[
     "module",
@@ -168,6 +170,9 @@ pub enum AdminCommand {
     Reinit { workspace: String },
     SyncIntentCoder,
     SyncProjectConfig,
+    BackfillPipelineNames { workspace: String, dry_run: bool },
+    PurgeLegacyWorkspace { workspace: String, dry_run: bool },
+    RelocateWorkspace { workspace: String, dry_run: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,18 +307,18 @@ pub trait CliDomain {
             linked_task_ids,
             proposed_tasks,
         );
-        Err(not_self_host("issue create"))
+        Err(not_workspace("issue create"))
     }
     fn list_issues(&self) -> Result<Vec<BTreeMap<String, String>>, CliError> {
-        Err(not_self_host("issue list"))
+        Err(not_workspace("issue list"))
     }
     fn show_issue(&self, key: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = key;
-        Err(not_self_host("issue show"))
+        Err(not_workspace("issue show"))
     }
     fn close_issue(&mut self, key: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = key;
-        Err(not_self_host("issue close"))
+        Err(not_workspace("issue close"))
     }
     fn link_issue_tasks(
         &mut self,
@@ -323,7 +328,7 @@ pub trait CliDomain {
         drop_proposed: bool,
     ) -> Result<IssueLinkResult, CliError> {
         let _ = (key, task_ids, replace, drop_proposed);
-        Err(not_self_host("issue link"))
+        Err(not_workspace("issue link"))
     }
     fn start_issue(
         &mut self,
@@ -339,23 +344,23 @@ pub trait CliDomain {
     ) -> Result<DocCreateResult, CliError>;
     fn list_docs(&self, run_id: Option<&str>) -> Result<Vec<BTreeMap<String, String>>, CliError> {
         let _ = run_id;
-        Err(not_self_host("doc list"))
+        Err(not_workspace("doc list"))
     }
     fn show_doc(&self, doc_id: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = doc_id;
-        Err(not_self_host("doc show"))
+        Err(not_workspace("doc show"))
     }
     fn check_doc(&self, doc_id: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = doc_id;
-        Err(not_self_host("doc check"))
+        Err(not_workspace("doc check"))
     }
     fn pipeline_status(&self, run_id: &str) -> Result<BTreeMap<String, String>, CliError> {
         let _ = run_id;
-        Err(not_self_host("pipeline status"))
+        Err(not_workspace("pipeline status"))
     }
     fn pipeline_next(&self, run_id: &str) -> Result<String, CliError> {
         let _ = run_id;
-        Err(not_self_host("pipeline next"))
+        Err(not_workspace("pipeline next"))
     }
     fn complete_stage(
         &mut self,
@@ -365,11 +370,11 @@ pub trait CliDomain {
     ) -> Result<StageAdvanceResult, CliError>;
     fn doctor(&self, format: OutputFormat) -> Result<CommandResponse, CliError> {
         let _ = format;
-        Err(not_self_host("doctor"))
+        Err(not_workspace("doctor"))
     }
     fn tool_run(&self, tool: &str, args: &BTreeMap<String, String>) -> Result<i32, CliError> {
         let _ = (tool, args);
-        Err(not_self_host("tool run"))
+        Err(not_workspace("tool run"))
     }
     fn admin_migrate(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
     fn project_language(&self) -> project_config::AgentLanguage {
@@ -378,17 +383,32 @@ pub trait CliDomain {
     fn admin_reinit(&mut self, workspace: &str) -> Result<AdminResult, CliError>;
     fn admin_sync_intent_coder(&mut self) -> Result<AdminResult, CliError>;
     fn admin_sync_project_config(&mut self) -> Result<AdminResult, CliError>;
+    fn admin_backfill_pipeline_names(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<AdminResult, CliError>;
+    fn admin_purge_legacy_workspace(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<AdminResult, CliError>;
+    fn admin_relocate_workspace(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<AdminResult, CliError>;
     fn current_workspace(&self) -> Result<BTreeMap<String, String>, CliError> {
-        Err(not_self_host("project current"))
+        Err(not_workspace("project current"))
     }
 }
 
-fn not_self_host(command: &str) -> CliError {
+fn not_workspace(command: &str) -> CliError {
     CliError::actionable(
-        "self-host",
+        "workspace",
         command,
         "run ./target/debug/popsicle from popsicle-new",
-        "command requires workspace-backed self-host domain",
+        "command requires workspace-backed domain",
     )
 }
 
@@ -448,8 +468,8 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
         return Err(CliError::actionable(
             "deferred",
             args[0].clone(),
-            "run `popsicle --help` for the implemented self-host surface",
-            "command is deferred from the self-host MVP (PROJ-17 re-adjudication of PDR-001)",
+            "run `popsicle --help` for the implemented workspace surface",
+            "command is deferred from the workspace MVP (PROJ-17 re-adjudication of PDR-001)",
         ));
     }
 
@@ -590,6 +610,24 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
                 && args.len() == 2 =>
         {
             Ok(Command::Admin(AdminCommand::SyncProjectConfig))
+        }
+        "admin" if args.get(1).map(String::as_str) == Some("backfill-pipeline-names") => {
+            Ok(Command::Admin(AdminCommand::BackfillPipelineNames {
+                workspace: flag_value_or(args, "--workspace", ""),
+                dry_run: args.iter().any(|a| a == "--dry-run"),
+            }))
+        }
+        "admin" if args.get(1).map(String::as_str) == Some("purge-legacy-workspace") => {
+            Ok(Command::Admin(AdminCommand::PurgeLegacyWorkspace {
+                workspace: flag_value_or(args, "--workspace", ""),
+                dry_run: args.iter().any(|a| a == "--dry-run"),
+            }))
+        }
+        "admin" if args.get(1).map(String::as_str) == Some("relocate-workspace") => {
+            Ok(Command::Admin(AdminCommand::RelocateWorkspace {
+                workspace: flag_value_or(args, "--workspace", ""),
+                dry_run: args.iter().any(|a| a == "--dry-run"),
+            }))
         }
         "project" if args.get(1).map(String::as_str) == Some("list") && args.len() == 2 => {
             Ok(Command::ProjectList)
@@ -955,6 +993,15 @@ pub fn run_command<D: CliDomain>(
         Command::Admin(AdminCommand::SyncProjectConfig) => {
             admin_response(domain.admin_sync_project_config()?)
         }
+        Command::Admin(AdminCommand::BackfillPipelineNames { workspace, dry_run }) => {
+            admin_response(domain.admin_backfill_pipeline_names(&workspace, dry_run)?)
+        }
+        Command::Admin(AdminCommand::PurgeLegacyWorkspace { workspace, dry_run }) => {
+            admin_response(domain.admin_purge_legacy_workspace(&workspace, dry_run)?)
+        }
+        Command::Admin(AdminCommand::RelocateWorkspace { workspace, dry_run }) => {
+            admin_response(domain.admin_relocate_workspace(&workspace, dry_run)?)
+        }
         Command::ProjectList
         | Command::ProjectAdd { .. }
         | Command::ProjectUse { .. }
@@ -1238,6 +1285,9 @@ pub const COMMAND_USAGE: &[&str] = &[
     "admin reinit [--workspace <path>]",
     "admin sync-intent-coder",
     "admin sync-project-config",
+    "admin backfill-pipeline-names [--dry-run] [--workspace <path>]",
+    "admin purge-legacy-workspace [--dry-run] [--workspace <path>]",
+    "admin relocate-workspace [--dry-run] [--workspace <path>]",
     "project list",
     "project add <path> [--name <n>]",
     "project use <name|path>",

@@ -122,45 +122,67 @@ fn fresh_workspace_defaults_to_sqlite_backend() {
             &[],
         )
         .expect("create issue");
-    assert!(root.join(".popsicle/self-host/state.db").is_file());
-    assert!(!root.join(".popsicle/self-host/state.tsv").is_file());
+    assert!(root.join(".popsicle/state.db").is_file());
+    assert!(!root.join(".popsicle/state.tsv").is_file());
 
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
-fn legacy_tsv_workspace_still_loads_and_saves() {
+fn legacy_tsv_imports_to_sqlite_on_open() {
     let root = temp_workspace();
     let dir = root.join(".popsicle/self-host");
     fs::create_dir_all(&dir).expect("layout");
     fs::write(
         dir.join("state.tsv"),
-        "meta\tnext_issue_num\t2\nmeta\tnext_run_num\t1\nmeta\tnext_doc_num\t1\nissue\tPROJ-1\tbug\tmedium\topen\tlegacy issue\tslice-3-cli-ux\ttest-open\tdesc\n",
+        "meta\tnext_issue_num\t2\nmeta\tnext_run_num\t1\nmeta\tnext_doc_num\t1\nissue\tPROJ-1\tbug\tmedium\topen\tlegacy issue\tcli-ux\ttest-open\tdesc\n",
     )
     .expect("write tsv");
 
-    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
-    assert_eq!(store.backend(), StateBackend::Tsv);
+    let store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+    assert_eq!(store.backend(), StateBackend::Sqlite);
     assert_eq!(
         store.get_issue("PROJ-1").expect("legacy issue").title,
         "legacy issue"
     );
+    assert!(root.join(".popsicle/state.db").is_file());
+    assert!(root.join(".popsicle/state.tsv.migrated").is_file());
+    assert!(!root.join(".popsicle/state.tsv").is_file());
+    assert!(!dir.exists());
 
-    // Mutations keep writing TSV until an explicit migration.
-    store
-        .create_issue(
-            "bug",
-            "tsv second",
-            "cli-ux",
-            Some("test-open"),
-            "medium",
-            "",
-            None,
-            &[],
-            &[],
-        )
-        .expect("create issue");
-    assert!(!root.join(".popsicle/self-host/state.db").is_file());
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn legacy_self_host_layout_relocates_on_open() {
+    let root = temp_workspace();
+    {
+        let mut store = LocalWorkspace::open_at(root.clone()).expect("seed workspace");
+        store
+            .create_issue(
+                "bug",
+                "relocate me",
+                "cli-ux",
+                Some("test-open"),
+                "medium",
+                "",
+                None,
+                &[],
+                &[],
+            )
+            .expect("create issue");
+    }
+    let legacy = root.join(".popsicle/self-host");
+    fs::create_dir_all(&legacy).expect("legacy dir");
+    fs::rename(root.join(".popsicle/state.db"), legacy.join("state.db")).expect("move db");
+    if root.join(".popsicle/runs").is_dir() {
+        fs::rename(root.join(".popsicle/runs"), legacy.join("runs")).expect("move runs");
+    }
+
+    let store = LocalWorkspace::open_at(root.clone()).expect("open relocates layout");
+    assert!(root.join(".popsicle/state.db").is_file());
+    assert!(!legacy.exists());
+    assert_eq!(store.list_issues().expect("issues").len(), 1);
 
     let _ = fs::remove_dir_all(root);
 }
@@ -177,13 +199,13 @@ fn migrate_to_sqlite_preserves_rows_and_is_idempotent() {
     .expect("write tsv");
 
     let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
-    assert!(store.migrate_to_sqlite().expect("migrate"));
+    // open_at auto-imports TSV; migrate is idempotent cleanup.
     assert_eq!(store.backend(), StateBackend::Sqlite);
-    assert!(root.join(".popsicle/self-host/state.db").is_file());
-    assert!(root
-        .join(".popsicle/self-host/state.tsv.migrated")
-        .is_file());
-    assert!(!root.join(".popsicle/self-host/state.tsv").is_file());
+    assert!(!store.migrate_to_sqlite().expect("idempotent migrate"));
+    assert!(root.join(".popsicle/state.db").is_file());
+    assert!(root.join(".popsicle/state.tsv.migrated").is_file());
+    assert!(!root.join(".popsicle/state.tsv").is_file());
+    assert!(!dir.exists());
 
     drop(store);
     let mut reloaded = LocalWorkspace::open_at(root.clone()).expect("reload");
@@ -512,8 +534,8 @@ fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
     let installed = workspace
         .install_bundled_pipelines()
         .expect("install bundled pipelines");
-    assert!(installed.contains(&"greenfield-product-spec"));
-    assert!(installed.contains(&"migration-bootstrap"));
+    assert!(installed.iter().any(|n| n == "product-greenfield-spec"));
+    assert!(installed.iter().any(|n| n == "migration-bootstrap"));
 
     // Second install is a no-op (existing files are preserved).
     let second = workspace
@@ -606,7 +628,10 @@ fn bugfix_create_rejects_intent_spec_mismatch() {
         )
         .expect_err("expected bugfix-gate");
     let msg = err.to_string();
-    assert!(msg.contains("bugfix-gate:product-type") || msg.contains("bugfix-gate:intent-content"));
+    assert!(
+        msg.contains("fix-regression-gate:product-type")
+            || msg.contains("fix-regression-gate:intent-content")
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -800,6 +825,36 @@ fn issue_tasks_multi_linked_and_proposed_persist() {
     let reloaded = LocalWorkspace::open_at(root.clone()).expect("reload");
     let again = reloaded.list_issue_tasks(&issue.key).expect("reload links");
     assert_eq!(again.len(), 3);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn admin_backfill_removes_deprecated_pipeline_installs() {
+    use cli_ux::{parse_args, run_command, WorkspaceDomain};
+
+    let root = temp_workspace();
+    let pipelines_dir = root.join(".popsicle/pipelines");
+    fs::create_dir_all(&pipelines_dir).expect("pipelines dir");
+    fs::write(
+        pipelines_dir.join("bugfix.pipeline.yaml"),
+        "name: bugfix\nstages: []\n",
+    )
+    .expect("deprecated yaml");
+
+    let mut domain = WorkspaceDomain::open_with(Some(root.to_str().unwrap())).expect("open");
+
+    let command = parse_args(["admin", "backfill-pipeline-names", "--dry-run"]).expect("parse");
+    let resp = run_command(&mut domain, command).expect("dry-run");
+    assert_eq!(
+        resp.fields.get("deprecated_files_removed"),
+        Some(&"bugfix".to_string())
+    );
+    assert!(pipelines_dir.join("bugfix.pipeline.yaml").is_file());
+
+    let command = parse_args(["admin", "backfill-pipeline-names"]).expect("parse");
+    run_command(&mut domain, command).expect("apply");
+    assert!(!pipelines_dir.join("bugfix.pipeline.yaml").exists());
 
     let _ = fs::remove_dir_all(root);
 }

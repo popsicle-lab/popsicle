@@ -7,7 +7,7 @@ BIN="$PWD/target/debug/popsicle"
 ROOT="$(mktemp -d /tmp/popsicle-project-config-doctor.XXXXXX)"
 trap 'rm -rf "$ROOT"' EXIT
 
-mkdir -p "$ROOT/.popsicle/self-host"
+mkdir -p "$ROOT/.popsicle"
 cat >"$ROOT/.popsicle/project.yaml" <<'EOF'
 version: 1
 agent:

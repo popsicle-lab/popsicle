@@ -1,0 +1,29 @@
+name: feature-delivery
+description: >-
+  能力域 · spec 已就绪的增量交付：实现 → 测试验证 → 活文档同步。
+  无 legacy golden、无 cutover（日常开发默认路径）。
+scale: full
+keywords:
+  - feature
+  - capability
+  - delivery
+  - implementation
+
+stages:
+  - name: implement
+    skill: shadow-implementer
+    description: >-
+      按 ADR File Manifest + acceptance.intent 实现/补齐代码；登记 coverage。
+    depends_on: []
+
+  - name: verify
+    skill: equivalence-baseline
+    description: >-
+      以 make check /  targeted tests 为证（equivalence mode=tests，无 legacy golden）。
+    depends_on: [implement]
+
+  - name: doc-sync
+    skill: living-doc-author
+    description: >-
+      --target implementation-status,architecture-manifest,product-header。
+    depends_on: [verify]

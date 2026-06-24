@@ -24,7 +24,7 @@ Golden smoke workspace.
 Should not inject.
 EOF
 
-KEY="$("$BIN" issue create --type bug --title "ctx smoke" --product smoke-spec --pipeline bugfix --format json | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')"
+KEY="$("$BIN" issue create --type bug --title "ctx smoke" --product smoke-spec --pipeline fix-regression --format json | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')"
 OUT="$("$BIN" issue start "$KEY" --format json)"
 echo "$OUT" | grep -q '"agent_context"'
 echo "$OUT" | grep -q 'Golden smoke workspace'

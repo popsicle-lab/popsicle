@@ -16,7 +16,7 @@ fn temp_workspace() -> std::path::PathBuf {
             .unwrap()
             .as_nanos()
     ));
-    fs::create_dir_all(dir.join(".popsicle/self-host")).unwrap();
+    fs::create_dir_all(dir.join(".popsicle")).unwrap();
     dir
 }
 

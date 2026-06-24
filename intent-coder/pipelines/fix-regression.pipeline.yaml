@@ -1,11 +1,11 @@
-name: bugfix
+name: fix-regression
 description: >-
-  Minimal bug-fix loop: reproduce and fix with regression tests, then verify
-  against golden/regression baselines. Default pipeline for `--type bug`.
+  修复域 · 单点回归/缺陷：复现 → 修复 + 回归测试 → 验证。默认 `--type bug`。
+  不得用于新 UI 能力或 intent/spec 链工作（见 issue-author § fix-regression 门禁）。
 scale: minimal
 keywords:
-  - bug
   - fix
+  - bug
   - regression
   - hotfix
 
@@ -21,7 +21,7 @@ stages:
   - name: verify
     skill: equivalence-baseline
     description: >-
-      Run the relevant golden/regression baselines and record the verification
-      evidence (what was run, what passed).
+      Record verification evidence (make check / targeted tests). No legacy
+      golden required for pure UI regressions — see equivalence mode=tests.
     depends_on: [implement]
     requires_approval: false

@@ -1,13 +1,10 @@
-//! Local workspace store: SQLite at `.popsicle/self-host/state.db` (ADR-009
-//! Phase 2, PROJ-11) with read compatibility for the Phase 1 TSV backend.
-//!
-//! Backend is auto-detected at open: an existing `popsicle.db` wins, an
-//! existing legacy `state.tsv` keeps the TSV backend, and fresh workspaces
-//! default to SQLite. `admin migrate` performs the TSV → SQLite migration.
-//! Pipeline session working files stay as per-run JSON (ADR-013).
+//! Local workspace store: SQLite at `.popsicle/state.db` (ADR-013, ADR-031,
+//! ADR-032). Legacy TSV is import-only on open / `admin migrate`; legacy
+//! `.popsicle/popsicle.db` is not read (purge via `admin purge-legacy-workspace`).
+//! Opening a workspace auto-lifts `.popsicle/self-host/` when present.
+//! Pipeline session working files stay as per-run JSON under `.popsicle/runs/`.
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
@@ -26,81 +23,32 @@ use crate::global_config::{
     global_config_path, resolve_init_root, resolve_workspace_root, ResolvedWorkspace,
     WorkspaceSource,
 };
+use crate::intent_coder_resolve::{
+    find_pipeline_path, list_pipeline_template_names, self_heal_pipeline,
+};
+use crate::pipeline_taxonomy::{canonical_pipeline_name, is_migration_slice_delivery};
 use crate::project_config::{
     ensure_project_config, load_project_config, project_config_path, stage_needs_explicit_confirm,
     sync_agents_md,
 };
 
-const SELF_HOST_DIR: &str = ".popsicle/self-host";
+const POPSICLE_DIR: &str = ".popsicle";
+const LEGACY_SELF_HOST_DIR: &str = ".popsicle/self-host";
 const STATE_FILE: &str = "state.tsv";
-// NOT `.popsicle/popsicle.db`: that path belongs to the legacy binary's
-// database (different schema). See ADR-013.
+const LEGACY_DB_REL: &str = ".popsicle/popsicle.db";
 const DB_FILE: &str = "state.db";
 const RUNS_DIR: &str = "runs";
 const PIPELINES_DIR: &str = ".popsicle/pipelines";
 const INTENT_CODER_MODULE_REL: &str = ".popsicle/modules/intent-coder";
 
-/// Pipelines bundled into the binary so `popsicle init` can bootstrap a brand-new
-/// project without copying the intent-coder module first.
-const BUNDLED_PIPELINES: &[(&str, &str)] = &[
-    (
-        "greenfield-product-spec",
-        include_str!("../assets/pipelines/greenfield-product-spec.pipeline.yaml"),
-    ),
-    (
-        "migration-bootstrap",
-        include_str!("../assets/pipelines/migration-bootstrap.pipeline.yaml"),
-    ),
-    (
-        "slice-spec",
-        include_str!("../assets/pipelines/slice-spec.pipeline.yaml"),
-    ),
-    (
-        "slice-delivery",
-        include_str!("../assets/pipelines/slice-delivery.pipeline.yaml"),
-    ),
-    (
-        "tech-decision",
-        include_str!("../assets/pipelines/tech-decision.pipeline.yaml"),
-    ),
-    (
-        "bugfix",
-        include_str!("../assets/pipelines/bugfix.pipeline.yaml"),
-    ),
-    (
-        "weekly-health-check",
-        include_str!("../assets/pipelines/weekly-health-check.pipeline.yaml"),
-    ),
-];
-
-/// Names of all pipelines bundled into the binary.
-pub fn bundled_pipeline_names() -> Vec<&'static str> {
-    BUNDLED_PIPELINES.iter().map(|(name, _)| *name).collect()
+/// Names of all pipelines bundled into the binary (from embedded intent-coder).
+pub fn bundled_pipeline_names() -> Vec<String> {
+    crate::intent_coder_resolve::bundled_pipeline_names()
 }
 
-/// Pipeline template names available in a workspace (installed + bundled).
+/// Pipeline template names available in a workspace.
 pub fn list_installed_pipeline_names(workspace: &Workspace) -> Vec<String> {
-    let dir = workspace.pipelines_dir();
-    let mut names: Vec<String> = bundled_pipeline_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    if dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                if let Some(stem) = entry
-                    .file_name()
-                    .to_str()
-                    .and_then(|s| s.strip_suffix(".pipeline.yaml"))
-                {
-                    names.push(stem.to_string());
-                }
-            }
-        }
-    }
-    names.sort();
-    names.dedup();
-    names
+    list_pipeline_template_names(&workspace.root)
 }
 
 /// Resolved workspace root (directory containing `.popsicle/`).
@@ -134,20 +82,29 @@ impl Workspace {
         Self { root }
     }
 
-    pub fn self_host_dir(&self) -> PathBuf {
-        self.root.join(SELF_HOST_DIR)
+    pub fn popsicle_dir(&self) -> PathBuf {
+        self.root.join(POPSICLE_DIR)
+    }
+
+    /// Pre-ADR-032 nested layout; kept for one-time relocation only.
+    pub fn legacy_self_host_dir(&self) -> PathBuf {
+        self.root.join(LEGACY_SELF_HOST_DIR)
     }
 
     pub fn state_path(&self) -> PathBuf {
-        self.self_host_dir().join(STATE_FILE)
+        self.popsicle_dir().join(STATE_FILE)
     }
 
     pub fn db_path(&self) -> PathBuf {
-        self.self_host_dir().join(DB_FILE)
+        self.popsicle_dir().join(DB_FILE)
+    }
+
+    pub fn legacy_db_path(&self) -> PathBuf {
+        self.root.join(LEGACY_DB_REL)
     }
 
     pub fn runs_dir(&self) -> PathBuf {
-        self.self_host_dir().join(RUNS_DIR)
+        self.popsicle_dir().join(RUNS_DIR)
     }
 
     pub fn artifacts_dir(&self, run_id: &str) -> PathBuf {
@@ -163,24 +120,26 @@ impl Workspace {
     }
 
     pub fn ensure_layout(&self) -> Result<(), WorkspaceError> {
-        fs::create_dir_all(self.self_host_dir()).map_err(io_err)?;
+        fs::create_dir_all(self.popsicle_dir()).map_err(io_err)?;
         fs::create_dir_all(self.runs_dir()).map_err(io_err)?;
         Ok(())
     }
 
     /// Write bundled pipeline definitions into `.popsicle/pipelines/`, skipping
     /// any pipeline the workspace already defines. Returns the names installed.
-    pub fn install_bundled_pipelines(&self) -> Result<Vec<&'static str>, WorkspaceError> {
+    pub fn install_bundled_pipelines(&self) -> Result<Vec<String>, WorkspaceError> {
         let dir = self.pipelines_dir();
         fs::create_dir_all(&dir).map_err(io_err)?;
         let mut installed = Vec::new();
-        for (name, content) in BUNDLED_PIPELINES {
+        for name in bundled_pipeline_names() {
             let path = dir.join(format!("{name}.pipeline.yaml"));
             if path.exists() {
                 continue;
             }
+            let content = crate::intent_coder_bundle::embedded_pipeline_content(&name)
+                .ok_or_else(|| WorkspaceError::Io(format!("missing embedded pipeline {name}")))?;
             fs::write(&path, content).map_err(io_err)?;
-            installed.push(*name);
+            installed.push(name);
         }
         Ok(installed)
     }
@@ -364,21 +323,16 @@ impl StoreState {
     }
 }
 
-/// Which on-disk format backs the indexed state.
+/// On-disk format backing indexed state (ADR-031: SQLite only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StateBackend {
-    /// Legacy ADR-009 Phase 1 `state.tsv`.
-    Tsv,
-    /// ADR-009 Phase 2 SQLite `.popsicle/popsicle.db` (PROJ-11).
     Sqlite,
 }
 
 impl StateBackend {
     pub fn describe(&self, workspace: &Workspace) -> String {
-        match self {
-            Self::Tsv => format!("tsv ({})", rel_display(workspace, &workspace.state_path())),
-            Self::Sqlite => format!("sqlite ({})", rel_display(workspace, &workspace.db_path())),
-        }
+        let _ = self;
+        format!("sqlite ({})", rel_display(workspace, &workspace.db_path()))
     }
 }
 
@@ -434,14 +388,16 @@ impl LocalWorkspace {
         workspace: Workspace,
         workspace_source: WorkspaceSource,
     ) -> Result<Self, WorkspaceError> {
-        let backend = detect_backend(&workspace);
-        let mut state = load_state(&workspace, backend)?;
+        relocate_legacy_self_host_if_needed(&workspace)?;
+        cleanup_stale_legacy_self_host_subdir(&workspace, false)?;
+        import_legacy_tsv_if_needed(&workspace)?;
+        let mut state = load_state_sqlite(&workspace)?;
         let normalized = normalize_issue_rows(&workspace, &mut state);
         normalize_issue_tasks(&mut state);
         let store = Self {
             workspace,
             workspace_source,
-            backend,
+            backend: StateBackend::Sqlite,
             state,
         };
         if normalized {
@@ -474,13 +430,24 @@ impl LocalWorkspace {
         self.state.runs.get(run_id).map(|r| r.issue_key.clone())
     }
 
-    /// Migrate a legacy TSV workspace to the SQLite backend. Idempotent: an
-    /// already-SQLite workspace reports `migrated=false`. The TSV file is kept
-    /// as `state.tsv.migrated` for rollback/audit.
+    /// Import legacy TSV into SQLite. Idempotent when `state.db` already exists.
     pub fn migrate_to_sqlite(&mut self) -> Result<bool, WorkspaceError> {
-        if self.backend == StateBackend::Sqlite {
+        relocate_legacy_self_host_if_needed(&self.workspace)?;
+        if self.workspace.db_path().is_file() {
+            let tsv = self.workspace.state_path();
+            if tsv.is_file() {
+                fs::rename(&tsv, tsv.with_extension("tsv.migrated")).map_err(io_err)?;
+                return Ok(true);
+            }
             return Ok(false);
         }
+        if !self.workspace.state_path().is_file() {
+            let legacy_tsv = self.workspace.legacy_self_host_dir().join(STATE_FILE);
+            if !legacy_tsv.is_file() {
+                return Ok(false);
+            }
+        }
+        self.state = load_state_tsv(&self.workspace)?;
         self.backend = StateBackend::Sqlite;
         self.save()?;
         let tsv = self.workspace.state_path();
@@ -492,78 +459,8 @@ impl LocalWorkspace {
 
     fn save(&self) -> Result<(), WorkspaceError> {
         self.workspace.ensure_layout()?;
-        match self.backend {
-            StateBackend::Sqlite => {
-                let mut db = SqliteStateDb::open(&self.workspace.db_path())?;
-                db.save(&self.state.to_snapshot())
-            }
-            StateBackend::Tsv => self.save_tsv(),
-        }
-    }
-
-    fn save_tsv(&self) -> Result<(), WorkspaceError> {
-        let mut out = String::new();
-        writeln!(
-            out,
-            "# self-host state (ADR-009 Phase 1; Phase 2 → PROJ-11 SQLite)"
-        )
-        .map_err(io_err)?;
-        writeln!(out, "meta\tnext_issue_num\t{}", self.state.next_issue_num).map_err(io_err)?;
-        writeln!(out, "meta\tnext_run_num\t{}", self.state.next_run_num).map_err(io_err)?;
-        writeln!(out, "meta\tnext_doc_num\t{}", self.state.next_doc_num).map_err(io_err)?;
-        for issue in self.state.issues.values() {
-            writeln!(
-                out,
-                "issue\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                issue.key,
-                issue.issue_type,
-                issue.priority,
-                issue.status,
-                escape_tsv(&issue.title),
-                issue.product_id,
-                issue.pipeline.as_deref().unwrap_or(""),
-                escape_tsv(&issue.description),
-                issue.epic_task_id.as_deref().unwrap_or(""),
-            )
-            .map_err(io_err)?;
-        }
-        for link in &self.state.issue_tasks {
-            writeln!(
-                out,
-                "issue_task\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                link.issue_key,
-                link.sort_order,
-                link.role,
-                link.task_id.as_deref().unwrap_or(""),
-                escape_tsv(link.proposed_title.as_deref().unwrap_or("")),
-                link.journey_stage.as_deref().unwrap_or(""),
-                link.source,
-            )
-            .map_err(io_err)?;
-        }
-        for run in self.state.runs.values() {
-            writeln!(
-                out,
-                "run\t{}\t{}\t{}\t{}\t{}",
-                run.run_id, run.issue_key, run.pipeline_name, run.spec_id, run.spec_locked,
-            )
-            .map_err(io_err)?;
-        }
-        for doc in self.state.documents.values() {
-            writeln!(
-                out,
-                "doc\t{}\t{}\t{}\t{}\t{}\t{}",
-                doc.id,
-                doc.doc_type,
-                escape_tsv(&doc.title),
-                doc.status,
-                doc.version,
-                doc.file_path,
-            )
-            .map_err(io_err)?;
-        }
-        atomic_write(&self.workspace.state_path(), &out)?;
-        Ok(())
+        let mut db = SqliteStateDb::open(&self.workspace.db_path())?;
+        db.save(&self.state.to_snapshot())
     }
 
     pub fn active_run_id(&self, issue_key: &str) -> Result<Option<String>, WorkspaceError> {
@@ -644,7 +541,7 @@ impl WorkspaceStore for LocalWorkspace {
             title: title.into(),
             product_id: product_id.clone(),
             spec_id: product_id,
-            pipeline: pipeline.map(str::to_string),
+            pipeline: pipeline.map(canonical_pipeline_name).map(str::to_string),
             description: description.into(),
             epic_task_id: legacy_epic,
         };
@@ -829,20 +726,16 @@ impl WorkspaceStore for LocalWorkspace {
             )));
         }
         let resolved_spec = lock_key;
-        let pipeline_name = if pipeline.is_empty() {
-            issue
-                .pipeline
-                .clone()
-                .or_else(|| {
-                    issue_row_to_domain(&issue)
-                        .resolved_pipeline()
-                        .map(str::to_string)
-                })
+        let issue_domain = issue_row_to_domain(&issue);
+        let pipeline_name = canonical_pipeline_name(if pipeline.is_empty() {
+            issue_domain
+                .resolved_pipeline()
                 .ok_or_else(|| WorkspaceError::InvalidState("no resolvable pipeline".into()))?
         } else {
-            pipeline.to_string()
-        };
-        if pipeline_name == "slice-delivery" {
+            pipeline
+        })
+        .to_string();
+        if is_migration_slice_delivery(&pipeline_name) {
             let links = self.list_issue_tasks(key)?;
             crate::pipeline_gate::validate_slice_delivery_start(
                 &self.workspace.root,
@@ -1298,38 +1191,181 @@ pub fn run_intent_validate(
     Ok(1)
 }
 
-/// Backend detection: an existing db wins; a legacy `state.tsv` keeps TSV;
-/// fresh workspaces default to SQLite (ADR-009 Phase 2).
-fn detect_backend(workspace: &Workspace) -> StateBackend {
+/// One-time import when a workspace still has Phase 1 `state.tsv` but no `state.db`.
+fn import_legacy_tsv_if_needed(workspace: &Workspace) -> Result<(), WorkspaceError> {
     if workspace.db_path().is_file() {
-        StateBackend::Sqlite
-    } else if workspace.state_path().is_file() {
-        StateBackend::Tsv
-    } else {
-        StateBackend::Sqlite
+        return Ok(());
     }
+    let tsv = if workspace.state_path().is_file() {
+        workspace.state_path()
+    } else {
+        let legacy_tsv = workspace.legacy_self_host_dir().join(STATE_FILE);
+        if legacy_tsv.is_file() {
+            legacy_tsv
+        } else {
+            return Ok(());
+        }
+    };
+    workspace.ensure_layout()?;
+    let state = load_state_tsv_from(&tsv)?;
+    let mut db = SqliteStateDb::open(&workspace.db_path())?;
+    db.save(&state.to_snapshot())?;
+    if tsv == workspace.state_path() {
+        fs::rename(&tsv, tsv.with_extension("tsv.migrated")).map_err(io_err)?;
+    } else {
+        fs::rename(&tsv, workspace.state_path().with_extension("tsv.migrated")).map_err(io_err)?;
+    }
+    Ok(())
 }
 
-fn load_state(workspace: &Workspace, backend: StateBackend) -> Result<StoreState, WorkspaceError> {
-    workspace.ensure_layout()?;
-    match backend {
-        StateBackend::Sqlite => {
-            if !workspace.db_path().is_file() {
-                return Ok(StoreState::default());
-            }
-            let db = SqliteStateDb::open(&workspace.db_path())?;
-            Ok(StoreState::from_snapshot(db.load()?))
-        }
-        StateBackend::Tsv => load_state_tsv(workspace),
+fn relocate_legacy_self_host_if_needed(workspace: &Workspace) -> Result<bool, WorkspaceError> {
+    let legacy_dir = workspace.legacy_self_host_dir();
+    if !legacy_dir.is_dir() || workspace.db_path().is_file() {
+        return Ok(false);
     }
+    relocate_legacy_self_host(workspace, false)
+}
+
+pub fn relocate_legacy_self_host(
+    workspace: &Workspace,
+    dry_run: bool,
+) -> Result<bool, WorkspaceError> {
+    let legacy_dir = workspace.legacy_self_host_dir();
+    if !legacy_dir.is_dir() {
+        return Ok(false);
+    }
+    if workspace.db_path().is_file() {
+        return Ok(false);
+    }
+    if dry_run {
+        return Ok(true);
+    }
+    workspace.ensure_layout()?;
+    let legacy_db = legacy_dir.join(DB_FILE);
+    if legacy_db.is_file() {
+        fs::rename(&legacy_db, workspace.db_path()).map_err(io_err)?;
+    }
+    move_dir_contents(&legacy_dir.join(RUNS_DIR), &workspace.runs_dir())?;
+    for entry in fs::read_dir(&legacy_dir).map_err(io_err)? {
+        let entry = entry.map_err(io_err)?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str == DB_FILE || name_str == RUNS_DIR {
+            continue;
+        }
+        let dest = workspace.popsicle_dir().join(&name);
+        if dest.exists() {
+            continue;
+        }
+        fs::rename(entry.path(), dest).map_err(io_err)?;
+    }
+    remove_dir_if_empty(&legacy_dir)?;
+    Ok(true)
+}
+
+fn cleanup_stale_legacy_self_host_subdir(
+    workspace: &Workspace,
+    dry_run: bool,
+) -> Result<bool, WorkspaceError> {
+    let legacy_dir = workspace.legacy_self_host_dir();
+    if !legacy_dir.is_dir() || !workspace.db_path().is_file() {
+        return Ok(false);
+    }
+    if dry_run {
+        return Ok(true);
+    }
+    move_dir_contents(&legacy_dir.join(RUNS_DIR), &workspace.runs_dir())?;
+    for entry in fs::read_dir(&legacy_dir).map_err(io_err)? {
+        let entry = entry.map_err(io_err)?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str == RUNS_DIR {
+            continue;
+        }
+        let dest = workspace.popsicle_dir().join(&name);
+        if dest.exists() {
+            continue;
+        }
+        fs::rename(entry.path(), dest).map_err(io_err)?;
+    }
+    remove_dir_if_empty(&legacy_dir)?;
+    Ok(true)
+}
+
+fn move_dir_contents(from: &Path, to: &Path) -> Result<(), WorkspaceError> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(to).map_err(io_err)?;
+    for entry in fs::read_dir(from).map_err(io_err)? {
+        let entry = entry.map_err(io_err)?;
+        let dest = to.join(entry.file_name());
+        if dest.exists() {
+            continue;
+        }
+        fs::rename(entry.path(), dest).map_err(io_err)?;
+    }
+    remove_dir_if_empty(from)?;
+    Ok(())
+}
+
+fn remove_dir_if_empty(path: &Path) -> Result<(), WorkspaceError> {
+    if !path.is_dir() {
+        return Ok(());
+    }
+    if fs::read_dir(path).map_err(io_err)?.next().is_some() {
+        return Ok(());
+    }
+    fs::remove_dir(path).map_err(io_err)
+}
+
+fn load_state_sqlite(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
+    workspace.ensure_layout()?;
+    if !workspace.db_path().is_file() {
+        return Ok(StoreState::default());
+    }
+    let db = SqliteStateDb::open(&workspace.db_path())?;
+    Ok(StoreState::from_snapshot(db.load()?))
+}
+
+fn legacy_workspace_artifacts(workspace: &Workspace) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if workspace.legacy_db_path().is_file() {
+        out.push("legacy_popsicle_db");
+    }
+    if workspace.state_path().is_file() {
+        out.push("legacy_state_tsv");
+    }
+    if workspace.legacy_self_host_dir().is_dir() {
+        out.push("legacy_self_host_subdir");
+    }
+    out
+}
+
+fn purge_legacy_workspace_files(
+    workspace: &Workspace,
+    dry_run: bool,
+) -> Result<Vec<String>, WorkspaceError> {
+    let mut removed = Vec::new();
+    let legacy_db = workspace.legacy_db_path();
+    if legacy_db.is_file() {
+        removed.push("legacy_popsicle_db".to_string());
+        if !dry_run {
+            fs::remove_file(&legacy_db).map_err(io_err)?;
+        }
+    }
+    Ok(removed)
 }
 
 fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
-    let path = workspace.state_path();
+    load_state_tsv_from(&workspace.state_path())
+}
+
+fn load_state_tsv_from(path: &Path) -> Result<StoreState, WorkspaceError> {
     if !path.is_file() {
         return Ok(StoreState::default());
     }
-    let content = fs::read_to_string(&path).map_err(io_err)?;
+    let content = fs::read_to_string(path).map_err(io_err)?;
     let mut state = StoreState::default();
     for line in content.lines() {
         if line.trim().is_empty() || line.starts_with('#') {
@@ -1413,17 +1449,6 @@ fn load_state_tsv(workspace: &Workspace) -> Result<StoreState, WorkspaceError> {
         }
     }
     Ok(state)
-}
-
-fn escape_tsv(s: &str) -> String {
-    s.replace(['\t', '\n'], " ")
-}
-
-fn atomic_write(path: &PathBuf, content: &str) -> Result<(), WorkspaceError> {
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, content).map_err(io_err)?;
-    fs::rename(&tmp, path).map_err(io_err)?;
-    Ok(())
 }
 
 fn io_err(e: impl ToString) -> WorkspaceError {
@@ -1521,51 +1546,13 @@ pub(crate) fn load_pipeline_def(
     workspace: &Workspace,
     name: &str,
 ) -> Result<PipelineDef, WorkspaceError> {
-    let dirs = [
-        workspace.root.join(".popsicle/pipelines"),
-        workspace
-            .root
-            .join(".popsicle/modules/intent-coder/pipelines"),
-    ];
-    for dir in &dirs {
-        let path = dir.join(format!("{name}.pipeline.yaml"));
-        if path.is_file() {
-            return PipelineDef::load(&path).map_err(|e| WorkspaceError::Io(e.to_string()));
-        }
+    if let Some(path) = find_pipeline_path(&workspace.root, name) {
+        return PipelineDef::load(&path).map_err(|e| WorkspaceError::Io(e.to_string()));
     }
     // Self-heal: workspaces bootstrapped by older binaries miss newer bundled
     // templates; install on demand instead of failing.
-    if let Some((_, content)) = BUNDLED_PIPELINES.iter().find(|(n, _)| *n == name) {
-        let dir = workspace.pipelines_dir();
-        fs::create_dir_all(&dir).map_err(io_err)?;
-        let path = dir.join(format!("{name}.pipeline.yaml"));
-        fs::write(&path, content).map_err(io_err)?;
-        return PipelineDef::load(&path).map_err(|e| WorkspaceError::Io(e.to_string()));
-    }
-    let mut available: Vec<String> = dirs
-        .iter()
-        .filter_map(|dir| fs::read_dir(dir).ok())
-        .flatten()
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            entry
-                .file_name()
-                .to_str()?
-                .strip_suffix(".pipeline.yaml")
-                .map(str::to_string)
-        })
-        .chain(bundled_pipeline_names().into_iter().map(str::to_string))
-        .collect();
-    available.sort();
-    available.dedup();
-    Err(WorkspaceError::NotFound(format!(
-        "pipeline {name} (available: {})",
-        if available.is_empty() {
-            "none".to_string()
-        } else {
-            available.join(", ")
-        }
-    )))
+    let path = self_heal_pipeline(&workspace.root, name)?;
+    PipelineDef::load(&path).map_err(|e| WorkspaceError::Io(e.to_string()))
 }
 
 fn session_path(workspace: &Workspace, run_id: &str) -> PathBuf {
@@ -1737,7 +1724,7 @@ fn ws_err(e: storage::WorkspaceError) -> crate::CliError {
 }
 
 /// Binary entrypoint domain (ADR-009 Phase 1 TSV backend).
-pub struct SelfHostDomain {
+pub struct WorkspaceDomain {
     store: LocalWorkspace,
 }
 
@@ -1783,13 +1770,9 @@ fn init_next_step(
 pub fn bootstrap_workspace_at(root: &Path) -> Result<WorkspaceBootstrapOutcome, WorkspaceError> {
     let canon = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     let workspace = Workspace::at(canon);
-    let created = !workspace.self_host_dir().is_dir();
+    let created = !workspace.popsicle_dir().is_dir();
     workspace.ensure_layout()?;
-    let installed = workspace
-        .install_bundled_pipelines()?
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+    let installed = workspace.install_bundled_pipelines()?;
     let module = install_intent_coder_module(&workspace, false)?;
     ensure_project_config(&workspace.root)?;
     let mut store =
@@ -1810,7 +1793,7 @@ fn is_missing_workspace_error(err: &WorkspaceError) -> bool {
     )
 }
 
-impl SelfHostDomain {
+impl WorkspaceDomain {
     pub fn open() -> Result<Self, crate::CliError> {
         Self::open_with_lazy(None)
     }
@@ -1881,9 +1864,9 @@ impl SelfHostDomain {
     }
 }
 
-impl crate::CliDomain for SelfHostDomain {
+impl crate::CliDomain for WorkspaceDomain {
     fn project_language(&self) -> crate::project_config::AgentLanguage {
-        SelfHostDomain::project_language(self)
+        WorkspaceDomain::project_language(self)
     }
 
     fn current_workspace(&self) -> Result<BTreeMap<String, String>, crate::CliError> {
@@ -2283,8 +2266,31 @@ impl crate::CliDomain for SelfHostDomain {
                 fields.insert("default_product".into(), cfg.paths.default_product.clone());
             }
         }
+        let legacy = legacy_workspace_artifacts(&self.store.workspace);
+        if !legacy.is_empty() {
+            fields.insert("legacy_artifacts".into(), legacy.join(","));
+            if legacy.contains(&"legacy_self_host_subdir") {
+                fields.insert(
+                    "legacy_relocate_next".into(),
+                    "popsicle admin relocate-workspace".to_string(),
+                );
+            }
+            if legacy.contains(&"legacy_popsicle_db") {
+                fields.insert(
+                    "legacy_purge_next".into(),
+                    "popsicle admin purge-legacy-workspace".to_string(),
+                );
+            }
+        }
+        let status = if !trusted {
+            "warn"
+        } else if legacy.is_empty() {
+            "ok"
+        } else {
+            "warn"
+        };
         Ok(crate::CommandResponse {
-            status: if trusted { "ok" } else { "warn" },
+            status,
             next_step: Some(next_step),
             fields,
         })
@@ -2399,6 +2405,140 @@ impl crate::CliDomain for SelfHostDomain {
             under_admin_tree: true,
             explicit_workspace: false,
             workspace: root.display().to_string(),
+            details,
+        })
+    }
+
+    fn admin_backfill_pipeline_names(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<crate::AdminResult, crate::CliError> {
+        let _ = workspace;
+        let store = &mut self.store;
+        let mut issues_updated = 0usize;
+        let mut runs_updated = 0usize;
+        for row in store.state.issues.values_mut() {
+            if let Some(name) = row.pipeline.as_deref() {
+                if let Some(canonical) = crate::pipeline_taxonomy::canonicalize_if_deprecated(name)
+                {
+                    issues_updated += 1;
+                    if !dry_run {
+                        row.pipeline = Some(canonical.to_string());
+                    }
+                }
+            }
+        }
+        for run in store.state.runs.values_mut() {
+            if let Some(canonical) =
+                crate::pipeline_taxonomy::canonicalize_if_deprecated(&run.pipeline_name)
+            {
+                runs_updated += 1;
+                if !dry_run {
+                    run.pipeline_name = canonical.to_string();
+                }
+            }
+        }
+        let mut removed_files = Vec::new();
+        let pipelines_dir = store.workspace.pipelines_dir();
+        for stem in crate::pipeline_taxonomy::deprecated_pipeline_install_stems() {
+            let path = pipelines_dir.join(format!("{stem}.pipeline.yaml"));
+            if path.is_file() {
+                removed_files.push(stem.to_string());
+                if !dry_run {
+                    fs::remove_file(&path).map_err(|e| ws_err(io_err(e)))?;
+                }
+            }
+        }
+        if !dry_run && (issues_updated > 0 || runs_updated > 0) {
+            store.save().map_err(ws_err)?;
+        }
+        let root = store.workspace.root.display().to_string();
+        let details = BTreeMap::from([
+            ("dry_run".into(), dry_run.to_string()),
+            ("issues_updated".into(), issues_updated.to_string()),
+            ("runs_updated".into(), runs_updated.to_string()),
+            (
+                "deprecated_files_removed".into(),
+                if removed_files.is_empty() {
+                    String::new()
+                } else {
+                    removed_files.join(",")
+                },
+            ),
+        ]);
+        Ok(crate::AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: !workspace.is_empty(),
+            workspace: if workspace.is_empty() {
+                root
+            } else {
+                workspace.to_string()
+            },
+            details,
+        })
+    }
+
+    fn admin_purge_legacy_workspace(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<crate::AdminResult, crate::CliError> {
+        let _ = workspace;
+        let store = &mut self.store;
+        let removed = purge_legacy_workspace_files(&store.workspace, dry_run).map_err(ws_err)?;
+        let root = store.workspace.root.display().to_string();
+        let details = BTreeMap::from([
+            ("dry_run".into(), dry_run.to_string()),
+            (
+                "legacy_files_removed".into(),
+                if removed.is_empty() {
+                    String::new()
+                } else {
+                    removed.join(",")
+                },
+            ),
+        ]);
+        Ok(crate::AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: !workspace.is_empty(),
+            workspace: if workspace.is_empty() {
+                root
+            } else {
+                workspace.to_string()
+            },
+            details,
+        })
+    }
+
+    fn admin_relocate_workspace(
+        &mut self,
+        workspace: &str,
+        dry_run: bool,
+    ) -> Result<crate::AdminResult, crate::CliError> {
+        let _ = workspace;
+        let store = &mut self.store;
+        let relocated = relocate_legacy_self_host(&store.workspace, dry_run).map_err(ws_err)?;
+        let cleaned =
+            cleanup_stale_legacy_self_host_subdir(&store.workspace, dry_run).map_err(ws_err)?;
+        let root = store.workspace.root.display().to_string();
+        let details = BTreeMap::from([
+            ("dry_run".into(), dry_run.to_string()),
+            ("relocated".into(), relocated.to_string()),
+            ("cleaned_stale_subdir".into(), cleaned.to_string()),
+            (
+                "storage_backend".into(),
+                store.backend().describe(&store.workspace),
+            ),
+        ]);
+        Ok(crate::AdminResult {
+            under_admin_tree: true,
+            explicit_workspace: !workspace.is_empty(),
+            workspace: if workspace.is_empty() {
+                root
+            } else {
+                workspace.to_string()
+            },
             details,
         })
     }

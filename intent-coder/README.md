@@ -28,7 +28,7 @@
 | **intent-spec-writer** | ✅ 已交付 | 把 `prd-writer` 的 acceptance 种子 + `adr-writer` 解锁的 contracts 收紧成合法 intent-lang：分层归位（acceptance/invariants/contracts）、剥离时间/性能约束（D2）、四规则审查、去重查冲突，`intent check` 自验后合并到 `intents/*.intent`。**Phase 1 起内置** |
 | **intent-consistency-check** | ✅ 已交付（observe） | intent-coder 自带的 Z3 闸：对全量 `.intent` 跑 `intent check`，汇总 verified/failed/skipped 出报告。skill 始终 observe（不阻断）；硬闸由 CI 用 `intent-validate` tool 的 exit code 实现，附量化的 observe→gate 退出判据 |
 | **living-doc-author** | ✅ 已交付 | 活文档保活/对账：扫 doc-code drift（过期/断链/孤儿/未验证），刷新 `tasks/README.md` 健康度、task 反向引用、frontmatter `last_verified`。v0.4 增 `implementation-status` / `architecture-manifest` / `product-header` target。只对账不创作正文（正文改动走 prd-writer + PDR）|
-| **shadow-implementer** | ✅ 已交付（v0.4） | 按 intents + ADR File Manifest 实现/补齐 `crates/<slice>/` in-shadow 代码；产出 intent→fn/test 覆盖表。`slice-delivery` 第一棒 |
+| **shadow-implementer** | ✅ 已交付（v0.4） | 按 intents + ADR File Manifest 实现/补齐 `crates/<slice>/` in-shadow 代码；产出 intent→fn/test 覆盖表。`migration-slice-delivery` / `feature-delivery` 第一棒 |
 | **equivalence-baseline** | ✅ 已交付（v0.4） | legacy vs new golden 对账、`docs/baseline/`、traceability 草稿、divergence 登记。切流门禁 ≥5 golden pass |
 | **cutover-author** | ✅ 已交付（v0.4） | 核验 intent/equivalence/cargo 三门禁；切流 ADR(Accepted)；更新 `migration/progress.md` |
 
@@ -43,9 +43,9 @@
 7. `adr-writer` —— 固化 ADR（Accepted）+ 解锁 contracts 种子。
 8. `intent-spec-writer` —— 把 acceptance 种子 + 解锁的 contracts 收紧成合法 `.intent`，合并。
 9. `intent-consistency-check` —— 在 intent 合并后跑 Z3 一致性验证（observe）。
-10. `living-doc-author` —— spec 完成后或 slice-delivery 末尾保活文档。
+10. `living-doc-author` —— spec 完成后或 delivery pipeline 末尾保活文档。
 
-**Delivery 侧**（v0.4，`slice-delivery` pipeline）：
+**Delivery 侧**（v0.4，`migration-slice-delivery` / `feature-delivery` pipeline）：
 
 11. `shadow-implementer` —— 按 ADR 实现 `crates/<slice>/` + property tests。
 12. `equivalence-baseline` —— golden 对账 + traceability 草稿。
@@ -53,19 +53,27 @@
 
 ## Pipeline 怎么选
 
-**必读**：[`skills/issue-author/guide.md`](skills/issue-author/guide.md) —— Issue 创建（pipeline 决策树 + `slice-delivery` 门禁）。
+**必读**：[`skills/issue-author/guide.md`](skills/issue-author/guide.md) —— Issue 创建（pipeline 决策树 + delivery 门禁）。
 
-要点：`slice-delivery` **不是**新产品 feature 流程；它要求 spec 链已完成。`--type technical` 默认是 `tech-decision`，不是 delivery。
+要点：`migration-slice-delivery` / `feature-delivery` **不是**新产品 feature 的 spec 流程；它们要求 spec 链已完成。`--type technical` 默认是 `arch-decision`，不是 delivery。
 
-## Pipelines
+## Pipelines（ADR-029 canonical 名）
 
 | Pipeline | 用途 |
 |----------|------|
-| **migration-bootstrap** ✅ | **仓库级 Day-1 一次**：`init → facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`（10 stage，7 审批点）。定义见 [`pipelines/migration-bootstrap.pipeline.yaml`](pipelines/migration-bootstrap.pipeline.yaml)。 |
-| **slice-spec** ✅（v0.4） | **每 slice spec**（无 init）：`facts → debate → prd → arch-debate → rfc → adr → intent-spec → intent-check`。仓库已 bootstrap 后跑，避免重复 10 stage。见 [`pipelines/slice-spec.pipeline.yaml`](pipelines/slice-spec.pipeline.yaml)。 |
-| **slice-delivery** ✅（v0.4） | **每 slice 交付**：`implement → equivalence → cutover → living-docs`。前置：spec 已完成。见 [`pipelines/slice-delivery.pipeline.yaml`](pipelines/slice-delivery.pipeline.yaml)。 |
-| **weekly-health-check** ✅ | **周期性巡检**：`living-doc-author --target tasks-index,product-context`（无 approval）。见 [`pipelines/weekly-health-check.pipeline.yaml`](pipelines/weekly-health-check.pipeline.yaml)。 |
-| **greenfield-product-spec** ✅（v0.4） | **新产品 / 新模块 spec**：`debate → prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs`。从 product brief 开始，不要求 legacy fact baseline。见 [`pipelines/greenfield-product-spec.pipeline.yaml`](pipelines/greenfield-product-spec.pipeline.yaml)。 |
+| **migration-bootstrap** ✅ | **仓库级 Day-1 一次**（10 stage）。见 [`pipelines/migration-bootstrap.pipeline.yaml`](pipelines/migration-bootstrap.pipeline.yaml)。 |
+| **migration-slice-spec** ✅ | **迁移 slice spec**（无 init）。见 [`pipelines/migration-slice-spec.pipeline.yaml`](pipelines/migration-slice-spec.pipeline.yaml)。 |
+| **migration-slice-delivery** ✅ | **迁移 slice 交付**：implement → equivalence → cutover → living-docs。见 [`pipelines/migration-slice-delivery.pipeline.yaml`](pipelines/migration-slice-delivery.pipeline.yaml)。 |
+| **product-greenfield-spec** ✅ | **新产品 / 新模块 spec**。见 [`pipelines/product-greenfield-spec.pipeline.yaml`](pipelines/product-greenfield-spec.pipeline.yaml)。 |
+| **feature-spec** ✅ | **已有 product 增量能力 spec**（无 legacy facts）。见 [`pipelines/feature-spec.pipeline.yaml`](pipelines/feature-spec.pipeline.yaml)。 |
+| **feature-delivery** ✅ | **日常能力交付**（implement → verify）。见 [`pipelines/feature-delivery.pipeline.yaml`](pipelines/feature-delivery.pipeline.yaml)。 |
+| **doc-retro-spec** ✅ | **代码已合并后补 PDR/task/intent**。见 [`pipelines/doc-retro-spec.pipeline.yaml`](pipelines/doc-retro-spec.pipeline.yaml)。 |
+| **doc-sync-weekly** ✅ | **周期性巡检**：tasks-index + product-context。见 [`pipelines/doc-sync-weekly.pipeline.yaml`](pipelines/doc-sync-weekly.pipeline.yaml)。 |
+| **arch-decision** ✅ | **架构 ADR 链**。见 [`pipelines/arch-decision.pipeline.yaml`](pipelines/arch-decision.pipeline.yaml)。 |
+| **fix-regression** ✅ | **单点回归**（`--type bug` 默认）。见 [`pipelines/fix-regression.pipeline.yaml`](pipelines/fix-regression.pipeline.yaml)。 |
+| **platform-refactor** ✅ | **内部重构 / infra**。见 [`pipelines/platform-refactor.pipeline.yaml`](pipelines/platform-refactor.pipeline.yaml)。 |
+
+旧名（`slice-delivery`、`bugfix` 等）仍可作为 CLI alias；新 Issue 应使用 canonical 名。
 
 ## 使用
 
@@ -109,14 +117,13 @@ popsicle skill start living-doc-author --target all
 # popsicle pipeline run migration-bootstrap
 
 # —— 后续 slice：spec + delivery（同一 issue 可链式跑）——
-# popsicle pipeline run slice-spec        # 若 spec 已有可跳过
-# popsicle pipeline run slice-delivery    # implement → equivalence → cutover → living-docs
+# popsicle issue create ... --pipeline migration-slice-spec
+# popsicle issue create ... --pipeline migration-slice-delivery   # 或 feature-delivery
 
 # —— 新产品 / 新模块：从 product brief 直接进入 spec 链 ——
-# popsicle pipeline run greenfield-product-spec
-# popsicle doc create product-debate --title "My module product debate" --run <run-id>
+# popsicle issue create ... --pipeline product-greenfield-spec
 
-# slice-delivery 末尾建议：
+# delivery 末尾建议：
 # popsicle skill start living-doc-author \
 #   --target implementation-status,architecture-manifest,product-header
 ```

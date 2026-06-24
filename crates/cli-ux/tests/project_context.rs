@@ -16,7 +16,7 @@ fn temp_workspace() -> std::path::PathBuf {
             .unwrap()
             .as_nanos()
     ));
-    fs::create_dir_all(dir.join(".popsicle/self-host")).unwrap();
+    fs::create_dir_all(dir.join(".popsicle")).unwrap();
     dir
 }
 
@@ -53,5 +53,7 @@ fn agent_context_includes_project_context_when_inject_on() {
 
 #[test]
 fn bundled_weekly_health_pipeline_name() {
-    assert!(cli_ux::bundled_pipeline_names().contains(&"weekly-health-check"));
+    assert!(cli_ux::bundled_pipeline_names()
+        .iter()
+        .any(|n| n == "doc-sync-weekly"));
 }

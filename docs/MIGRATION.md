@@ -10,7 +10,7 @@
 | Legacy | New |
 |---|---|
 | 单体 `popsicle-core` + `popsicle-cli` | 按 slice 拆成 `skill-runtime` / `artifact-system` / `cli-ux` + `storage` |
-| `popsicle.db` IndexDb | `.popsicle/self-host/state.db` SQLite |
+| `popsicle.db` IndexDb | `.popsicle/state.db` SQLite |
 | 14 页 legacy UI | `ui/` MVP+（Issues / Pipeline / Products / Settings） |
 | `context scan` + `.popsicle/project-context.md` | `docs/PROJECT_CONTEXT.md` + Settings UI + weekly 巡检 |
 

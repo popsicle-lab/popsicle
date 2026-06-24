@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use cli_ux::global_config::{
     open_project_or_bootstrap, workspace_needs_bootstrap, WorkspaceSource,
 };
-use cli_ux::{bootstrap_workspace_at, SelfHostDomain};
+use cli_ux::{bootstrap_workspace_at, WorkspaceDomain};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -88,7 +88,7 @@ fn open_with_lazy_bootstraps_cwd_when_no_workspace() {
         let root = temp_dir("cli-lazy");
         let prev = std::env::current_dir().expect("cwd");
         std::env::set_current_dir(&root).expect("chdir");
-        let domain = SelfHostDomain::open_with_lazy(None).expect("lazy open");
+        let domain = WorkspaceDomain::open_with_lazy(None).expect("lazy open");
         assert_eq!(domain.workspace_source(), WorkspaceSource::LazyBootstrap);
         assert!(root.join(".popsicle").is_dir());
         std::env::set_current_dir(prev).expect("restore cwd");
@@ -102,7 +102,7 @@ fn open_with_lazy_bootstraps_explicit_project_path() {
     with_isolated_home(|| {
         let root = temp_dir("cli-flag");
         let path = root.display().to_string();
-        let domain = SelfHostDomain::open_with_lazy(Some(path.as_str())).expect("lazy open");
+        let domain = WorkspaceDomain::open_with_lazy(Some(path.as_str())).expect("lazy open");
         assert_eq!(domain.workspace_source(), WorkspaceSource::LazyBootstrap);
         assert!(root.join(".popsicle").is_dir());
         let _ = fs::remove_dir_all(root);

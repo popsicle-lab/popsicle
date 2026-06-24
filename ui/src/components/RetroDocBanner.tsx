@@ -20,8 +20,8 @@ export function RetroDocBanner({ productId }: Props) {
         Retro 文档债（代码已交付、spec 待补）
       </div>
       <p className="mb-3 text-[12px] text-[var(--text-secondary)]">
-        本 Issue 未绑定 pipeline，适合已合并增量的 spec 回补。不要开 slice-spec；
-        直接在 <code className="font-mono">products/{productId}/</code> 写活文档。
+        本 Issue 未绑定 pipeline，适合已合并增量的 spec 回补。不要开 migration-slice-spec；
+        优先 doc-retro-spec 或直接在 <code className="font-mono">products/{productId}/</code> 写活文档。
       </p>
       <ol className="list-decimal space-y-1 pl-4 text-[12px] text-[var(--text-muted)]">
         {RETRO_STEPS.map((step) => (

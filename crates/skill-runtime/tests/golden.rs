@@ -59,10 +59,10 @@ fn golden_002_load_migration_bootstrap_pipeline() {
     assert_eq!(p.stages.last().unwrap().name, "living-docs");
 }
 
-/// G-003: `slice-delivery` pipeline has 4 delivery stages.
+/// G-003: `migration-slice-delivery` pipeline has 4 delivery stages.
 #[test]
 fn golden_003_load_slice_delivery_pipeline() {
-    let path = intent_coder_pipelines_dir().join("slice-delivery.pipeline.yaml");
+    let path = intent_coder_pipelines_dir().join("migration-slice-delivery.pipeline.yaml");
     if !path.is_file() {
         eprintln!("skip: {path:?} missing");
         return;

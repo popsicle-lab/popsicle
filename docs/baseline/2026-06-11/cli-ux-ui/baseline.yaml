@@ -51,7 +51,7 @@ goldens:
       - "products/cli-ux/tasks/"
 divergences:
   - id: D-501
-    behavior: "IPC backend is SelfHostDomain not popsicle-core"
+    behavior: "IPC backend is WorkspaceDomain not popsicle-core"
     legacy: "crates/popsicle-cli/src/ui/commands.rs + popsicle-core IndexDb"
     new: "crates/cli-ux/src/ui/commands.rs + LocalWorkspace / state.db"
     reason: "ADR-015: self-host MVP cannot reuse legacy DB/commands"

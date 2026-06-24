@@ -12,7 +12,7 @@ use crate::project_config::{
     default_pipelines_by_type, ensure_project_config, load_project_config, project_config_path,
     save_project_config, sync_agents_md, AgentLanguage, ProjectConfig, WorkflowProfile,
 };
-use crate::self_host::{
+use crate::workspace::{
     binary_provenance_for, list_installed_pipeline_names, load_pipeline_def, Workspace,
 };
 use crate::workspace_readers::{
@@ -202,7 +202,7 @@ pub fn get_workspace_info(state: State<AppState>) -> Result<WorkspaceInfo, Strin
 }
 
 fn issue_task_links(
-    store: &crate::self_host::LocalWorkspace,
+    store: &crate::workspace::LocalWorkspace,
     issue_key: &str,
 ) -> Result<Vec<crate::ui::dto::IssueTaskLinkDto>, String> {
     store
@@ -223,7 +223,7 @@ fn issue_task_links(
 }
 
 fn issue_info_from_row(
-    store: &crate::self_host::LocalWorkspace,
+    store: &crate::workspace::LocalWorkspace,
     row: storage::IssueRow,
 ) -> Result<IssueInfo, String> {
     let active = store.active_run_id(&row.key).ok().flatten();

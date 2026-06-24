@@ -114,7 +114,7 @@ fn golden_010_issue_type_default_pipelines_are_bundled() {
             .default_pipeline()
             .expect("every issue type needs a default pipeline");
         assert!(
-            bundled.contains(&default),
+            bundled.iter().any(|n| n == default),
             "default pipeline `{default}` for {issue_type:?} is not bundled"
         );
     }

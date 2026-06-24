@@ -38,12 +38,14 @@ interface Props {
 }
 
 const CATEGORY_KEYS = {
-  spec: "catSpec",
-  delivery: "catDelivery",
-  bugfix: "catBugfix",
   migration: "catMigration",
-  bootstrap: "catBootstrap",
-  periodic: "catPeriodic",
+  feature: "catFeature",
+  product: "catProduct",
+  doc: "catDoc",
+  fix: "catFix",
+  arch: "catArch",
+  platform: "catPlatform",
+  other: "catOther",
 } as const;
 
 function categoryLabel(

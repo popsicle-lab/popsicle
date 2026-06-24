@@ -35,7 +35,7 @@ build-dmg:
 install-intent:
 	bash packaging/macos/install-intent.sh
 
-# Full golden-baseline chain (latest run-all chains all earlier baselines).
+# Full golden-baseline chain (self-host regression; ADR-031).
 golden:
 	bash docs/baseline/2026-06-11/cli-ux-sqlite-phase2/run-all.sh
 

@@ -42,7 +42,7 @@ project-init → fact-extractor → product-debate → prd-writer
               → intent-spec-writer → intent-consistency-check → living-doc-author
 ```
 
-**每 slice** — spec 已有可跳过 `slice-spec`，交付必跑 `slice-delivery`（4 stage）：
+**每 slice** — spec 已有可跳过 `migration-slice-spec`，迁移交付必跑 `migration-slice-delivery`（4 stage）：
 
 ```
 shadow-implementer → equivalence-baseline → cutover-author → living-doc-author

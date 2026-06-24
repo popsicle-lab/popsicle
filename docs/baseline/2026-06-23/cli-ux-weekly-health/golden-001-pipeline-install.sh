@@ -10,9 +10,9 @@ trap 'rm -rf "$ROOT"' EXIT
 cd "$ROOT"
 "$BIN" init --format json >/dev/null
 
-test -f .popsicle/pipelines/weekly-health-check.pipeline.yaml
-grep -q 'health-sync' .popsicle/pipelines/weekly-health-check.pipeline.yaml
-grep -q 'living-doc-author' .popsicle/pipelines/weekly-health-check.pipeline.yaml
-! grep -q 'requires_approval' .popsicle/pipelines/weekly-health-check.pipeline.yaml
+test -f .popsicle/pipelines/doc-sync-weekly.pipeline.yaml
+grep -q 'health-sync' .popsicle/pipelines/doc-sync-weekly.pipeline.yaml
+grep -q 'living-doc-author' .popsicle/pipelines/doc-sync-weekly.pipeline.yaml
+! grep -q 'requires_approval' .popsicle/pipelines/doc-sync-weekly.pipeline.yaml
 
-echo "golden-001 ok (weekly-health-check pipeline installed on init)"
+echo "golden-001 ok (doc-sync-weekly pipeline installed on init)"

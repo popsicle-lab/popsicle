@@ -1,0 +1,33 @@
+name: arch-decision
+description: >-
+  架构域 · 轻量技术决策：arch-debate → rfc → adr。产出 Accepted ADR，不含 PRD
+  任务图或 intent 收紧（那些走 product/feature spec 链）。
+scale: light
+keywords:
+  - arch
+  - technical
+  - architecture
+  - decision
+  - adr
+  - rfc
+
+stages:
+  - name: arch-debate
+    skill: arch-debate
+    description: >-
+      多角色架构辩论。议题取自 issue 描述或 ARCHITECTURE.md › Open Decisions。
+    requires_approval: true
+
+  - name: rfc
+    skill: rfc-writer
+    description: >-
+      正式 RFC + ARCHITECTURE.md 增量 + contracts.intent 种子（如需）+ ADR 骨架。
+    depends_on: [arch-debate]
+    requires_approval: true
+
+  - name: adr
+    skill: adr-writer
+    description: >-
+      固化 ADR(Accepted)，解锁 contracts 种子（如有）。
+    depends_on: [rfc]
+    requires_approval: true

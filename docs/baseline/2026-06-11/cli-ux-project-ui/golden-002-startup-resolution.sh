@@ -7,7 +7,7 @@ PROJ_A="$(mktemp -d /tmp/popsicle-ui-startup-a.XXXXXX)"
 PROJ_B="$(mktemp -d /tmp/popsicle-ui-startup-b.XXXXXX)"
 trap 'rm -rf "$HOME_DIR" "$PROJ_A" "$PROJ_B"' EXIT
 
-mkdir -p "$PROJ_A/.popsicle/self-host" "$PROJ_B/.popsicle/self-host"
+mkdir -p "$PROJ_A/.popsicle" "$PROJ_B/.popsicle"
 export POPSICLE_HOME="$HOME_DIR"
 
 cargo run -p cli-ux --bin popsicle --quiet -- project add "$PROJ_A" --name alpha --format json >/dev/null

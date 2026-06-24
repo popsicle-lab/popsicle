@@ -10,7 +10,7 @@ trap 'rm -rf "$ROOT"' EXIT
 cd "$ROOT"
 "$BIN" init --format json >/dev/null
 
-KEY="$("$BIN" issue create --type bug --title "cfg smoke" --spec smoke-spec --pipeline bugfix --format json | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')"
+KEY="$("$BIN" issue create --type bug --title "cfg smoke" --spec smoke-spec --pipeline fix-regression --format json | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')"
 OUT="$("$BIN" issue start "$KEY" --format json)"
 echo "$OUT" | grep -q '"agent_context"'
 echo "$OUT" | grep -q 'Project preferences'

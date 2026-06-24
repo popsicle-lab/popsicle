@@ -1,9 +1,8 @@
-name: slice-spec
+name: migration-slice-spec
 description: >-
-  单个迁移 slice 的 spec 链（无 project-init、无末尾 living-docs）。仓库已由
-  migration-bootstrap 铺好后，每个新 slice 跑此 pipeline，避免重复 10 stage 全价。
-  技术侧支线（arch-debate→rfc→adr）在 PRD 无跨模块契约时可整段 skip。
-  spec 完成后接 slice-delivery 做实现/对账/切流。
+  迁移域 · 单个 migration slice 的 spec 链（无 project-init、无末尾 living-docs）。
+  仓库已由 migration-bootstrap 铺好后，每个新 slice 跑此 pipeline。
+  spec 完成后接 migration-slice-delivery 做实现/对账/切流。
 scale: full
 keywords:
   - migration
@@ -69,5 +68,5 @@ stages:
   - name: intent-check
     skill: intent-consistency-check
     description: >-
-      对全量/增量 .intent 跑 Z3 一致性验证（observe）。通过后解锁 slice-delivery。
+      对全量/增量 .intent 跑 Z3 一致性验证（observe）。通过后解锁 migration-slice-delivery。
     depends_on: [intent-spec]

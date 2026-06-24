@@ -90,12 +90,14 @@ export type Messages = {
     stateMachine: string;
     usedInPipelines: string;
     categories: {
-      catSpec: string;
-      catDelivery: string;
-      catBugfix: string;
       catMigration: string;
-      catBootstrap: string;
-      catPeriodic: string;
+      catFeature: string;
+      catProduct: string;
+      catDoc: string;
+      catFix: string;
+      catArch: string;
+      catPlatform: string;
+      catOther: string;
     };
   };
   issues: {
@@ -270,12 +272,14 @@ const zhCN: Messages = {
     stateMachine: "Skill 状态机",
     usedInPipelines: "出现于 Pipeline",
     categories: {
-      catSpec: "Spec 链",
-      catDelivery: "交付",
-      catBugfix: "缺陷修复",
       catMigration: "迁移",
-      catBootstrap: "引导",
-      catPeriodic: "周期巡检",
+      catFeature: "能力",
+      catProduct: "产品",
+      catDoc: "文档",
+      catFix: "修复",
+      catArch: "架构",
+      catPlatform: "平台",
+      catOther: "其他",
     },
   },
   issues: {
@@ -428,7 +432,7 @@ const en: Messages = {
     loadError: "Failed to load project config",
     projectContext: "Engineering profile (PROJECT_CONTEXT)",
     projectContextHint:
-      "Saved to docs/PROJECT_CONTEXT.md. §现在状态 is refreshed by weekly-health-check; edit §工程画像 here.",
+      "Saved to docs/PROJECT_CONTEXT.md. §现在状态 is refreshed by doc-sync-weekly; edit §工程画像 here.",
     projectContextSave: "Save profile",
     projectContextSaving: "Saving…",
     projectContextSaved: "Profile saved",
@@ -458,12 +462,14 @@ const en: Messages = {
     stateMachine: "State machine",
     usedInPipelines: "Used in pipelines",
     categories: {
-      catSpec: "Spec chain",
-      catDelivery: "Delivery",
-      catBugfix: "Bugfix",
       catMigration: "Migration",
-      catBootstrap: "Bootstrap",
-      catPeriodic: "Periodic",
+      catFeature: "Feature",
+      catProduct: "Product",
+      catDoc: "Docs",
+      catFix: "Fix",
+      catArch: "Architecture",
+      catPlatform: "Platform",
+      catOther: "Other",
     },
   },
   issues: {

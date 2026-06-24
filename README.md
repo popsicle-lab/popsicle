@@ -10,7 +10,7 @@
 
 ## 这是什么
 
-Popsicle 是 [intent-coder](intent-coder/README.md) 的**私有引擎**（[D4 决策](legacy/popsicle/intent-coder/ROADMAP.md)）：
+Popsicle 是 [intent-coder](intent-coder/README.md) 的**私有引擎**（D4 决策，见 `docs/glossary.md`）：
 它不是通用工作流平台，而是为 IDD 迁移与交付定制的 **Issue → Pipeline → Document → Intent 验证** 闭环。
 
 典型用法：
@@ -43,7 +43,7 @@ git checkout backup-v0.5
 # 按该分支自带 README / Makefile 构建
 ```
 
-`main` 通过 `legacy/popsicle/` **git submodule**（跟踪 `backup-v0.5` 分支，见 [`LEGACY_PIN.md`](LEGACY_PIN.md)）保留 legacy 全量源码，供 fact-extractor 与 equivalence baseline 对账。
+Legacy 源码 **不再**以 submodule 维护（ADR-031 C2）。Final pin 与 baseline 快照见 [`LEGACY_PIN.md`](LEGACY_PIN.md)；迁移对照见 [`migration/traceability.md`](migration/traceability.md)。
 
 ---
 
@@ -128,7 +128,7 @@ flowchart TB
 |---|---|---|
 | [`skill-runtime`](crates/skill-runtime/) | Skill 状态机、Pipeline DAG、Run/Spec、Hook、Tool/Memory 注册表 | cutover-done |
 | [`artifact-system`](crates/artifact-system/) | Document 实体、Markdown guard、Context 装配、chunk 抽取 | cutover-done |
-| [`storage`](crates/storage/) | 工作区持久化（SQLite `.popsicle/self-host/state.db`，兼容 legacy TSV） | 使用中 |
+| [`storage`](crates/storage/) | 工作区持久化（SQLite `.popsicle/state.db`，兼容 legacy TSV 与 self-host 子目录迁移） | 使用中 |
 | [`cli-ux`](crates/cli-ux/) | `popsicle` 二进制、自托管 domain、Tauri IPC（feature `ui`） | cutover-done · dogfood-usable |
 
 ### Product 域（`products/`）
@@ -193,7 +193,8 @@ popsicle/
 ├── vender/intent-lang/     # intent DSL 源码镜像（AI/文档用；运行时用独立安装的 intent v0.1.1+）
 ├── ui/                     # Tauri 前端（Vite + React 19）
 ├── migration/              # Strangler Fig 进度与 traceability
-├── legacy/popsicle/        # legacy 源码 submodule（对账用）
+├── docs/baseline/          # 冻结 baseline（含 legacy pin 快照）
+├── migration/              # 切流 traceability（历史）
 ├── .popsicle/              # 本仓库自托管工作区（init 后生成）
 ├── AGENTS.md               # AI agent 命令指南（自动生成目标）
 ├── CONTRIBUTING.md         # 贡献与 IDD 硬约束
@@ -254,7 +255,7 @@ popsicle pipeline stage complete <stage> --run <run_id>
 popsicle tool run intent-validate path=products
 ```
 
-Bundled pipeline 模板：`greenfield-product-spec` · `slice-spec` · `slice-delivery` · `tech-decision` · `bugfix` · `migration-bootstrap`（详见 `AGENTS.md`）。
+Bundled pipeline 模板（ADR-029 canonical）：`migration-bootstrap` · `migration-slice-spec` · `migration-slice-delivery` · `product-greenfield-spec` · `feature-spec` · `feature-delivery` · `doc-retro-spec` · `doc-sync-weekly` · `arch-decision` · `fix-regression` · `platform-refactor`（旧名 alias 仍可用，详见 `AGENTS.md`）。
 
 ### 多项目（全局 CLI）
 
@@ -321,8 +322,8 @@ make ui-dev                   # 另开终端运行 popsicle ui
 
 | 场景 | 路径 | 文档义务 |
 |---|---|---|
-| 大型迁移 / 新 slice | `slice-spec` → `slice-delivery` + intent gate | 五件套 + 全 task 图 |
-| 日常 bug / 小增强 | `bugfix` 或已有 spec 的 `slice-delivery` | 最小 PDR + 单 task + intent block |
+| 大型迁移 / 新 slice | `migration-slice-spec` → `migration-slice-delivery` + intent gate | 五件套 + 全 task 图 |
+| 日常 bug / 小增强 | `fix-regression` 或已有 spec 的 `feature-delivery` | 最小 PDR + 单 task + intent block |
 | 已合并增量（retro） | **不跑 pipeline**；直接写 `products/` + `living-doc-author` | 见 P4 checklist |
 
 详见 [`intent-coder/skills/issue-author/guide.md`](intent-coder/skills/issue-author/guide.md)。
@@ -351,7 +352,7 @@ make ui-dev                   # 另开终端运行 popsicle ui
 ## 许可证
 
 - 本仓库 workspace crate：**MIT**（见各 crate `Cargo.toml`）
-- `legacy/popsicle/` submodule：**Apache-2.0**
+- Legacy baseline 快照：`docs/baseline/`（Apache-2.0，见 LEGACY_PIN.md）
 
 ---
 

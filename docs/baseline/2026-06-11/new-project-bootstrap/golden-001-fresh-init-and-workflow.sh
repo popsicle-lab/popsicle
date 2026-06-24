@@ -21,8 +21,8 @@ echo "==> help works without a workspace"
 
 echo "==> init bootstraps a fresh workspace"
 "$BIN" init | grep -q 'workspace_ready: true'
-test -f .popsicle/self-host/state.tsv
-test -f .popsicle/pipelines/greenfield-product-spec.pipeline.yaml
+test -f .popsicle/state.db
+test -f .popsicle/pipelines/product-greenfield-spec.pipeline.yaml
 test -f .popsicle/pipelines/migration-bootstrap.pipeline.yaml
 
 echo "==> init is idempotent"

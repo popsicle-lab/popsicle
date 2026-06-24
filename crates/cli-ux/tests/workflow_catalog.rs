@@ -11,7 +11,7 @@ fn temp_ws() -> Workspace {
             .as_nanos()
     ));
     std::fs::create_dir_all(root.join(".popsicle/pipelines")).unwrap();
-    std::fs::create_dir_all(root.join(".popsicle/self-host")).unwrap();
+    std::fs::create_dir_all(root.join(".popsicle")).unwrap();
     Workspace::at(root)
 }
 
@@ -22,7 +22,7 @@ fn workflow_catalog_includes_pipelines_and_skills() {
     install_intent_coder_module(&ws, false).unwrap();
 
     let cat = build_workflow_catalog(&ws).unwrap();
-    assert!(cat.pipelines.iter().any(|p| p.name == "slice-delivery"));
+    assert!(cat.pipelines.iter().any(|p| p.name == "feature-delivery"));
     assert!(cat.skills.iter().any(|s| s.name == "prd-writer"));
     assert!(cat
         .skills
@@ -40,5 +40,5 @@ fn skill_used_in_pipelines_is_populated() {
 
     let cat = build_workflow_catalog(&ws).unwrap();
     let prd = cat.skills.iter().find(|s| s.name == "prd-writer").unwrap();
-    assert!(prd.used_in_pipelines.contains(&"slice-spec".to_string()));
+    assert!(prd.used_in_pipelines.contains(&"feature-spec".to_string()));
 }

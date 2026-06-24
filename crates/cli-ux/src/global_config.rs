@@ -247,7 +247,7 @@ fn ensure_workspace_bootstrapped(canon: &Path) -> Result<bool, WorkspaceError> {
     if is_valid_workspace_path(&canon.display().to_string()) {
         return Ok(false);
     }
-    crate::self_host::bootstrap_workspace_at(canon)?;
+    crate::workspace::bootstrap_workspace_at(canon)?;
     Ok(true)
 }
 

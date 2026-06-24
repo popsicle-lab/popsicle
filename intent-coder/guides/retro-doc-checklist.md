@@ -1,7 +1,7 @@
 # Retro 文档债清单（已交付增量）
 
 > **何时用**：代码已合并，但 `products/<product>/` 里还没有对应 PDR / task / intent。
-> **不要用** `slice-spec` pipeline（facts 阶段面向 legacy 迁移，不是 retro）。
+> **不要用** `migration-slice-spec` pipeline（facts 阶段面向 legacy 迁移，不是 retro）。优先 **`doc-retro-spec`**。
 
 ## Checklist
 

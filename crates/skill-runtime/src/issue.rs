@@ -15,10 +15,10 @@ impl IssueType {
     /// `test-only`/`design-only` names were never shipped).
     pub fn default_pipeline(&self) -> Option<&'static str> {
         match self {
-            Self::Product => Some("greenfield-product-spec"),
-            Self::Technical => Some("tech-decision"),
-            Self::Bug => Some("bugfix"),
-            Self::Idea => Some("tech-decision"),
+            Self::Product => Some("product-greenfield-spec"),
+            Self::Technical => Some("arch-decision"),
+            Self::Bug => Some("fix-regression"),
+            Self::Idea => Some("arch-decision"),
         }
     }
 

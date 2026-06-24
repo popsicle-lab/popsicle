@@ -1,9 +1,8 @@
-name: slice-delivery
+name: migration-slice-delivery
 description: >-
-  单个迁移 slice 的交付后半段：按 ADR File Manifest 做 in-shadow 实现、
-  legacy vs new golden 对账、切流 ADR + traceability，最后保活实现态文档。
-  前置条件：该 slice 的 spec 已完成（migration-bootstrap 或 slice-spec 的
-  intent-check 已通过）。不与 spec 链合并，避免 14 stage 过重。
+  迁移域 · 单个 migration slice 的交付后半段：in-shadow 实现、legacy vs new golden
+  对账、切流 ADR + traceability，最后保活实现态文档。
+  前置：migration-slice-spec 的 intent-check 已通过。
 scale: full
 keywords:
   - migration
@@ -41,9 +40,8 @@ stages:
   - name: living-docs
     skill: living-doc-author
     description: >-
-      刷新 implementation-status / architecture-manifest / product-header；
-      回填 tasks/README「已实施」列。建议 --target
-      implementation-status,architecture-manifest,product-header。
-      **不含** tasks-index / product-context（见 weekly-health-check pipeline）。
+      刷新 implementation-status / architecture-manifest / product-header。
+      建议 --target implementation-status,architecture-manifest,product-header。
+      **不含** tasks-index / product-context（见 doc-sync-weekly pipeline）。
     depends_on: [cutover]
     requires_approval: true

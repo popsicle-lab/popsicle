@@ -110,19 +110,28 @@ impl WorkflowProfile {
         }
     }
 
-    /// Default pipeline for `issue create` given issue type.
+    /// Default pipeline for `issue create` given issue type (ADR-029 taxonomy).
     pub fn default_pipeline(self, issue_type: &str) -> &'static str {
         if issue_type == "bug" {
-            return "bugfix";
+            return "fix-regression";
         }
         match self {
             Self::DailyDev => match issue_type {
-                "technical" => "slice-delivery",
-                "product" => "greenfield-product-spec",
-                _ => "tech-decision",
+                "technical" => "feature-delivery",
+                "product" => "product-greenfield-spec",
+                _ => "arch-decision",
             },
-            Self::Migration | Self::PmSpecOnly => "slice-spec",
-            Self::OpcFull => "greenfield-product-spec",
+            Self::Migration => match issue_type {
+                "technical" => "migration-slice-spec",
+                "product" => "product-greenfield-spec",
+                _ => "arch-decision",
+            },
+            Self::PmSpecOnly => match issue_type {
+                "technical" => "feature-spec",
+                "product" => "product-greenfield-spec",
+                _ => "feature-spec",
+            },
+            Self::OpcFull => "product-greenfield-spec",
         }
     }
 
@@ -559,17 +568,24 @@ mod tests {
 
     #[test]
     fn workflow_profile_default_pipelines() {
-        assert_eq!(WorkflowProfile::DailyDev.default_pipeline("bug"), "bugfix");
+        assert_eq!(
+            WorkflowProfile::DailyDev.default_pipeline("bug"),
+            "fix-regression"
+        );
         assert_eq!(
             WorkflowProfile::DailyDev.default_pipeline("technical"),
-            "slice-delivery"
+            "feature-delivery"
         );
         assert_eq!(
             WorkflowProfile::Migration.default_pipeline("technical"),
-            "slice-spec"
+            "migration-slice-spec"
+        );
+        assert_eq!(
+            WorkflowProfile::PmSpecOnly.default_pipeline("technical"),
+            "feature-spec"
         );
         let map = default_pipelines_by_type(WorkflowProfile::OpcFull);
-        assert_eq!(map.get("bug").map(String::as_str), Some("bugfix"));
+        assert_eq!(map.get("bug").map(String::as_str), Some("fix-regression"));
     }
 
     #[test]

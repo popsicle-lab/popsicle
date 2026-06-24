@@ -3,7 +3,7 @@ use std::io::Write as _;
 
 use cli_ux::{
     parse_cli, run_command, run_command_stateless, CliError, Command, CommandResponse,
-    OutputFormat, SelfHostDomain,
+    OutputFormat, WorkspaceDomain,
 };
 
 fn print_response(response: CommandResponse, format: OutputFormat) {
@@ -115,7 +115,7 @@ fn main() {
     }
 
     if matches!(command, Command::Help) {
-        let lang = if let Ok(domain) = SelfHostDomain::open_with(cli_project.as_deref()) {
+        let lang = if let Ok(domain) = WorkspaceDomain::open_with(cli_project.as_deref()) {
             domain.project_language()
         } else {
             cli_ux::project_config::detect_default_language()
@@ -131,8 +131,8 @@ fn main() {
     }
 
     let domain_result = match &command {
-        Command::Init => SelfHostDomain::open_or_bootstrap_with(cli_project.as_deref()),
-        _ => SelfHostDomain::open_with_lazy(cli_project.as_deref()),
+        Command::Init => WorkspaceDomain::open_or_bootstrap_with(cli_project.as_deref()),
+        _ => WorkspaceDomain::open_with_lazy(cli_project.as_deref()),
     };
     let mut domain = match domain_result {
         Ok(domain) => domain,
@@ -156,7 +156,7 @@ fn dispatch_stateless(command: Command, format: OutputFormat) {
 }
 
 fn dispatch(
-    domain: &mut SelfHostDomain,
+    domain: &mut WorkspaceDomain,
     command: Command,
     format: OutputFormat,
     is_tool_run: bool,

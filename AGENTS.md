@@ -99,16 +99,22 @@ The bundled pipeline templates are:
 
 | Pipeline | Use for | Default for `--type` |
 |---|---|---|
-| `greenfield-product-spec` | new product/module with no legacy code | `product` |
-| `slice-spec` | spec chain for a migration slice (facts → debate → prd → arch → rfc → adr → intent) | — |
-| `slice-delivery` | implement → equivalence → cutover → living-docs for a decided slice | — |
-| `weekly-health-check` | periodic tasks-index + PROJECT_CONTEXT §现在状态 refresh | — |
-| `tech-decision` | architecture/technical decision (arch-debate → rfc → adr) | `technical`, `idea` |
-| `bugfix` | minimal fix loop (implement → verify, no approvals) | `bug` |
 | `migration-bootstrap` | first-time migration bootstrap | — |
+| `migration-slice-spec` | migration slice spec chain | — |
+| `migration-slice-delivery` | implement → equivalence → cutover → living-docs | — |
+| `product-greenfield-spec` | new product/module with no legacy code | `product` |
+| `feature-spec` | incremental capability spec (no legacy facts) | — |
+| `feature-delivery` | spec-ready feature implement + verify | — |
+| `doc-retro-spec` | backfill PDR/task/intent after code merged | — |
+| `doc-sync-weekly` | periodic tasks-index + PROJECT_CONTEXT §现在状态 | — |
+| `arch-decision` | architecture decision (arch-debate → rfc → adr) | `technical`, `idea` |
+| `fix-regression` | minimal fix loop (implement → verify) | `bug` |
+| `platform-refactor` | internal refactor / infra | — |
+
+Deprecated aliases (`slice-delivery`, `bugfix`, etc.) still resolve — see ADR-029.
 
 If `--pipeline` is omitted, the issue type's default (last column) is used
-(ADR-012). Pass `--pipeline` explicitly when the default doesn't fit. Missing
+(ADR-012 / ADR-029). Pass `--pipeline` explicitly when the default doesn't fit. Missing
 templates self-heal: bundled definitions are installed on demand, and a
 "pipeline not found" error lists all available templates.
 
@@ -116,24 +122,25 @@ templates self-heal: bundled definitions are installed on demand, and a
 
 | Situation | Pipeline |
 |---|---|
-| New product module, no spec | `greenfield-product-spec` (`--type product` default) |
-| Existing slice, capability not in intent yet | `slice-spec` (not `slice-delivery`) |
-| Spec decided, ready to code | `slice-delivery` |
-| Architecture decision only | `tech-decision` (`--type technical` default) |
-| Regression fix | `bugfix` |
+| New product module, no spec | `product-greenfield-spec` (`--type product` default) |
+| Migration slice, capability not in intent yet | `migration-slice-spec` |
+| Daily feature, capability not in intent yet | `feature-spec` |
+| Spec decided, migration cutover | `migration-slice-delivery` |
+| Spec decided, daily feature | `feature-delivery` |
+| Architecture decision only | `arch-decision` (`--type technical` default) |
+| Regression fix | `fix-regression` |
+| Retro doc backfill | `doc-retro-spec` |
 
-`slice-delivery` is **not** a substitute for spec work. Do not use it for greenfield
-features or incremental UI/CLI capabilities until `acceptance.intent` covers them.
+`migration-slice-delivery` / `feature-delivery` are **not** substitutes for spec work.
 
-**CLI hard gate (`issue create`):** rejects `slice-delivery` + `--proposed-task` together.
-Rejects **`bugfix` misuse** (`bugfix-gate:*`) when `--type product` + `bugfix`, or when
+**CLI hard gate (`issue create`):** rejects `migration-slice-delivery` + `--proposed-task` together.
+Rejects **`fix-regression` misuse** (`fix-regression-gate:*`) when `--type product` + `fix-regression`, or when
 title/description indicates intent file edits, intent-coder skill-chain work, or new UI
-capabilities (not single-point fixes). See `intent-coder/skills/issue-author/guide.md` § bugfix 硬门禁.
+capabilities (not single-point fixes). See `intent-coder/skills/issue-author/guide.md`.
 
-**CLI hard gate (`issue start`):** `slice-delivery` is rejected when the issue has
+**CLI hard gate (`issue start`):** `migration-slice-delivery` is rejected when the issue has
 `proposed` task links, no `linked` tasks, `description` omits a linked `task_id`, or
 linked tasks lack resolvable `related_intents` in `products/<product>/intents/`.
-`issue create` rejects `slice-delivery` + `--proposed-task` together (see above for `bugfix-gate`).
 
 **intent-coder module (ADR-017):** compiled into the `popsicle` binary (`include_dir!`).
 `popsicle init` extracts it to `.popsicle/modules/intent-coder/`. In the popsicle
@@ -210,13 +217,15 @@ removed (see below).
 
 - `popsicle tool run intent-validate path=<dir> [format=<text|json>]` — Z3 intent check
 - `popsicle tool run mermaid-diagram action=<guide|scaffold|validate> [type=…] [path=…] [title=…] [format=<text|json>]` — Mermaid 画图技能（PRD/task/RFC/ADR）；`action=guide` 打印 `intent-coder/tools/mermaid-diagram/guide.md`
-- `popsicle admin migrate [--workspace <path>]` — migrate legacy TSV state to the SQLite backend (`.popsicle/self-host/state.db`); idempotent, keeps `state.tsv.migrated` for rollback
+- `popsicle admin migrate [--workspace <path>]` — migrate legacy TSV state to the SQLite backend (`.popsicle/state.db`); idempotent, keeps `state.tsv.migrated` for rollback
+- `popsicle admin relocate-workspace [--dry-run] [--workspace <path>]` — lift `.popsicle/self-host/` to flat layout (ADR-032)
 - `popsicle admin reinit [--workspace <path>]`
+- `popsicle admin backfill-pipeline-names [--dry-run] [--workspace <path>]` — ADR-029：canonicalize issues/runs pipeline 名；删除废弃 pipeline YAML
+- `popsicle admin purge-legacy-workspace [--dry-run] [--workspace <path>]` — ADR-031：删除 `.popsicle/popsicle.db` 等 legacy workspace 文件
 
-Storage (ADR-013): fresh workspaces use SQLite at `.popsicle/self-host/state.db`;
-legacy TSV workspaces keep working until `admin migrate`. `doctor` reports the
-active backend in `storage_backend`. Do NOT touch `.popsicle/popsicle.db` —
-that file belongs to the legacy binary.
+Storage (ADR-013, ADR-032): fresh workspaces use SQLite at `.popsicle/state.db`;
+legacy TSV is import-only (`admin migrate` or open-time auto-import). `doctor` reports the
+active backend in `storage_backend`. Do NOT use `.popsicle/popsicle.db` — legacy binary only.
 
 ## Deferred & Removed Commands
 

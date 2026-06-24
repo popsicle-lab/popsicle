@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../../../.."
 cargo build -p cli-ux -q
 COUNT() { ./target/debug/popsicle issue list --format json | python3 -c "import json,sys; print(json.load(sys.stdin)['count'])"; }
 BEFORE="$(COUNT)"
-cargo test -p cli-ux self_host_workflow_smoke_passes -q >/dev/null
+cargo test -p cli-ux workspace_workflow_smoke_passes -q >/dev/null
 AFTER="$(COUNT)"
 if [ "$BEFORE" != "$AFTER" ]; then
   echo "FAIL: smoke test mutated real workspace (issues $BEFORE -> $AFTER)" >&2
