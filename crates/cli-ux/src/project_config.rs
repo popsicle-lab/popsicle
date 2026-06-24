@@ -9,8 +9,11 @@ use storage::WorkspaceError;
 
 pub const PROJECT_CONFIG_FILE: &str = "project.yaml";
 const AGENTS_MD: &str = "AGENTS.md";
+const GITIGNORE_FILE: &str = ".gitignore";
 const MARKER_START: &str = "<!-- popsicle:project-config:start -->";
 const MARKER_END: &str = "<!-- popsicle:project-config:end -->";
+const GITIGNORE_MARKER_START: &str = "# popsicle:gitignore:start";
+const GITIGNORE_MARKER_END: &str = "# popsicle:gitignore:end";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -231,6 +234,14 @@ pub struct WorkflowConfig {
     pub approval_mode: ApprovalMode,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GitConfig {
+    /// When `false` (default), sync adds `.popsicle/` to the managed `.gitignore` block.
+    /// When `true`, workspace files under `.popsicle/` may be committed to git.
+    #[serde(default)]
+    pub track_workspace: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectConfig {
     #[serde(default = "default_version")]
@@ -241,6 +252,8 @@ pub struct ProjectConfig {
     pub paths: PathConfig,
     #[serde(default)]
     pub workflow: WorkflowConfig,
+    #[serde(default)]
+    pub git: GitConfig,
 }
 
 impl Default for ProjectConfig {
@@ -250,6 +263,7 @@ impl Default for ProjectConfig {
             agent: AgentConfig::default(),
             paths: PathConfig::default(),
             workflow: WorkflowConfig::default(),
+            git: GitConfig::default(),
         }
     }
 }
@@ -361,6 +375,7 @@ pub fn ensure_project_config(workspace_root: &Path) -> Result<ProjectConfig, Wor
     if config.workflow.sync_agents_md {
         sync_agents_md(workspace_root, &config)?;
     }
+    sync_gitignore(workspace_root, &config)?;
     Ok(config)
 }
 
@@ -518,22 +533,96 @@ pub fn sync_agents_md(workspace_root: &Path, config: &ProjectConfig) -> Result<(
     fs::write(&agents_path, content).map_err(io_err)
 }
 
+/// Maintain a popsicle-managed block in root `.gitignore` from `git.track_workspace`.
+pub fn sync_gitignore(
+    workspace_root: &Path,
+    config: &ProjectConfig,
+) -> Result<bool, WorkspaceError> {
+    let path = workspace_root.join(GITIGNORE_FILE);
+    let section = gitignore_managed_section(config.git.track_workspace);
+    let content = if path.is_file() {
+        let existing = fs::read_to_string(&path).map_err(io_err)?;
+        let stripped = strip_legacy_popsicle_gitignore_lines(&existing);
+        upsert_gitignore_section(&stripped, &section)
+    } else {
+        format!("{section}\n")
+    };
+    let previous = if path.is_file() {
+        Some(fs::read_to_string(&path).map_err(io_err)?)
+    } else {
+        None
+    };
+    let changed = previous.as_deref() != Some(content.as_str());
+    if changed {
+        fs::write(&path, content).map_err(io_err)?;
+    }
+    Ok(changed)
+}
+
+pub fn gitignore_managed_section(track_workspace: bool) -> String {
+    if track_workspace {
+        format!(
+            "{GITIGNORE_MARKER_START}\n# git.track_workspace: true — .popsicle/ is not ignored\n{GITIGNORE_MARKER_END}"
+        )
+    } else {
+        format!("{GITIGNORE_MARKER_START}\n.popsicle/\n{GITIGNORE_MARKER_END}")
+    }
+}
+
+fn strip_legacy_popsicle_gitignore_lines(content: &str) -> String {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == ".popsicle/" {
+            continue;
+        }
+        if trimmed.starts_with("# popsicle workspace")
+            || trimmed.starts_with("# (state 由 popsicle")
+            || trimmed.starts_with("#  products/*/decisions/")
+        {
+            continue;
+        }
+        out.push(line);
+    }
+    let mut joined = out.join("\n");
+    if !joined.is_empty() && !joined.ends_with('\n') {
+        joined.push('\n');
+    }
+    joined
+}
+
+fn upsert_gitignore_section(existing: &str, section: &str) -> String {
+    upsert_marked_block(
+        existing,
+        GITIGNORE_MARKER_START,
+        GITIGNORE_MARKER_END,
+        section,
+    )
+}
+
 fn upsert_marked_section(existing: &str, section: &str) -> String {
-    if let (Some(start), Some(end)) = (existing.find(MARKER_START), existing.find(MARKER_END)) {
-        let before = &existing[..start];
-        let after = &existing[end + MARKER_END.len()..];
+    upsert_marked_block(existing, MARKER_START, MARKER_END, section)
+}
+
+fn upsert_marked_block(existing: &str, start: &str, end: &str, section: &str) -> String {
+    if let (Some(start_idx), Some(end_idx)) = (existing.find(start), existing.find(end)) {
+        let before = &existing[..start_idx];
+        let after = &existing[end_idx + end.len()..];
         let mut out = String::new();
         out.push_str(before.trim_end());
         if !before.trim().is_empty() {
-            out.push_str("\n\n");
+            out.push('\n');
+            if !before.ends_with("\n\n") {
+                out.push('\n');
+            }
         }
         out.push_str(section);
         out.push_str(after);
         out
     } else if existing.trim().is_empty() {
-        format!("# Agent Instructions\n\n{section}\n")
+        format!("{section}\n")
     } else {
-        format!("{existing}\n\n{section}\n")
+        format!("{}\n\n{section}\n", existing.trim_end())
     }
 }
 
@@ -586,6 +675,65 @@ mod tests {
         );
         let map = default_pipelines_by_type(WorkflowProfile::OpcFull);
         assert_eq!(map.get("bug").map(String::as_str), Some("fix-regression"));
+    }
+
+    #[test]
+    fn sync_gitignore_writes_managed_block_when_missing() {
+        let root = std::env::temp_dir().join(format!(
+            "popsicle-gitignore-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let cfg = ProjectConfig::default();
+        assert!(sync_gitignore(&root, &cfg).unwrap());
+        let content = fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(content.contains(GITIGNORE_MARKER_START));
+        assert!(content.contains(".popsicle/"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sync_gitignore_track_workspace_allows_popsicle_dir() {
+        let root = std::env::temp_dir().join(format!(
+            "popsicle-gitignore-track-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let mut cfg = ProjectConfig::default();
+        cfg.git.track_workspace = true;
+        sync_gitignore(&root, &cfg).unwrap();
+        let content = fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert!(content.contains("git.track_workspace: true"));
+        assert!(!content.lines().any(|l| l.trim() == ".popsicle/"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sync_gitignore_strips_legacy_standalone_entry() {
+        let root = std::env::temp_dir().join(format!(
+            "popsicle-gitignore-legacy-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join(".gitignore"),
+            "target/\n.popsicle/\n# popsicle workspace legacy comment\n",
+        )
+        .unwrap();
+        sync_gitignore(&root, &ProjectConfig::default()).unwrap();
+        let content = fs::read_to_string(root.join(".gitignore")).unwrap();
+        assert_eq!(content.matches(".popsicle/").count(), 1);
+        assert!(content.contains(GITIGNORE_MARKER_START));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

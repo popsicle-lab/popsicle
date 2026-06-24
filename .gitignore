@@ -6,15 +6,14 @@ target/
 # Cargo
 Cargo.lock.bak
 
-# popsicle workspace —— 承袭 legacy popsicle 实践，整个 .popsicle/ 是工作目录
-# (state 由 popsicle CLI 管理；artifacts 已通过 scaffolding 提升到 git-tracked 位置如
-#  products/*/decisions/、docs/CHARTER.md；跨 run 历史靠 popsicle-cloud 重建)
-.popsicle/
 
 # Editor / OS
-.DS_Store
+**/.DS_Store
 .idea/
 .vscode/
 
 # Bootstrap-temporary planning workspace (cleaned up after scaffolding)
 _planning/
+# popsicle:gitignore:start
+.popsicle/
+# popsicle:gitignore:end

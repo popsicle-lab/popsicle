@@ -45,6 +45,7 @@ pub struct ProjectConfigDto {
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
     pub approval_mode: String,
+    pub track_workspace: bool,
     pub config_path: String,
 }
 

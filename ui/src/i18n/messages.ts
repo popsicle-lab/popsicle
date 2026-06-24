@@ -53,6 +53,7 @@ export type Messages = {
     approvalDelegate: string;
     approvalHint: string;
     syncAgents: string;
+    trackWorkspace: string;
     injectOnRun: string;
     save: string;
     saving: string;
@@ -212,7 +213,7 @@ const zhCN: Messages = {
   },
   settings: {
     title: "项目设置",
-    intro: "配置会写入 .popsicle/project.yaml，并可同步到根目录 AGENTS.md。",
+    intro: "配置会写入 .popsicle/project.yaml，并可同步到 AGENTS.md 与 .gitignore。",
     language: "界面 / Agent 语言",
     languageHint: "控制 Popsicle 桌面端与 CLI 帮助文案，以及 Agent 回复语言。",
     productsDir: "产品文档目录",
@@ -234,6 +235,7 @@ const zhCN: Messages = {
     approvalHint:
       "控制带 requires_approval 阶段的完成方式；危险阶段为 cutover、living-docs。",
     syncAgents: "保存时同步到 AGENTS.md",
+    trackWorkspace: "将 .popsicle/ 工作区纳入 Git（关闭时写入 .gitignore）",
     injectOnRun: "创建 Issue / 启动 run / 创建文档时向 CLI 注入 agent_context",
     save: "保存配置",
     saving: "保存中…",
@@ -400,7 +402,7 @@ const en: Messages = {
   settings: {
     title: "Project settings",
     intro:
-      "Saved to .popsicle/project.yaml and optionally synced to AGENTS.md.",
+      "Saved to .popsicle/project.yaml and synced to AGENTS.md and .gitignore when you save.",
     language: "UI / agent language",
     languageHint:
       "Controls Popsicle desktop UI, CLI help text, and agent reply language.",
@@ -424,6 +426,7 @@ const en: Messages = {
     approvalHint:
       "How requires_approval stages complete; dangerous: cutover, living-docs.",
     syncAgents: "Sync to AGENTS.md on save",
+    trackWorkspace: "Track .popsicle/ workspace in Git (otherwise add to .gitignore)",
     injectOnRun: "Inject agent_context on issue create, issue start, and doc create",
     save: "Save",
     saving: "Saving…",

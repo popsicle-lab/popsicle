@@ -598,6 +598,7 @@ fn config_to_dto(root: &std::path::Path, cfg: &ProjectConfig) -> ProjectConfigDt
         sync_agents_md: cfg.workflow.sync_agents_md,
         inject_on_run: cfg.workflow.inject_on_run,
         approval_mode: cfg.workflow.approval_mode.as_str().to_string(),
+        track_workspace: cfg.git.track_workspace,
         config_path: project_config_path(root).display().to_string(),
     }
 }
@@ -622,6 +623,7 @@ pub struct SaveProjectConfigInput {
     pub sync_agents_md: bool,
     pub inject_on_run: bool,
     pub approval_mode: String,
+    pub track_workspace: bool,
 }
 
 #[tauri::command]
@@ -654,11 +656,15 @@ pub fn save_project_config_cmd(
             inject_on_run: input.inject_on_run,
             approval_mode: crate::project_config::ApprovalMode::parse(&input.approval_mode),
         },
+        git: crate::project_config::GitConfig {
+            track_workspace: input.track_workspace,
+        },
     };
     save_project_config(&dir, &cfg).map_err(|e| e.to_string())?;
     if cfg.workflow.sync_agents_md {
         sync_agents_md(&dir, &cfg).map_err(|e| e.to_string())?;
     }
+    crate::project_config::sync_gitignore(&dir, &cfg).map_err(|e| e.to_string())?;
     Ok(config_to_dto(&dir, &cfg))
 }
 

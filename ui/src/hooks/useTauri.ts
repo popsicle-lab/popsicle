@@ -35,6 +35,7 @@ export interface ProjectConfigDto {
   sync_agents_md: boolean;
   inject_on_run: boolean;
   approval_mode: ApprovalMode;
+  track_workspace: boolean;
   config_path: string;
 }
 
@@ -61,6 +62,7 @@ export interface SaveProjectConfigInput {
   sync_agents_md: boolean;
   inject_on_run: boolean;
   approval_mode: ApprovalMode;
+  track_workspace: boolean;
 }
 
 const DANGEROUS_STAGES = new Set(["cutover", "living-docs"]);

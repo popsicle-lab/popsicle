@@ -2389,8 +2389,15 @@ impl crate::CliDomain for WorkspaceDomain {
         let root = &self.store.workspace.root;
         let config = load_project_config(root).map_err(ws_err)?;
         sync_agents_md(root, &config).map_err(ws_err)?;
+        let gitignore_synced =
+            crate::project_config::sync_gitignore(root, &config).map_err(ws_err)?;
         let details = BTreeMap::from([
             ("synced".into(), "true".into()),
+            ("gitignore_synced".into(), gitignore_synced.to_string()),
+            (
+                "git_track_workspace".into(),
+                config.git.track_workspace.to_string(),
+            ),
             (
                 "project_config_path".into(),
                 project_config_path(root).display().to_string(),

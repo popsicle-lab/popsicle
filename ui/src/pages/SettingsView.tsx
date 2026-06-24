@@ -76,6 +76,7 @@ export function SettingsView({ setPage, onSaved }: Props) {
         sync_agents_md: config.sync_agents_md,
         inject_on_run: config.inject_on_run,
         approval_mode: config.approval_mode,
+        track_workspace: config.track_workspace,
       });
       setConfig(next);
       setLocale(normalizeLocale(next.language));
@@ -245,6 +246,15 @@ export function SettingsView({ setPage, onSaved }: Props) {
               onChange={(e) => update("sync_agents_md", e.target.checked)}
             />
             {m.settings.syncAgents}
+          </label>
+          <label className="flex cursor-pointer items-center gap-2.5 text-[13px]">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-[var(--border-strong)]"
+              checked={config.track_workspace}
+              onChange={(e) => update("track_workspace", e.target.checked)}
+            />
+            {m.settings.trackWorkspace}
           </label>
           <label className="flex cursor-pointer items-center gap-2.5 text-[13px]">
             <input
