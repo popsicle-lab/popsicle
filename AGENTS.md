@@ -286,7 +286,6 @@ names with `popsicle doc create <skill>`.
 | `project-init` | project-init-plan | fact-extractor | planning → surveying → scaffolding → completed |
 | `rfc-writer` | rfc | arch-debate, prd-writer, fact-extractor | review → completed → ingesting → scoring → drafting |
 | `shadow-implementer` | implementation-coverage | adr-writer, rfc-writer, intent-consistency-check | review → completed → verifying → implementing → scoping |
-
 <!-- popsicle:project-config:start -->
 ## 本项目偏好
 

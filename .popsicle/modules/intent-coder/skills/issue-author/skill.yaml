@@ -1,0 +1,48 @@
+name: issue-author
+description: 在 issue create 之前独立运行——扫描产品 task/intent、按 guide 内 pipeline 决策树选管线，产出 pipeline 与 issue↔task 关联（linked / proposed），再调用 popsicle issue create
+version: "0.1.0"
+
+# 不进任何 pipeline stage；由 Agent 在 issue start 之前按 guide 执行。
+inputs: []
+
+artifacts:
+  - type: issue-create-report
+    template: templates/issue-create-report.md
+    file_pattern: "{slug}.issue-create-report.md"
+    description: "pipeline 选择、linked task ids、proposed tasks、title/description 草稿"
+
+workflow:
+  initial: analyzing
+  states:
+    analyzing:
+      transitions:
+        - to: drafting
+          action: context-ready
+    drafting:
+      transitions:
+        - to: completed
+          action: submit
+    completed:
+      final: true
+
+prompts:
+  analyzing: |
+    按本 skill `guide.md`（含 pipeline 决策树）扫描目标产品的
+    `products/<product>/tasks/`、`intents/`。区分：
+    - **linked**：已有 task 语义覆盖本工作项
+    - **proposed**：需新建 task（living-doc 晋升）
+    收集候选 task id、journey_stage、intent block 引用。
+  drafting: |
+    填写 issue-create-report：pipeline、`--type`、linked_task_ids、
+    proposed_tasks（title|journey）、title、description（简体中文）。
+    复杂流程先 `popsicle tool run mermaid-diagram action=scaffold type=flowchart`。
+    然后执行：
+      popsicle issue create --type ... --title ... --product ... \
+        --pipeline ... --tasks T1,T2 \
+        --proposed-task "标题|journey" ...
+    不要 `issue start`，除非用户明确要求。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

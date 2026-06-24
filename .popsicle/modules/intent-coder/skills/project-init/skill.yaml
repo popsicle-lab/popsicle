@@ -1,0 +1,245 @@
+name: project-init
+description: 把一份遗留代码库 bootstrap 成 IDD-ready 仓库——初始化 popsicle、把 legacy 源码 pin 成 submodule、为每个 product 铺出 4 件套目录（PRODUCT / ARCHITECTURE / intents / decisions+proposals）、产出一份命名了 product 和首个切片的迁移计划
+version: "0.1.0"
+
+# project-init 是开始 IDD 迁移时第一个跑的 skill。它只产出目录骨架和一份迁移
+# 计划；它**不产出**任何 product 或 decision 的内容。证据由 fact-extractor 产
+# 出；内容由用户挑选的 PRD/RFC writer 产出；project-init 只搭舞台。
+inputs:
+  - from_skill: fact-extractor
+    artifact_type: fact-extraction-report
+    required: false
+    relevance: high
+    # 可选但强烈推荐——fact-extractor 的 Bounded Contexts 表是 product 命名最
+    # 好的信号。没有它的话，agent 只能反问人来枚举 product。
+
+artifacts:
+  - type: project-init-plan
+    template: templates/project-init-plan.md
+    file_pattern: "{slug}.project-init-plan.md"
+    description: "init 过程中所有决策的可审记录：product 命名、首切片挑选、legacy submodule pin、铺出了哪些东西"
+
+  - type: doc-architecture-charter
+    template: templates/doc-architecture-charter.md
+    file_pattern: "{slug}.doc-architecture-charter.md"
+    description: "文档体系的不可妥协规则（活文档 vs 决策档案的边界、四条铁律、各类内容放在哪里）。落地后位于 docs/CHARTER.md。"
+
+workflow:
+  initial: surveying
+  states:
+    surveying:
+      description: "读 fact-extraction-report（如有）、面访人类拿到 product 名 + legacy 仓库 URL + 首切片挑选"
+      transitions:
+        - to: planning
+          action: plan
+          guard: "checklist_complete:Survey Checklist"
+
+    planning:
+      description: "起草 project-init-plan + doc-architecture-charter；**先不要动文件系统**——计划要先评审"
+      transitions:
+        - to: scaffolding
+          action: approve
+          guard: "has_sections:Repository Identity,Product Inventory,Legacy Source,First Migration Slice,Scaffolding Manifest;checklist_complete:Plan Checklist"
+          requires_approval: true
+        - to: surveying
+          action: revise
+
+    scaffolding:
+      description: "按已批准的计划执行：popsicle init、submodule add、mkdir 树、写骨架文件、安装模块依赖"
+      transitions:
+        - to: completed
+          action: confirm
+          guard: "checklist_complete:Scaffolding Verification"
+          requires_approval: true
+
+    completed:
+      final: true
+
+prompts:
+  surveying: |
+    你正在为迁移一份遗留代码库 bootstrap 一个全新的 IDD-ready 仓库。
+    本状态下你的任务：收集铺骨架所需的事实。
+
+    ## 按顺序收集
+
+    1. **遗留源码的身份**
+       - 仓库 URL 或本地路径
+       - pinning commit SHA（默认：legacy 仓库 main 分支当前的 HEAD）
+       - License（要带进新仓库吗？必须兼容）
+
+    2. **Product 清单** —— 本 skill 中最重要的决定
+       - 如果 `fact-extraction-report.md` 可用，从它的 Bounded Contexts 表开始
+       - 如果没有，问人类：「这份代码里有哪些顶级 product？（通常 3-7 个）」
+       - 校验：每个 product 必须是客户/外部消费者认识的东西，不能是内部模块
+       - 坏 product 名：`core`、`utils`、`common`、`shared`、`lib`
+       - 好 product 名：`database`、`network`、`simulation`、`viz`、`cli`、`web-ui`
+       - 每个 product 记录：一行用途说明 + 估计 LoC（如果 fact-extraction-report 可用就从那里读）
+
+    3. **首个迁移切片**
+       - 按 doc-architecture 的原则：挑**高 churn + 相对独立（反向依赖少）**的 product
+       - 如有 fact-extraction-report，参考它的 Risk Hotspots
+       - 这个 product 第一批被填进 4 件套；其它 product 只铺空骨架
+       - 至少记录一个被否决的替代选项
+
+    4. **仓库身份**
+       - 新仓库名
+       - Issue key 前缀（popsicle 要求；如 INTENT、PROJ —— 用于 BUG-INTENT-1、TC-INTENT-1）
+       - 默认 agent target（claude / cursor / copilot / codex / opencode）
+
+    5. **要装的模块依赖**
+       - intent-coder（本模块——永远装）
+       - 用户自带的 PRD / RFC / ADR / PDR writer 模块（如果有 —— 可选，由用户提供路径）
+       - 用户自带的 intent spec writer 模块（如果有 —— 可选）
+       - 确认所有路径
+
+    ## 必须拒绝的反模式
+
+    - 按目录给 product 命名（"crates"、"modules"、"packages"）
+    - 把最关键的 product 选为首切片（首次迭代风险太大）
+    - 把反向依赖 > 5 的 product 选为首切片（耦合太深）
+    - 跳过 legacy submodule 步骤 —— 下游产物中每个事实都必须能引用回一个 pinned source
+
+    ## Survey Checklist
+
+    每一项要在**已验证**后才勾，不是「我以为是」就勾：
+
+    - [ ] Legacy 仓库 URL + pinning commit SHA 已记录
+    - [ ] License 兼容性已检查（或人类显式豁免并写明理由）
+    - [ ] 3-7 个 product 命名完毕，每个有一行用途
+    - [ ] 每个 product 名通过「客户可识别」测试
+    - [ ] 首个迁移切片已选定，且至少考虑过一个替代
+    - [ ] 新仓库名 + issue key 前缀已定
+    - [ ] 用户**额外提供**的 writer 模块依赖路径（若有）已验证存在
+    - [ ] 若 fact-extraction-report 缺失：人类已显式同意在没有它的情况下进行 survey
+
+  planning: |
+    Survey 已经够了；现在产两个 artifact：
+
+    ## Artifact 1：`project-init-plan.md`
+
+    一份可审的决策记录。包含 **Scaffolding Manifest** —— 下一个 state 即将
+    创建的每个文件/目录的扁平清单，便于人类在任何文件被写出来之前就签字。
+
+    必填章节（workflow guard 会检查）：
+    - **Repository Identity** —— 名称、前缀、默认 agent、license
+    - **Product Inventory** —— 用途 + LoC + 状态（slice / scaffold-only）的表格
+    - **Legacy Source** —— URL、pinned commit、submodule 路径、license 检查
+    - **First Migration Slice** —— 选中的 product + 理由 + 替代方案
+    - **Scaffolding Manifest** —— 每个目录、每个文件，附用途
+
+    Scaffolding Manifest 中每个 product 必须列出：
+    - `products/<name>/PRODUCT.md`（骨架，含 `[TBD: needs archaeology]` 占位符；
+      **v0.2 起 PRODUCT.md 是「顶层索引」**——含 Tasks Catalog / Intents Catalog
+      引用，具体 task 内容分散在 `tasks/` 子目录）
+    - `products/<name>/ARCHITECTURE.md`（骨架）
+    - `products/<name>/tasks/README.md`（task 目录索引骨架；由 prd-writer 首次
+      填充，living-doc-author 维护）
+    - `products/<name>/tasks/onboarding/.gitkeep`（**v0.2 任务图：5 个固定旅程
+      阶段目录，缺一不可**）
+    - `products/<name>/tasks/daily-ops/.gitkeep`
+    - `products/<name>/tasks/troubleshooting/.gitkeep`
+    - `products/<name>/tasks/admin/.gitkeep`
+    - `products/<name>/tasks/lifecycle/.gitkeep`
+    - `products/<name>/intents/{invariants,contracts,acceptance}.intent`（空 stub）
+    - `products/<name>/decisions/{adr,pdr}/.gitkeep`
+    - `products/<name>/proposals/{exploring,proposed,accepted,rejected}/.gitkeep`
+
+    仓库级别还要：
+    - `docs/CHARTER.md`（从下面的 artifact 2 落地）
+    - `docs/invariants/README.md`（空索引）
+    - `docs/baseline/.gitkeep`
+    - `docs/glossary.md`（骨架）
+    - `docs/PROJECT_CONTEXT.md`（骨架 §工程画像；bootstrap 后 Settings/人工填；§现在状态由 weekly-health-check 刷）
+    - `docs/user-journeys/README.md`（**v0.2 任务图：跨 product 旅程的全局层**；
+      首切片完成后再考虑填内容，bootstrap 时只铺空索引）
+    - `docs/user-journeys/.gitkeep`
+    - `migration/slices/.gitkeep`
+    - `migration/traceability.md`（骨架，含空映射表）
+    - `migration/progress.md`（骨架，含空 kanban）
+    - `.gitattributes`（含 `*.intent linguist-language=Scala`）
+    - `.gitmodules`（由 `git submodule add` 自动管理）
+    - `CONTRIBUTING.md`（IDD 工作流规则——人和 AI agent 都读）
+
+    ## Artifact 2：`doc-architecture-charter.md`
+
+    文档体系的不可妥协规则。铺骨架后被提升为 `docs/CHARTER.md`。**逐字使用**
+    下面的 Charter Source 章节 —— 这些是用户已经锁定的规则：
+
+    > **文档体系的四条铁律**
+    >
+    > 1. **活文档没有版本号** —— 只有 Last-Updated 和 Last-Decision-Ref。
+    >    它们永远代表「现在」。过期内容就地修正；不写历史叙事。
+    > 2. **决策档案只追加** —— ADR/PDR 文件在 Accepted 后永不修改。错的
+    >    决策通过写一份**新**决策（标注 Supersedes）来纠正。
+    > 3. **每次活文档编辑必须引用一个 Decision ID**（除错别字 / 链接 /
+    >    措辞修复外）。改 PRODUCT.md 或 ARCHITECTURE.md 的 PR 由 CI 强制。
+    > 4. **一次变更可能波及多份活文档** —— 触发它的 ADR/PDR 的 Consequences
+    >    章节**必须**列出所有被它强制更新的活文档段落；PR 必须在同一次提交
+    >    里全部更新。
+
+    必填章节：
+    - **The Four Iron Laws**（逐字使用上文）
+    - **Layer Map**（7 行表：L0 Charter / L1 Invariants / L2 PRD / L3 ADR / L4 RFC / L5 Change / L6 Code —— 每行列出约束对象、变更频率、owner、intent-lang 状态）
+    - **Per-Product 4-Piece Set**（PRODUCT.md / ARCHITECTURE.md / intents/ / decisions+proposals/ —— 每一件标注 audience、更新方式、**不准写什么**）
+    - **Three-Layer Intent Hierarchy**（global / product / feature —— 什么放哪里）
+    - **PRFC Lifecycle**（Exploring → Proposed → Accepted/Rejected → Superseded —— 解释为什么 product 侧有 Exploring 而技术侧没有）
+    - **Forbidden Phrases in Living Docs**（"曾经" / "originally" / "we used to" —— 这些属于 ADR/PDR 的叙述，永远不进活文档）
+    - **Anti-Patterns**（来源讨论中的 5 个：living docs 当 wiki、ADR 当日记、每个微服务一个 product、roadmap 当愿望清单、doc-code drift）
+
+    ## Plan Checklist
+
+    - [ ] Scaffolding Manifest 已穷举 —— 下一 state 要创建的每个文件都列了
+    - [ ] 每个 product 条目都有状态（slice / scaffold-only）和用途
+    - [ ] Charter 逐字引用了四条铁律
+    - [ ] Layer Map 表 7 行齐全
+    - [ ] Per-Product 4-Piece Set 章节存在，且显式列出每件「不准写什么」
+    - [ ] PRFC Lifecycle 解释了 Exploring 状态的用途
+    - [ ] Forbidden Phrases 章节存在
+    - [ ] Anti-Patterns 章节列出来源讨论中的 5 个模式
+
+  scaffolding: |
+    你拿到了已批准的计划。**严格按计划执行——不要即兴发挥。**
+
+    ## 操作顺序
+
+    1. `popsicle init`（如果 `.popsicle/` 不存在）
+    2. 如果没有 `.gitattributes`，创建；追加 `*.intent linguist-language=Scala`
+    3. `git submodule add <legacy-url> legacy/<legacy-name>`，然后
+       `git -C legacy/<legacy-name> checkout <pinned-sha>`
+    4. 对计划中的每个模块依赖：`popsicle module add <path>`
+    5. 按 Scaffolding Manifest 创建目录树（用 `mkdir -p`）
+    6. 写出每个骨架文件。骨架**必须**在任何本该填真实值的字段处放
+       `[TBD: needs archaeology]` 标记——永远不要凭空造内容。
+    7. 把 `doc-architecture-charter.md` 提升为 `docs/CHARTER.md`
+    8. 跑 `git status` 确认 diff 与 manifest 一致
+    9. **不要** git commit —— 让人类来 commit
+
+    ## Scaffolding Verification
+
+    Scaffolding Manifest 每一行都验证文件/目录现在确实存在。然后验证负向用例：
+
+    - [ ] Scaffolding Manifest 中的每个文件都在磁盘上
+    - [ ] manifest 之外没有创建任何文件
+    - [ ] `legacy/<name>/.git` 存在（submodule 正确 pin）
+    - [ ] `git -C legacy/<name> rev-parse HEAD` 匹配计划中的 pinned SHA
+    - [ ] `popsicle module list` 列出计划中的每个模块
+    - [ ] `.gitattributes` 包含 `*.intent linguist-language=Scala`
+    - [ ] 没有骨架文件含有「编造」内容 —— 每个值要么是模板默认，要么是
+          `[TBD: needs archaeology]`
+    - [ ] `git status` 显示的新文件符合预期；已跟踪文件没有被意外修改
+
+# project-init 不会自动跑，除非人类触发。它没有自动的上游触发器（它没有
+# required input）。
+hooks:
+  post_complete:
+    - description: "提醒人类接下来跑哪两个 skill"
+      message: |
+        ✅ 仓库骨架已铺好。建议的下一步：
+
+        1. 在 `legacy/<name>` 上跑 `fact-extractor` 产基线
+           （输出 → `docs/baseline/<today>/`）。
+        2. fact-extractor 完成后，选中的首切片 product 就可以用你自己的
+           PRD writer 去填 `products/<slice>/PRODUCT.md` 了。
+
+        在首切片完成完整的 PRFC → PDR → PRODUCT.md 周期之前，**不要**开始
+        写其它 product 的内容。首切片是你的 playbook；其它的照抄它。

@@ -1,0 +1,61 @@
+// ============================================================
+// Contracts 种子（解锁版）— skill-runtime（adr-writer 产出）
+// ============================================================
+//
+// 由 adr-writer 在 ADR-002 固化为 Accepted（2026-06-08）后，从 rfc-writer 的种子解锁而来。
+// goal 块本身保留（contracts 层是意图登记，0 VC）；变化的是状态注释 + 末尾的
+// 「可收紧逻辑保证」工单——交 intent-spec-writer 落进 acceptance/invariants。
+//
+// ⚠️ adr-writer **不自己收紧**逻辑（保持职责单一）。本文件交 intent-spec-writer。
+// ⚠️ 能力边界（D2）：性能/时延仍不进 goal——见 RFC-002 § Quality Attributes。
+//
+// Last-Updated: 2026-06-08
+// Decision-Ref: ADR-002（Accepted 2026-06-08）
+// Source-RFC: rfc-002-skill-runtime-skillloadresult-契约--命令树重组.rfc.md
+// ============================================================
+
+// 接口（语义层，[ADR-002 Accepted 2026-06-08]）：
+//   skill_load(pkg: String) -> SkillLoadResult{ name, pkg_version, schema_version, state_machine }
+goal "skill load 暴露稳定的加载结果契约" {
+  rationale: "AI coding agent 依赖 skill load 返回结构来推进 pipeline；冻结 name/pkg_version/schema_version/state_machine 四字段，使 agent 调用在 skill 演进下保持稳定"
+  stakeholder: ["ai-coding-agent", "skill-author", "security"]
+  measure: "skill load 返回值始终含且仅含约定四字段；state_machine 仅含 {pending→in_progress→completed/blocked} 转移，无绕过路径"
+}
+
+// 接口（语义层，[ADR-002 Accepted 2026-06-08]）：
+//   SkillLoadResult.schema_version 独立于 pkg_version；向后兼容时 schema_version 不变
+goal "state_machine schema 版本独立于包版本" {
+  rationale: "解耦「包升级」与「schema 兼容」——加字段不必 bump 包版本，agent 可凭 schema_version 判定向后兼容"
+  stakeholder: ["ai-coding-agent", "skill-author"]
+  measure: "存在 pkg_version 变化而 schema_version 不变的合法升级；schema_version 变化当且仅当 state_machine schema 发生不兼容变更"
+}
+
+// ============================================================
+// 可收紧逻辑保证（intent-spec-writer 工单）
+// ============================================================
+//
+// ADR-002 已 Accepted，以下契约的逻辑前后置现在可以收紧：
+//
+//   契约 "skill load 暴露稳定的加载结果契约"
+//     → invariants.intent: safety StateMachineOnlyAllowsLegalTransitions(s: Stage)
+//         { invariant s.status' in {Blocked, Ready, InProgress, Completed} }
+//         // HC-2：state_machine 只允许 {pending→in_progress→completed/blocked}
+//     → acceptance.intent: 已有 StageAdvanceWithApproval 覆盖 in_progress→completed 分支（复用，勿重复）
+//
+//   契约 "state_machine schema 版本独立于包版本"
+//     → acceptance.intent: intent SchemaVersionStableOnBackwardCompatibleBump(skOld: Skill, skNew: Skill)
+//         { require skOld.name == skNew.name
+//           require skOld.pkgVersion != skNew.pkgVersion   // 包升级
+//           require backwardCompatible(skOld, skNew)         // 向后兼容
+//           ensure  skNew.schemaVersion == skOld.schemaVersion }  // schema 版本不变
+//         // 注：需先给 Skill 类型补 pkgVersion / schemaVersion 字段（当前 acceptance.intent 的 Skill 只有 version）
+//
+// 收紧后由 intent-consistency-check 过 Z3 闸。
+//
+// ============================================================
+// 自检：
+//   - goal 注释已从 [Awaiting ADR-002] 更新为 [ADR-002 Accepted 2026-06-08]
+//   - 收紧工单已列出（给 intent-spec-writer）
+//   - 无性能/时间数字进入 goal（D2）
+//   - 未自行收紧（require/ensure 仅写在工单注释里，非真 intent/safety 块）
+// ============================================================

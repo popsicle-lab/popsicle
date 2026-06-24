@@ -14,6 +14,7 @@ Cargo.lock.bak
 
 # Bootstrap-temporary planning workspace (cleaned up after scaffolding)
 _planning/
+
 # popsicle:gitignore:start
-.popsicle/
+# git.track_workspace: true — .popsicle/ is not ignored
 # popsicle:gitignore:end

@@ -1,0 +1,199 @@
+---
+id: 0d21ade7-c188-4c77-a839-e7df646749fa
+doc_type: formal-acceptance-intent
+title: 'skill-runtime intent-spec: formal acceptance + invariants'
+status: final
+skill_name: intent-spec-writer
+pipeline_run_id: f89529af-d8ce-40f7-ad05-985e35b9cfec
+spec_id: df11b6f9-e504-42b7-8d27-700d529c2346
+version: 1
+parent_doc_id: null
+tags: []
+metadata: null
+created_at: 2026-06-08T07:56:45.872843Z
+updated_at: 2026-06-08T08:14:54.247610Z
+---
+
+// ============================================================
+// Acceptance Intents（formal）— skill-runtime
+// ============================================================
+//
+// 由 intent-spec-writer 从种子 acceptance.intent（prd-writer 4 block）收紧而来，
+// 并消费 adr-writer 的 contracts-unlocked 工单（ADR-002 Accepted 2026-06-08）。
+// 合并目标：products/skill-runtime/intents/acceptance.intent
+// 来源 PDR：PDR-002 | ADR：ADR-002 | 生成日期：2026-06-08
+//
+// 角色：操作后置规约（require/ensure）。可直接 `intent check`，应 exit 0（全 trivial verified）。
+// 保持型不变量在 invariants.intent；契约在 contracts.intent。
+//
+// 四条硬规则审查（逐条已过）：
+//   1) 后态用 primed x'      —— 所有 ensure 均用 x'
+//   2) 一文件一作用域         —— 本文件只放操作 intent，无 safety
+//   3) 无 frame 需显式 x'==x —— 每条已补 frame ensure
+//   4) 纯 require+ensure = trivial verified —— 本文件全 trivial verified（真不变量见 invariants.intent）
+//
+// ⚠️ 不含任何时间/性能/运行时约束（已剥离，见 intent-spec-report § 剥离清单）。
+//
+// Last-Updated: 2026-06-08
+// Last-Decision-Ref: PDR-002 / ADR-002
+// ============================================================
+
+// ---- 领域类型（合并时与目标 acceptance.intent 去重；Skill 类型按 ADR-002 扩展）----
+
+enum StageStatus { StageBlocked, StageReady, StageInProgress, StageCompleted, StageError }
+enum PipelineRunStatus { RunPending, RunInProgress, RunCompleted, RunBlocked }
+enum SkillStatus { Loaded, Active, Deprecated }
+
+// ⚠️ 合并变更：原 Skill.version 按 ADR-002 拆为 pkgVersion + schemaVersion。
+//    合并时替换目标文件的 Skill 类型，并同步 UpgradeDoesNotAffectCompletedRuns。
+type Skill {
+  name: String
+  pkgVersion: String
+  schemaVersion: String
+  status: SkillStatus
+}
+
+type Stage {
+  name: String
+  status: StageStatus
+  requiresApproval: Bool
+  approvedAt: Int           // 0 = 未审批；> 0 = 审批时间戳
+}
+
+type PipelineRun {
+  id: String
+  status: PipelineRunStatus
+  currentStageIndex: Int
+  totalStages: Int
+}
+
+// ---- 操作 intent（每条对应一个 task）----
+
+// task: T-0001 | pdr: PDR-002 | journey_stage: onboarding
+// source: PDR-002 § "Intent Mapping" row 1
+// query_anchors: ["popsicle-new 第一次怎么开始用？", "migration-bootstrap 跑到哪里会停下来等我？"]
+@source("PDR-002", section: "Intent Mapping row 1")
+@tobe
+intent PipelineBootstrapsToFirstPause(r: PipelineRun, s: Stage) {
+  require r.status == RunPending
+  require s.status == StageBlocked
+  ensure r.status' == RunInProgress
+  ensure s.status' == StageInProgress
+  ensure r.currentStageIndex' == r.currentStageIndex   // frame（规则3）
+  ensure r.totalStages' == r.totalStages               // frame
+}
+
+// task: T-0002 | pdr: PDR-002 | journey_stage: daily-ops
+// source: PDR-002 § "Intent Mapping" row 2
+// query_anchors: ["怎么把一个 stage 标记为 completed？", "审批点 requires_approval 没过会怎么样？"]
+@source("PDR-002", section: "Intent Mapping row 2")
+@tobe
+intent StageAdvanceWithApproval(s: Stage) {
+  require s.status == StageInProgress
+  require !s.requiresApproval || s.approvedAt > 0
+  ensure s.status' == StageCompleted
+  ensure s.requiresApproval' == s.requiresApproval     // frame
+  ensure s.approvedAt' == s.approvedAt                 // frame
+}
+
+// task: T-0004 | pdr: PDR-002 | journey_stage: troubleshooting
+// source: PDR-002 § "Intent Mapping" row 3
+// query_anchors: ["stage 卡在 blocked 是什么意思？", "stage 失败后怎么重跑而不丢前面的产出？"]
+@source("PDR-002", section: "Intent Mapping row 3")
+@tobe
+intent RecoveredPipelineCanAdvance(r: PipelineRun, s: Stage) {
+  require r.status == RunBlocked
+  require s.status == StageError
+  ensure r.status' == RunInProgress
+  ensure s.status' != StageError
+  ensure r.currentStageIndex' == r.currentStageIndex   // frame：恢复不丢前面产出
+  ensure r.totalStages' == r.totalStages               // frame
+}
+
+// task: T-0006 | pdr: PDR-002 | journey_stage: lifecycle
+// source: PDR-002 § "Intent Mapping" row 4 + ADR-002（pkg/schema 双版本）
+// query_anchors: ["skill 升级老的 pipeline 会被自动用新版吗？", "跑完的 run 升级后还可信吗？"]
+@source("PDR-002", section: "Intent Mapping row 4")
+@tobe
+intent UpgradeDoesNotAffectCompletedRuns(r: PipelineRun, skOld: Skill, skNew: Skill) {
+  require r.status == RunCompleted
+  require skOld.name == skNew.name
+  require skOld.pkgVersion != skNew.pkgVersion         // 包升级（ADR-002 双版本）
+  ensure r.status' == RunCompleted                        // 冻结：仍 Completed
+  ensure r.currentStageIndex' == r.currentStageIndex   // 未被回退
+  ensure r.totalStages' == r.totalStages               // frame
+}
+
+// ============================================================
+// 验证：`intent check` 本文件 → 5 个 intent 全 trivial verified、exit 0（预期；本环境无 intent 二进制，静态审查）。
+// 真正的保持型不变量（HC-2 审批闸）见 invariants.intent。
+// 已剥离/降级条目见 {slug}.intent-spec-report.md § 剥离清单。
+// 合并：见 {slug}.intent-spec-report.md § 合并计划。
+// ============================================================
+
+// ============================================================
+// 以下为 intent-spec 收紧记录（report 段）—— 供 workflow guard / 检索使用
+// ============================================================
+
+## Summary
+
+| 指标 | 值 |
+|---|---|
+| acceptance 操作 intent（trivial verified）| 5 → 落地 5（4 收紧 + Skill 类型扩展）|
+| invariants safety（真实 VC）| 1（`ApprovedBeforeCompleted`，HC-2 审批闸）|
+| 降级/剥离到 task（D2）| 2（schema 向后兼容、read-only 不变性）|
+| skipped（intent-lang 能力边界）| 1（audit-trail 可重建，需聚合）|
+| 类型冲突 | 1 已修复（enum 变体重名 → 加 Stage*/Run* 前缀）|
+| intent check 实跑 | intent-spec 阶段静态审查；**intent-check（Z3 闸）阶段已实跑确认 ok=true、全 verified** |
+
+## 分层归位
+
+- T-0001/T-0002/T-0004/T-0006 → acceptance.intent（操作后置规约，trivial verified）。
+- HC-2 审批闸 → invariants.intent `ApprovedBeforeCompleted` safety（唯一真实 VC）。
+- schema 版本独立（工单②）、T-0003 read-only → 降级 task 成功标志。
+- T-0005 audit-trail → skipped（intent-lang 无聚合，留 task 守护）。
+
+## 剥离的约束 / 降级清单（D2 与能力边界）
+
+1. **schema 向后兼容 ⟹ schema_version 不变**：运行时语义事实，intent-lang 不验（D2）→ 降级 contracts goal + T-0006 成功标志。
+2. **read-only 命令不改状态**（T-0003）：全局 read-only safety 会证伪所有 mutating 操作 → 降级 T-0003 task（ledger 哈希不变）。
+3. **audit-trail 可重建/不可篡改**（T-0005）：需对 artifact 序列聚合，intent-lang 无聚合 → struct-forall theorem 当前 skipped，留 T-0005 task。
+
+## 四规则审查
+
+- 后态用 primed `x'` ✅；一文件一作用域 ✅；无 frame 显式 `x'==x` ✅（4 块补 frame）；纯 require+ensure=trivial verified ✅（HC-2 为唯一真实 VC）。
+
+## 去重 / 冲突检查
+
+- 复用既有领域类型，未重复声明。
+- **enum 变体重名（已修复）**：StageStatus/PipelineRunStatus 原共享 InProgress/Completed/Blocked 裸变体 → SMT 全局 constructor 冲突 → 加 Stage*/Run* 前缀，三文件已同步。
+- 类型变更 `Skill.version` → `pkgVersion + schemaVersion`（ADR-002），唯一引用点已同步。
+
+## 合并计划
+
+- [x] `products/skill-runtime/intents/acceptance.intent`：双版本 + 4 块补 frame + T-0006 改 pkgVersion。
+- [x] `products/skill-runtime/intents/invariants.intent`：落地 `ApprovedBeforeCompleted` safety + 绑定操作。
+- [x] `products/skill-runtime/intents/contracts.intent`：adr-writer 已解锁 `[ADR-002 Accepted]`。
+- [x] 增量原件留存于本 doc（上方 intent-lang 块）。
+
+## 验证结果
+
+- 静态审查：语法符合 intent-lang SPEC（type/enum/intent/safety、primed、`==>`、require/ensure/invariant）。
+- **实跑（intent-check 阶段补做）**：从 `legacy/popsicle/vender/intent-lang` 构建 intent-cli + Z3，对 products/ 三文件实跑 → acceptance 4 verified、invariants `ApprovedBeforeCompleted`(StageAdvanceWithApproval) verified、contracts 0 VC、exit 0。详见 intent-consistency-report。
+
+## Ingest Checklist
+
+- [x] 种子已读，列出其全部 intent / type
+- [x] 目标产品现有三件套已读，已列出现存符号名（去重基线）
+- [x] PRD § Intent Mapping 已读，每条声明的目标层已确认
+- [x] 已给每条种子内容标好归属层（含「降级到 task」的项）
+
+## 检查清单
+
+- [x] 分层归位完成（acceptance / invariants / 降级 / skipped 各有去向）
+- [x] D2 约束剥离（schema 兼容、read-only、时延均不进 `.intent`）
+- [x] 四规则逐条审查
+- [x] 去重查冲突（类型复用 + Skill 变更已同步）
+- [x] 合并计划已执行（products/ 三文件就地合并）
+- [x] trivial verified vs 真实不变量已显式区分
+- [x] formal .intent 经 intent-check 阶段 Z3 实跑通过（exit 0）

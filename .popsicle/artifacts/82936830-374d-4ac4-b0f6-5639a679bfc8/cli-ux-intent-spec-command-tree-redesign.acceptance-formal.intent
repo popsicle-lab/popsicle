@@ -1,0 +1,217 @@
+---
+id: d73052ce-13c5-477c-b24a-63b54057fcb7
+doc_type: formal-acceptance-intent
+title: cli-ux intent spec command tree redesign
+status: final
+skill_name: intent-spec-writer
+pipeline_run_id: 82936830-374d-4ac4-b0f6-5639a679bfc8
+spec_id: 308c231f-0e91-4922-87f0-22b63be857b6
+version: 1
+parent_doc_id: null
+tags: ["cli-ux", "PDR-001", "ADR-007", "intent-spec"]
+metadata: null
+created_at: 2026-06-09T10:41:06.389305Z
+updated_at: 2026-06-09T10:55:00.000000Z
+---
+
+// Product: cli-ux
+// Layer: L2 acceptance（验收契约 —— PROJ-6 / PDR-001）
+// Status: formalized by intent-spec-writer
+// Last-Updated: 2026-06-09
+// Source PDR: PDR-001-cli-ux-command-tree-redesign.md
+// Source ADR: ADR-007-cli-ux-io-shell-boundary.md
+//
+// 迁移口径：
+// - 老 popsicle CLI facts 仅作为事实输入，不构成字节级兼容 baseline。
+// - 新设计优先：cli-ux 是 thin IO shell，暴露 IDD 主路径、移除/defer 非 MVP 命令。
+// - 性能、耗时和实现细节不进入 formal intent；它们归 task 成功标志和 delivery 检查。
+
+type InitResult {
+  workspaceReady: Bool
+  hasNextStep: Bool
+}
+
+type IssueStartResult {
+  runCreated: Bool
+  specLocked: Bool
+  hasRunId: Bool
+}
+
+type DocCreateResult {
+  artifactFileExists: Bool
+  documentRowExists: Bool
+  hasDocId: Bool
+}
+
+type StageAdvanceResult {
+  previousCompleted: Bool
+  downstreamReady: Bool
+  statusReflectsState: Bool
+}
+
+type ErrorResult {
+  hasCategory: Bool
+  hasObjectRef: Bool
+  hasNextStep: Bool
+}
+
+type AdminResult {
+  underAdminTree: Bool
+  explicitWorkspace: Bool
+}
+
+@source("PDR-001", section: "Intent Mapping row 1")
+@tobe
+intent InitShowsNextStep(r: InitResult) {
+  require r.workspaceReady
+  ensure r.hasNextStep' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 2")
+@tobe
+intent IssueStartCreatesRun(r: IssueStartResult) {
+  require true
+  ensure r.runCreated' == true
+  ensure r.specLocked' == true
+  ensure r.hasRunId' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 3")
+@tobe
+intent DocCommandWritesArtifact(r: DocCreateResult) {
+  require true
+  ensure r.artifactFileExists' == true
+  ensure r.documentRowExists' == true
+  ensure r.hasDocId' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 4")
+@tobe
+intent StageAdvanceReflectsState(r: StageAdvanceResult) {
+  require true
+  ensure r.previousCompleted' == true
+  ensure r.downstreamReady' == true
+  ensure r.statusReflectsState' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 5")
+@tobe
+intent ErrorsAreActionable(r: ErrorResult) {
+  require true
+  ensure r.hasCategory' == true
+  ensure r.hasObjectRef' == true
+  ensure r.hasNextStep' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 6")
+@tobe
+intent AdminCommandsAreExplicit(r: AdminResult) {
+  require true
+  ensure r.underAdminTree' == true
+  ensure r.explicitWorkspace' == true
+}
+
+// Verification:
+// - products/cli-ux/intents/acceptance.intent: 6 intents verified.
+// - products/cli-ux/intents/invariants.intent: RenderTopLevelHelp verified.
+// - products/cli-ux/intents/contracts.intent: parses/checks as goal-only contract text.
+
+---
+
+# Intent Spec 收紧报告 — cli-ux-command-tree-redesign
+
+> intent-spec-writer 把 PRD / PDR-001 的 intent seed 收紧为 cli-ux 产品内可检查的正式 intent-lang。
+
+## Summary
+
+| 指标 | 值 |
+|---|---|
+| 目标产品 | `cli-ux` |
+| 来源种子 | `products/cli-ux/intents/acceptance.intent` |
+| 正式化 intent 数 | 7 |
+| 剥离约束数（降级到 task）| 0 |
+| `intent check` exit | 0 |
+| 结论 | 可合并 |
+
+一句话结论：cli-ux 迁移采用新设计契约，formal intent 覆盖 init、issue/run、doc artifact、stage advance、actionable error、admin boundary 与 command disposition，不要求 legacy stdout byte parity。
+
+## Ingest Checklist
+
+- [x] 种子已读，列出其全部 intent / type
+- [x] 目标产品现有三件套已读，已列出现存符号名（去重基线）
+- [x] PRD § Intent Mapping 已读，每条声明目标层已确认
+- [x] 每条种子内容已初步标好归属层
+
+## 分层归位
+
+| 来源（PRD Intent Mapping）| 归属层 | 落点文件 | 形态 | 备注 |
+|---|---|---|---|---|
+| InitShowsNextStep | acceptance | `products/cli-ux/intents/acceptance.intent` | intent require/ensure | trivial verified |
+| IssueStartCreatesRun | acceptance | `products/cli-ux/intents/acceptance.intent` | intent require/ensure | trivial verified |
+| DocCommandWritesArtifact | acceptance | `products/cli-ux/intents/acceptance.intent` | intent require/ensure | trivial verified |
+| StageAdvanceReflectsState | acceptance | `products/cli-ux/intents/acceptance.intent` | intent require/ensure | trivial verified |
+| ErrorsAreActionable | acceptance | `products/cli-ux/intents/acceptance.intent` | intent require/ensure | trivial verified |
+| AdminCommandsAreExplicit | acceptance | `products/cli-ux/intents/acceptance.intent` | intent require/ensure | trivial verified |
+| RemovedCommandsStayRemoved / RenderTopLevelHelp | invariants | `products/cli-ux/intents/invariants.intent` | safety + binding intent | true VC verified |
+| CLI shell delegates domain behavior | contracts | `products/cli-ux/intents/contracts.intent` | goal rationale/stakeholder/measure | ADR-007 Accepted，0 VC |
+
+## 剥离的约束
+
+（无）
+
+本 slice 明确不把 legacy stdout byte parity、耗时、性能和运行时实现细节写入 `.intent`；delivery 阶段用语义 golden、CLI tests 与 cutover ADR 守护。
+
+## 四规则审查
+
+- [x] 规则 1：所有后态约束使用 primed `x'`
+- [x] 规则 2：acceptance 文件只放操作规约，保持型不变量独立放入 invariants
+- [x] 规则 3：本批没有要求 frame 的未改字段；如 delivery 增加状态字段，需显式补 `ensure x' == x`
+- [x] 规则 4：acceptance 的 require/ensure 是 trivial verified；command-surface 不变量在 invariants 中产生真实 VC
+
+## 验证结果
+
+```text
+products/cli-ux/intents/acceptance.intent
+  verified: InitShowsNextStep
+  verified: IssueStartCreatesRun
+  verified: DocCommandWritesArtifact
+  verified: StageAdvanceReflectsState
+  verified: ErrorsAreActionable
+  verified: AdminCommandsAreExplicit
+  exit: 0
+
+products/cli-ux/intents/invariants.intent
+  verified: RenderTopLevelHelp
+  exit: 0
+
+products/cli-ux/intents/contracts.intent
+  goal-only contract file parsed/checked
+  exit: 0
+```
+
+- 单文件 exit：0
+- 与现有 acceptance.intent 拼接后 exit：0（本 formal artifact 与目标 acceptance 内容一致，无新增重复合并需求）
+- verified / skipped / failed：7 / 0 / 0
+
+## 冲突检查
+
+- [x] 无同名 intent / type 重复声明
+- [x] 无类型字段冲突
+- [x] 无安全规则互相否定
+- 冲突明细：无
+
+## 合并计划
+
+1. `products/cli-ux/intents/acceptance.intent` 保留 6 条操作 intent。
+2. `products/cli-ux/intents/invariants.intent` 保留 `RemovedCommandsStayRemoved` 与 `RenderTopLevelHelp`，用于约束 `checklist` / `item` / `sync` 不回到 MVP 顶层。
+3. `products/cli-ux/intents/contracts.intent` 保留 ADR-007 goal，约束 CLI shell 只做 argv / output / dispatch / actionable error。
+4. 合并后跑 intent-consistency-check；本次已得到 7 verified / 0 failed / 0 skipped。
+
+## 检查清单
+
+- [x] formal .intent 单独 intent check 通过（exit 0）
+- [x] 与现有 acceptance.intent 拼接后仍通过
+- [x] 无时间/性能/运行时约束残留在 .intent
+- [x] 四规则审查全过
+- [x] 无重复声明 / 命名冲突
+- [x] 合并计划写明追加位置与类型复用方式

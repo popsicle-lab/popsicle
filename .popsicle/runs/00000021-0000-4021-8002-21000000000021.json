@@ -1,0 +1,21 @@
+{
+  "pipeline_name": "bugfix",
+  "run_id": "00000021-0000-4021-8002-21000000000021",
+  "run_status": "in_progress",
+  "current_stage_index": 0,
+  "total_stages": 2,
+  "stages": [
+    {
+      "name": "implement",
+      "status": "in_progress",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "verify",
+      "status": "ready",
+      "requires_approval": false,
+      "approved_at": 0
+    }
+  ]
+}

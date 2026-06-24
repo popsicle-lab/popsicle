@@ -1,0 +1,51 @@
+// ============================================================
+// Contracts seed — saas-billing-module
+// ============================================================
+//
+// Status: [Awaiting ADR-001]
+// Last-Updated: 2026-06-10
+// Source-RFC: saas-billing-core-boundaries-rfc.rfc.md
+//
+// These goal blocks are contract placeholders. adr-writer must accept ADR-001
+// before intent-spec-writer tightens them into verifiable contracts.
+// ============================================================
+
+// [Awaiting ADR-001: SaaS billing core boundaries]
+// Billing core records amount-changing commands through append-only BillingEvent.
+goal "BillingCoreUsesAppendOnlyEvents" {
+  rationale: "Amount-changing operations are auditable and cannot bypass the BillingEvent ledger"
+  stakeholder: ["finance", "auditor", "security", "billing-admin"]
+  measure: "invoice/payment/credit state changes have a source BillingEvent"
+}
+
+// [Awaiting ADR-001: SaaS billing core boundaries]
+// Invoice projection consumes line items, supplied tax amount, applied credits, and adjustments.
+goal "InvoiceProjectionUsesEventBackedAmounts" {
+  rationale: "Invoice totals remain explainable and traceable to event-backed inputs"
+  stakeholder: ["finance", "billing-admin"]
+  measure: "invoice total projection references line item, tax, credit, and adjustment sources"
+}
+
+// [Awaiting ADR-001: SaaS billing core boundaries]
+// Credit application updates projected remaining balance via event-backed command.
+goal "CreditApplicationUsesEventBackedBalance" {
+  rationale: "Credit application cannot over-apply or silently change remaining balance"
+  stakeholder: ["finance", "support"]
+  measure: "credit application events reference credit id, amount, remaining balance, and invoice id"
+}
+
+// [Awaiting ADR-001: SaaS billing core boundaries]
+// PSP adapter reports outcomes and cannot mutate invoices directly.
+goal "PspAdapterCannotMutateInvoice" {
+  rationale: "Payment provider integration cannot bypass invoice/payment domain rules"
+  stakeholder: ["platform-engineer", "security", "billing-admin"]
+  measure: "PSP adapter returns payment outcomes consumed by Payment module only"
+}
+
+// [Awaiting ADR-001: SaaS billing core boundaries]
+// Tax adapter supplies tax data; billing core does not calculate tax rates.
+goal "TaxAdapterSuppliesTaxDataOnly" {
+  rationale: "Billing core is tax-ready without claiming tax-compliant calculation ownership"
+  stakeholder: ["finance", "auditor", "platform-engineer"]
+  measure: "tax amount and jurisdiction data are supplied by adapter and stored as audit fields"
+}

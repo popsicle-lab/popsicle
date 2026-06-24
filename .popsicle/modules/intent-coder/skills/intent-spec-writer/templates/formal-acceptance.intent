@@ -1,0 +1,47 @@
+// ============================================================
+// Acceptance Intents（formal）— {target_product}
+// ============================================================
+//
+// 由 intent-spec-writer 从种子 {slug}.acceptance.intent 收紧而来。
+// 合并目标：products/{target_product}/intents/acceptance.intent
+// 来源 PDR：PDR-{id} | 生成日期：{YYYY-MM-DD}
+//
+// 角色：操作后置规约（require/ensure）。可直接 `intent check`，应 exit 0。
+// 保持型不变量请放 invariants.intent；契约请放 contracts.intent（见 spec-report 分层归位）。
+//
+// 四条硬规则（intent-spec-writer 已逐条审查）：
+//   1) 后态用 primed x'   2) 一文件一作用域（acceptance 不放 safety）
+//   3) 无 frame，需不变就显式 ensure x'==x   4) 纯 require+ensure = trivial verified
+//
+// ⚠️ 不含任何时间/性能/运行时约束（已剥离到 task 成功标志，见 spec-report）。
+//
+// Last-Updated: {YYYY-MM-DD}
+// Last-Decision-Ref: PDR-{id}
+// ============================================================
+
+// ---- 领域类型（与目标 acceptance.intent 合并时去重复用，勿重复声明）----
+
+enum ExampleState { A, B }
+
+type ExampleEntity {
+  id: Int
+  state: ExampleState
+}
+
+// ---- 操作 intent（每条对应一个 task）----
+
+// task: T-XXXX | pdr: PDR-{id} | journey_stage: <onboarding|daily-ops|troubleshooting|admin|lifecycle>
+// source: PDR-{id} § ...
+// query_anchors: ["...", "..."]
+// 剥离说明：<原种子里的时间/性能约束> → task T-XXXX「可观察的成功标志」
+@source("PDR-{id}", section: "...")
+@tobe
+intent ExampleOperation(e: ExampleEntity) {
+  require e.state == A
+  ensure e.state' == B
+}
+
+// ============================================================
+// 验证：`intent check` 本文件 → 全 verified / 合理 skipped，exit 0。
+// 合并：见 {slug}.intent-spec-report.md § 合并计划。
+// ============================================================

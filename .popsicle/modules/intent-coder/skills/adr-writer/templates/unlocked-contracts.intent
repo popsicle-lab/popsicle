@@ -1,0 +1,44 @@
+// ============================================================
+// Contracts 种子（解锁版）— {target_product}（adr-writer 产出）
+// ============================================================
+//
+// 由 adr-writer 在 ADR-{id} 固化为 Accepted 后，从 rfc-writer 的种子解锁而来。
+// goal 块本身保留（contracts 层是意图登记，0 VC）；变化的是状态注释 + 末尾的
+// 「可收紧逻辑保证」工单——交 intent-spec-writer 落进 acceptance/invariants。
+//
+// ⚠️ adr-writer **不自己收紧**逻辑（保持职责单一）。本文件交 intent-spec-writer。
+// ⚠️ 能力边界（D2）：性能/时延仍不进 goal——见 RFC § Quality Attributes。
+//
+// Last-Updated: {YYYY-MM-DD}
+// Decision-Ref: ADR-{id}（Accepted {YYYY-MM-DD}）
+// ============================================================
+
+// 接口（语义层，[ADR-{id} Accepted {YYYY-MM-DD}]）：
+//   {fn_signature}  ->  {return_shape}
+goal "{一句话：本契约为什么存在}" {
+  rationale: "{谁消费 + 解耦/保证了什么}"
+  stakeholder: ["{consumer-a}", "{consumer-b}", "security"]
+  measure: "{怎么衡量契约被遵守——非性能数字}"
+  realized_by: []   // intent-spec-writer 合并 acceptance/invariants 后回填
+}
+
+// ============================================================
+// 可收紧逻辑保证（intent-spec-writer 工单）
+// ============================================================
+//
+// ADR-{id} 已 Accepted，以下契约的逻辑前后置现在可以收紧：
+//
+//   契约 "{goal 名}"
+//     → acceptance.intent: intent {名}(...) { require ... ensure ...' }
+//     → invariants.intent:  safety {名}(...) { invariant ...' }   // 若有跨操作不变量
+//     → contracts.intent:   goal.realized_by: [{名}, ...]         // 合并后回填
+//
+// 收紧后由 intent-consistency-check 过 Z3 闸。
+//
+// ============================================================
+// 自检：
+//   - goal 注释已从 [Awaiting ADR-{id}] 更新为 [ADR-{id} Accepted ...]
+//   - 收紧工单已列出（给 intent-spec-writer）
+//   - 无性能/时间数字进入 goal（D2）
+//   - `intent check` 本文件 → 解析通过，0 VC，exit 0
+// ============================================================

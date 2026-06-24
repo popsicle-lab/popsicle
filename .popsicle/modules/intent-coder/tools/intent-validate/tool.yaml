@@ -1,0 +1,68 @@
+name: intent-validate
+description: >
+  对 .intent 文件跑 intent-lang 的一致性验证（parse + typecheck + VC 生成 + Z3）。
+  是 intent-consistency-check skill 的底层执行器。输出 intent-lang 的原生结果
+  （text 或 json）；exit 0 = 全部 verified/skipped，exit 1 = 解析/类型错误或任一 VC 失败。
+  intent-lang v0.1.1+ bundles Z3 — no system z3 required.
+version: "0.4.0"
+
+args:
+  - name: path
+    description: 要验证的 .intent 文件或目录路径（相对仓库根或绝对路径；目录会递归枚举 *.intent）。path 在 products/ 下时，popsicle CLI 在 Z3 通过后还会跑合并 goal 追溯闸（realized_by）。
+    required: true
+  - name: format
+    description: 输出格式，text 给人读 / json 给 skill 解析
+    required: false
+    default: json
+  - name: include_asis
+    description: 是否一并验证 @asis（遗留）意图；默认只验证 @tobe / 无标注
+    required: false
+    default: ""
+
+# Resolve `intent` from PATH or DMG install (~/.local/bin/intent).
+# vender/intent-lang in the repo is for AI/docs only — not a runtime fallback.
+command: |
+  set -e
+  ROOT="$(git rev-parse --show-toplevel)"
+  INTENT_BIN="$(command -v intent || true)"
+  if [ -z "$INTENT_BIN" ] && [ -n "${HOME:-}" ] && [ -x "$HOME/.local/bin/intent" ]; then
+    INTENT_BIN="$HOME/.local/bin/intent"
+  fi
+  if [ ! -x "$INTENT_BIN" ]; then
+    echo "error: intent-lang 未找到。请安装 v0.1.1+（DMG 静默安装、~/.local/bin/intent，或 https://github.com/popsicle-lab/intent-lang/releases）。" >&2
+    exit 127
+  fi
+  case "{{path}}" in
+    /*) TARGET="{{path}}" ;;
+    *)  TARGET="$ROOT/{{path}}" ;;
+  esac
+  run_one() {
+    "$INTENT_BIN" --format "{{format}}" check "$1" {{include_asis}}
+  }
+
+  if [ -d "$TARGET" ]; then
+    STATUS=0
+    FOUND=0
+    FOUND_FILE="$ROOT/.popsicle/tmp-intent-validate-found-$$"
+    STATUS_FILE="$ROOT/.popsicle/tmp-intent-validate-status-$$"
+    trap 'rm -f "$FOUND_FILE" "$STATUS_FILE"' EXIT
+    find "$TARGET" -type f -name '*.intent' | sort | while IFS= read -r FILE; do
+      FOUND=1
+      run_one "$FILE" || STATUS=1
+      printf '%s\n' "$FOUND" > "$FOUND_FILE"
+      printf '%s\n' "$STATUS" > "$STATUS_FILE"
+    done
+    if [ -f "$FOUND_FILE" ]; then
+      FOUND="$(cat "$FOUND_FILE")"
+    fi
+    if [ -f "$STATUS_FILE" ]; then
+      STATUS="$(cat "$STATUS_FILE")"
+    fi
+    if [ "$FOUND" -eq 0 ]; then
+      echo "error: no .intent files found under $TARGET" >&2
+      exit 1
+    fi
+    exit "$STATUS"
+  fi
+
+  run_one "$TARGET"

@@ -1,0 +1,30 @@
+name: platform-refactor
+description: >-
+  平台域 · 内部重构/infra（无新用户旅程）：实现 → 测试 → ADR 结案。
+  例：模块边界调整、数据源统一、构建链整理。
+scale: full
+keywords:
+  - platform
+  - refactor
+  - infra
+  - internal
+
+stages:
+  - name: implement
+    skill: shadow-implementer
+    description: >-
+      按 ADR File Manifest 实施重构；声明行为不变或登记 divergence。
+    depends_on: []
+
+  - name: verify
+    skill: equivalence-baseline
+    description: >-
+      make check +  targeted tests（equivalence mode=tests）。
+    depends_on: [implement]
+
+  - name: adr-close
+    skill: adr-writer
+    description: >-
+      固化 Accepted ADR，更新 ARCHITECTURE File Manifest。
+    depends_on: [verify]
+    requires_approval: true

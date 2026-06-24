@@ -1,0 +1,33 @@
+{
+  "pipeline_name": "slice-delivery",
+  "run_id": "0000002a-0000-402a-8002-2a00000000002a",
+  "run_status": "completed",
+  "current_stage_index": 3,
+  "total_stages": 4,
+  "stages": [
+    {
+      "name": "implement",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "equivalence",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "cutover",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "living-docs",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    }
+  ]
+}

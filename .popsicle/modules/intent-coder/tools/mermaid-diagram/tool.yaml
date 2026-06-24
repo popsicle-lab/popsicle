@@ -1,0 +1,59 @@
+name: mermaid-diagram
+description: >
+  Mermaid 画图技能（Popsicle tool）：为 PRD / task / RFC / ADR / Issue 描述提供类型路由、
+  模板脚手架、Markdown 内 mermaid 块语法校验。Agent 在需要插图时先调本 tool，再写入文档；
+  UI 通过 MarkdownWithMermaid 渲染。
+version: "0.1.0"
+
+args:
+  - name: action
+    description: guide（技能全文）| scaffold（输出可粘贴的 Markdown 片段）| validate（校验 path 下 .md 中的 mermaid 块）
+    required: true
+  - name: type
+    description: scaffold 时：flowchart|task-flow|task-relations|sequence|state|er|architecture
+    required: false
+    default: flowchart
+  - name: path
+    description: validate 时：Markdown 文件或目录（相对仓库根或绝对路径）
+    required: false
+    default: ""
+  - name: format
+    description: scaffold / validate 输出格式，text 或 json
+    required: false
+    default: text
+  - name: title
+    description: scaffold 时 Diagram 标题行
+    required: false
+    default: 未命名
+
+command: |
+  set -e
+  ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  TOOL_DIR="$ROOT/intent-coder/tools/mermaid-diagram"
+  if [ ! -f "$TOOL_DIR/tool.yaml" ]; then
+    TOOL_DIR="$ROOT/.popsicle/modules/intent-coder/tools/mermaid-diagram"
+  fi
+  if [ ! -f "$TOOL_DIR/tool.yaml" ]; then
+    echo "error: mermaid-diagram tool not found under intent-coder/tools/" >&2
+    exit 127
+  fi
+  ACTION="{{action}}"
+  case "$ACTION" in
+    guide)
+      cat "$TOOL_DIR/guide.md"
+      ;;
+    scaffold)
+      sh "$TOOL_DIR/scripts/scaffold.sh" "{{type}}" "{{title}}" "{{format}}"
+      ;;
+    validate)
+      if [ -z "{{path}}" ]; then
+        echo "error: validate requires path=<file-or-dir>" >&2
+        exit 1
+      fi
+      ROOT="$ROOT" node "$TOOL_DIR/scripts/validate.mjs" --path "{{path}}" --format "{{format}}"
+      ;;
+    *)
+      echo "error: unknown action=$ACTION (use guide|scaffold|validate)" >&2
+      exit 1
+      ;;
+  esac

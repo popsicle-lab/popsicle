@@ -1,0 +1,132 @@
+name: adr-writer
+description: 把 rfc-writer 产出的 ADR 骨架（Status 为 Proposed）固化为正式 ADR（Accepted，此后不可变），并**解锁** contracts.intent 种子的 `[Awaiting ADR-XXXX]` 状态——交 intent-spec-writer 收紧合并。是产品侧「PDR 审批落地」在技术侧的对称把关者。**不重新发明 ADR 内容**（那是 rfc-writer），只做固化门 + 解锁 + 一致性核对。
+version: "0.1.0"
+
+# adr-writer 是「技术契约位」的第三个 skill（Phase 3 内置），是 contracts.intent
+# 闭环里「解锁」这一棒：ADR 一旦 Accepted，被它阻塞的 contracts 契约就能从「意图
+# 登记」收紧成「可验证逻辑」。它像 intent-spec-writer 一样保持薄——审查、固化、解锁。
+inputs:
+  - from_skill: rfc-writer
+    artifact_type: adr-skeleton
+    required: true
+    relevance: high
+
+  - from_skill: rfc-writer
+    artifact_type: rfc
+    required: false
+    relevance: high
+
+  - from_skill: rfc-writer
+    artifact_type: contracts-intent-seed
+    required: false
+    relevance: high
+    # 要解锁的种子：把 [Awaiting ADR-XXXX] 解除，标明哪些逻辑保证现在可进 acceptance/invariants。
+
+  - from_skill: arch-debate
+    artifact_type: arch-debate-record
+    required: false
+    relevance: medium
+
+artifacts:
+  - type: adr-finalization-report
+    template: templates/adr-finalization-report.md
+    file_pattern: "{slug}.adr-finalization-report.md"
+    description: "固化检查（决策完整性 / Consequences 文件落地性 / Intent Impact 一致 / CADR 合规 / 审批记录）+ 解锁动作清单。固化本身是副作用——直接把 ADR 骨架文件 Status 改 Accepted。"
+
+  - type: unlocked-contracts-intent
+    template: templates/unlocked-contracts.intent
+    file_pattern: "{slug}.contracts-unlocked.intent"
+    description: "解锁后的 contracts 种子：goal 注释从 `[Awaiting ADR-XXXX]` 更新为 ADR Accepted，并列出现在可由 intent-spec-writer 收紧进 acceptance/invariants 的逻辑保证。"
+
+workflow:
+  initial: reviewing
+  states:
+    reviewing:
+      description: "审查 ADR 骨架是否够格固化：决策无歧义、Consequences 文件真实存在、Intent Impact 与 RFC 一致、未在普通 ADR 里偷改 charter（CADR 误用）。还不要改文件。"
+      transitions:
+        - to: finalizing
+          action: gate-passed
+          guard: "checklist_complete:Finalization Gate"
+
+    finalizing:
+      description: "固化：把 ADR 骨架 Status Proposed→Accepted、填审批信息；解锁 contracts 种子。每处改动记进 report。"
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Summary,固化检查,解锁动作,Intent Impact 核对;checklist_complete:检查清单"
+
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: reviewing
+          action: revise
+
+    completed:
+      final: true
+
+prompts:
+  reviewing: |
+    本状态**只审查不改文件**：判断 ADR 骨架够不够格固化为 Accepted。
+
+    Step 1 —— 读 ADR 骨架（`ADR-{id}-{slug}.md`，Status: Proposed）+ RFC + contracts 种子。
+
+    Step 2 —— 固化门逐项核对（任一不过 → 退回 rfc-writer 修，不强行固化）：
+      1. **决策无歧义**：§ Decision 是现在时的明确陈述，不含「将会/计划/视情况」。
+      2. **Consequences 文件落地性**：§ Consequences 列的每个 ARCHITECTURE 段落 /
+         contracts block / 文件路径，要么已存在、要么明确是本次将创建。不能指向虚空。
+      3. **Intent Impact 一致**：§ Intent Impact 表声明的 contracts/invariants block，
+         与 RFC § Intent & Decision Mapping、contracts 种子的 goal 一一对应。
+      4. **CADR 合规**：决策**没有**触及 charter「四条铁律」/「Layer Map」。若触及 →
+         它必须走 **CADR**，不能在普通 ADR 固化。标记并退回。
+      5. **决策上下文充分**：Decision Context 有触发因素 + 辩论摘要 + 备选否决理由。
+
+    ## Finalization Gate
+    - [ ] Decision 无歧义、现在时
+    - [ ] Consequences 每个文件路径真实可落地
+    - [ ] Intent Impact 与 RFC / contracts 种子一致
+    - [ ] 未触及 charter 锁定内容（否则已标 CADR 并退回）
+    - [ ] Decision Context 充分（触发 + 辩论 + 备选）
+
+  finalizing: |
+    门已通过。本状态执行固化 + 解锁，每处改动记进 report。
+
+    Step 1 —— **固化 ADR**（编辑现有 `ADR-{id}-{slug}.md`）：
+      - Status: Proposed → **Accepted**
+      - 填 § Approval：Approved by / Approval date
+      - 落盘到 `products/{target_product}/decisions/adr/`
+      - ⚠️ 固化后该文件**永不修改**（charter 第 2 条铁律）。纠错请新建 ADR 标 Supersedes。
+
+    Step 2 —— **解锁 contracts 种子**（产 `{slug}.contracts-unlocked.intent`）：
+      - 把每个被本 ADR 阻塞的 goal 的注释从 `[Awaiting ADR-{id}]` 改为
+        `[ADR-{id} Accepted {date}]`。
+      - goal 块本身保留（contracts 层 0 VC，是意图登记）。
+      - 列出现在可收紧的**逻辑保证**：哪些契约的前后置可以进 acceptance.intent（intent）
+        或 invariants.intent（safety + primed）。这是给 intent-spec-writer 的工单。
+      - **不自己收紧**——收紧是 intent-spec-writer 的活（保持职责单一）。
+
+    Step 3 —— 填 report：固化了哪个 ADR、解锁了哪些 goal、移交 intent-spec-writer 的清单。
+
+    ## 检查清单
+    - [ ] ADR Status 已改 Accepted，审批信息已填
+    - [ ] ADR 已（建议）落盘到 decisions/adr/
+    - [ ] contracts 种子的 [Awaiting] 已解锁为 [Accepted]
+    - [ ] 已列出移交 intent-spec-writer 的逻辑保证收紧清单
+    - [ ] 未自行收紧 contracts（保持职责单一）
+    - [ ] report 各数字可追溯到真实文件
+
+  review: |
+    把固化后的 ADR（Accepted）+ `{slug}.contracts-unlocked.intent` + 报告呈给用户。
+    说明下一步：交 **intent-spec-writer** 按解锁清单把契约逻辑收紧进
+    acceptance/invariants，再跑 **intent-consistency-check** 过 Z3 闸。
+
+hooks:
+  post_complete:
+    - description: "落盘指引"
+      message: |
+        ✅ ADR 已固化为 Accepted，contracts 种子已解锁。建议下一步：
+        1. 把 `{slug}.contracts-unlocked.intent` 的「可收紧逻辑保证」清单交给
+           **intent-spec-writer**，收紧进 products/{p}/intents/{acceptance,invariants}.intent。
+        2. 收紧合并后跑 **intent-consistency-check** 过 Z3 闸。
+        3. 跑 **living-doc-author --target all** 刷新 ARCHITECTURE.md 现状与反向引用。

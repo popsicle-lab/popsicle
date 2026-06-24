@@ -1,0 +1,97 @@
+---
+id: 7bc5b9af-a5d5-4b5a-aedd-86b0742b4fd9
+doc_type: formal-acceptance-intent
+title: artifact-system intent-spec：acceptance 收紧 + invariants 落地（GuardResultIsTotal / 重命名保字段）
+status: final
+skill_name: intent-spec-writer
+pipeline_run_id: 49989451-d311-4f76-b15a-cc7dfcf7787f
+spec_id: cf6e7062-b75f-4925-b633-82a04e775a76
+version: 1
+parent_doc_id: null
+tags: []
+metadata: null
+created_at: 2026-06-09T06:30:56.096530Z
+updated_at: 2026-06-09T06:34:09.747846Z
+---
+
+# intent-spec 报告 — artifact-system acceptance 收紧 + invariants 落地
+
+> **Source PRD/PDR**: PDR-001 `0f403e0e`；**Source ADR**: ADR-004（contracts-unlocked）
+> **目标文件**: `products/artifact-system/intents/{acceptance,invariants}.intent`
+
+## Summary
+
+| 指标 | 值 |
+|---|---|
+| acceptance 收紧 block 数 | 4（DocumentRoundTrips / GuardChecklistCompleteIffNoUnchecked / ContextAssemblyOrdersByRelevance / ExtractPreservesKind）|
+| invariants 落地 block 数 | 2 safety + 2 绑定操作（UnknownGuardIsInvalid×EvaluateGuard、RenamePreservesPayload×RenameWorkItemToTaskChunk）|
+| 剥离/降级约束数 | 1（ContextOrderIndependentOfRegistration → skipped，intent-lang 无序列推理）|
+| 预期真实 VC | 2（invariants 各 1）+ 4 acceptance 操作规约 |
+| Z3 实跑 | 留 intent-consistency-check stage |
+
+一句话结论：把 PRD 的 4 个 acceptance 种子收紧为可验证操作规约，并从 ADR-004 contracts-unlocked 工单落地 2 个保持型不变量（guard total + 重命名保字段，各产 1 真实 VC）；permutation 类的 ContextOrder 因 intent-lang 能力边界降级为代码层 + property test 守护。
+
+## 分层归位
+
+> 每条逻辑保证归到正确的 Intent 层（acceptance 操作验收 / invariants 跨操作永真）。
+
+| 逻辑保证 | 来源 | 归位层 | block |
+|---|---|---|---|
+| doc 序列化往返还原 body | PRD Intent Mapping r1 | acceptance | `DocumentRoundTrips` |
+| 全勾才过、有未勾即失败 | PRD r2 | acceptance | `GuardChecklistCompleteIffNoUnchecked` |
+| High→全文 / Low→摘要 | PRD r3 | acceptance | `ContextAssemblyOrdersByRelevance` |
+| 提取产物 kind 与函数对应 | PRD r4 | acceptance | `ExtractPreservesKind` |
+| 未知 guard → InvalidSkillDef，∀ 不 panic | ADR-004 contracts 契约 2 | **invariants**（跨操作永真）| `UnknownGuardIsInvalid` + `EvaluateGuard` |
+| 重命名保 kind/fields | PDR-001 / ADR-004 | **invariants** | `RenamePreservesPayload` + `RenameWorkItemToTaskChunk` |
+
+理由：guard 全函数性与重命名保字段是「无论哪个操作都必须永真」的保持型不变量（safety），故归 invariants 并各配一个绑定操作使其产生真实 VC（规则 2/4）；4 个 acceptance 是「特定操作的输入→输出」验收，归 acceptance。
+
+## 剥离的约束
+
+> 不该进 intent-lang 的 / intent-lang 当前无法表达的，显式剥离并交代守护方式。
+
+| 约束 | 为何剥离 | 替代守护 |
+|---|---|---|
+| `ContextOrderIndependentOfRegistration`（同组 layer 任意注册序 → 同一装配序）| permutation-invariance + 序列推理；intent-lang 无 sequence/sort/聚合算子，无法写成产生 VC 的 safety | ① context.rs 多级确定性排序键（Relevance→固定优先级→稳定 id）代码层保证；② crates/artifact-system property test：打乱注册序断言装配序不变。本批标 `skipped` |
+| guard 校验 / context 装配时延 | D2：性能 NFR 不进 intent | RFC-004 § NFR + benchmark |
+| extractor 正则字面量正确性 | 正则是编译期常量，非运行时输入相关 | 单测覆盖 Regex 构造成功（LazyLock）|
+
+## 验证结果
+
+> 本环境无 `intent` 二进制（`popsicle intent` 子命令不存在），故为**静态审查**；Z3 实跑留 intent-consistency-check stage。
+
+| 文件 | block | 预期 VC | 静态审查 |
+|---|---|---|---|
+| invariants.intent | `UnknownGuardIsInvalid` × `EvaluateGuard` | 1 真实（非 trivial）| 操作 ensure `(!recognized)==>(outcome'==GInvalid)` 与 safety primed 一致 → 应 verified |
+| invariants.intent | `RenamePreservesPayload` × `RenameWorkItemToTaskChunk` | 1 真实 | 操作 ensure `kind'==kind && fieldsHash'==fieldsHash` 满足 safety → 应 verified |
+| invariants.intent | `ContextOrderIndependentOfRegistration` | —— | `skipped`（intent-lang 能力边界，已剥离）|
+| acceptance.intent | 4 操作规约 | 4 操作 | 均 typed、frame 完整、`==>`/`==` 合法 → 应 verified |
+| 跨文件一致性 | acceptance × invariants | —— | 类型各文件自洽声明；guard outcome 语义（GInvalid↔guard fail/invalid）无矛盾 |
+
+预期 intent-check stage 输出：**verified 6 / skipped 1 / failed 0**。
+
+## 合并计划
+
+> 收紧产物如何并入 product intent 文件。
+
+1. `products/artifact-system/intents/acceptance.intent`：4 block 已就地收紧（header Status → 已收紧 2026-06-09）。
+2. `products/artifact-system/intents/invariants.intent`：已落地 2 safety + 2 绑定操作 + ContextOrder skipped 注记。
+3. `products/artifact-system/intents/contracts.intent`：保持 ADR-004 Accepted 的 3 goal 不动（contracts 不在本 stage 收紧）。
+4. 下游 intent-consistency-check：跑 Z3 闸，确认 verified 6 / skipped 1 / failed 0；living-doc-author 回填 task 的 `related_intents` 锚点到真实 PascalCase block 名 + `last_verified`。
+
+## 检查清单
+
+- [x] 每条逻辑保证已归到正确 Intent 层（acceptance 操作 / invariants 永真）
+- [x] invariants 的每个 safety 都配了产生真实 VC 的绑定操作（规则 2/4）
+- [x] 无法形式化的约束已显式剥离并交代替代守护（ContextOrder → 代码层 + property test）
+- [x] acceptance 4 block 已收紧（typed / frame 完整 / 合法算子）
+- [x] 类型在各 .intent 文件内自洽声明，无跨文件复用导致的重复声明冲突
+- [x] 性能/时延未塞进 intent（D2）
+- [x] 已列出合并计划与下游 intent-check 预期（verified 6 / skipped 1 / failed 0）
+
+## Ingest Checklist
+
+- [x] 种子已读，列出其全部 intent / type（prd-writer acceptance 种子 4 block + Rename 种子）
+- [x] 目标产品现有三件套已读，已列出现存符号名（去重基线：artifact-system acceptance/invariants/contracts）
+- [x] PRD § Intent Mapping 已读，每条声明的目标层已确认
+- [x] 已给每条种子内容标好归属层（含「降级到 task」的项：ContextOrder → 代码层 property test）

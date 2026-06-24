@@ -1,0 +1,36 @@
+---
+id: 72162a5b-02f9-4897-a314-ae22446c0938
+doc_type: formal-acceptance-intent
+title: cli-ux self-hosting intent spec
+status: final
+skill_name: intent-spec-writer
+pipeline_run_id: 70be4a70-03da-47a1-9366-9ba889f8052f
+spec_id: 308c231f-0e91-4922-87f0-22b63be857b6
+version: 1
+parent_doc_id: null
+tags:
+- cli-ux
+- PDR-002
+- intent-spec
+metadata: null
+created_at: 2026-06-10T11:15:00Z
+updated_at: 2026-06-10T15:33:58.124866Z
+---
+
+# cli-ux self-hosting intent spec
+
+## Changes
+
+- Added `WorkflowSmokeResult` and `SelfHostedWorkflowSmokePasses` to `products/cli-ux/intents/acceptance.intent`.
+- Added `BinaryProvenanceResult` and `BinaryProvenanceVisible` to `products/cli-ux/intents/acceptance.intent`.
+- Added `WorkflowBinaryUse`, `WorkflowSmokeDoesNotDependOnParentBinary`, and `SelfHostSmokeUsesCurrentWorkspaceBinary` to `products/cli-ux/intents/self-hosting-invariants.intent`.
+
+## Validation Plan
+
+Run `intent-validate path=products/cli-ux/intents/acceptance.intent format=text` and `intent-validate path=products/cli-ux/intents/invariants.intent format=text`, then run the full product directory.
+
+## Checklist
+
+- [x] Acceptance intents added
+- [x] Invariant safety added
+- [x] No time/performance constraint placed in intent

@@ -1,0 +1,110 @@
+---
+id: 3c470e1c-69f2-4429-9e68-c2d793ffb48b
+doc_type: formal-acceptance-intent
+title: SaaS billing intent spec formalization
+status: final
+skill_name: intent-spec-writer
+pipeline_run_id: 5efd402a-9bac-4d5e-8e5b-970657514ce4
+spec_id: 03848550-ac4b-474a-9d9a-3a05ad68c2e7
+version: 1
+parent_doc_id: null
+tags: []
+metadata: null
+created_at: 2026-06-10T10:09:23.515468Z
+updated_at: 2026-06-10T10:13:42.894715Z
+---
+
+// ============================================================
+// Acceptance Intents (formal) — saas-billing-module
+// ============================================================
+//
+// Source: products/saas-billing-module/intents/acceptance.intent
+// Related: PDR-001 / ADR-001
+// Generated: 2026-06-10
+//
+// This artifact records the formal acceptance layer already merged in
+// products/saas-billing-module/intents/acceptance.intent.
+// ============================================================
+
+type PlanCreationResult {
+  active: Bool
+  hasPrice: Bool
+  hasBillingInterval: Bool
+  hasTaxReadyMetadata: Bool
+}
+
+type SubscriptionChangeResult {
+  statusChanged: Bool
+  hasActor: Bool
+  hasReason: Bool
+  hasSourceObject: Bool
+}
+
+type PaymentFailureResult {
+  failed: Bool
+  retryScheduleCreated: Bool
+  visibleToAdmin: Bool
+  auditEventCreated: Bool
+}
+
+type CreditApplicationResult {
+  balanceUpdated: Bool
+  auditEventCreated: Bool
+}
+
+type AuditExportResult {
+  includesInvoiceEvents: Bool
+  includesPaymentEvents: Bool
+  includesCreditEvents: Bool
+  includesTaxReadyFields: Bool
+}
+
+@source("PDR-001", section: "Intent Mapping row 4")
+@tobe
+intent PlanCreationCapturesBillingMetadata(r: PlanCreationResult) {
+  require true
+  ensure r.active' == true
+  ensure r.hasPrice' == true
+  ensure r.hasBillingInterval' == true
+  ensure r.hasTaxReadyMetadata' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 5")
+@tobe
+intent SubscriptionStatusChangeAudited(r: SubscriptionChangeResult) {
+  require r.statusChanged
+  ensure r.hasActor' == true
+  ensure r.hasReason' == true
+  ensure r.hasSourceObject' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 6")
+@tobe
+intent PaymentFailureRetryVisible(r: PaymentFailureResult) {
+  require r.failed
+  ensure r.retryScheduleCreated' == true
+  ensure r.visibleToAdmin' == true
+  ensure r.auditEventCreated' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 7")
+@tobe
+intent CreditApplicationAudited(r: CreditApplicationResult) {
+  require true
+  ensure r.balanceUpdated' == true
+  ensure r.auditEventCreated' == true
+}
+
+@source("PDR-001", section: "Intent Mapping row 8")
+@tobe
+intent BillingAuditTrailExportable(r: AuditExportResult) {
+  require true
+  ensure r.includesInvoiceEvents' == true
+  ensure r.includesPaymentEvents' == true
+  ensure r.includesCreditEvents' == true
+  ensure r.includesTaxReadyFields' == true
+}
+
+// Verification:
+//   popsicle tool run intent-validate path=products/saas-billing-module/intents/acceptance.intent format=text
+//   exit 0; 5 verified.

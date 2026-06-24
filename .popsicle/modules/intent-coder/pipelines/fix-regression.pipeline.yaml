@@ -1,0 +1,27 @@
+name: fix-regression
+description: >-
+  修复域 · 单点回归/缺陷：复现 → 修复 + 回归测试 → 验证。默认 `--type bug`。
+  不得用于新 UI 能力或 intent/spec 链工作（见 issue-author § fix-regression 门禁）。
+scale: minimal
+keywords:
+  - fix
+  - bug
+  - regression
+  - hotfix
+
+stages:
+  - name: implement
+    skill: shadow-implementer
+    description: >-
+      Reproduce the bug, implement the fix, and add a regression test that
+      fails before the fix and passes after.
+    depends_on: []
+    requires_approval: false
+
+  - name: verify
+    skill: equivalence-baseline
+    description: >-
+      Record verification evidence (make check / targeted tests). No legacy
+      golden required for pure UI regressions — see equivalence mode=tests.
+    depends_on: [implement]
+    requires_approval: false
