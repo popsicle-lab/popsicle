@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use storage::WorkspaceStore;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::global_config::{
     global_config_path, is_valid_workspace_path, list_projects, open_project,
@@ -25,6 +25,7 @@ use crate::LocalWorkspace;
 
 use super::dto::*;
 use super::state::AppState;
+use super::watcher::ProjectWatcher;
 
 fn get_dir(state: &State<AppState>) -> Result<PathBuf, String> {
     state
@@ -71,6 +72,7 @@ fn apply_project_dir(
     state: &State<AppState>,
     path: &str,
     confirm_bootstrap: bool,
+    app: Option<&AppHandle>,
 ) -> Result<PathBuf, String> {
     let needs = workspace_needs_bootstrap(path).map_err(|e| e.to_string())?;
     if needs && !confirm_bootstrap {
@@ -85,6 +87,9 @@ fn apply_project_dir(
     };
     let root = PathBuf::from(&entry.path);
     *state.project_dir.lock().map_err(|e| e.to_string())? = Some(root.clone());
+    if let Some(app) = app {
+        ProjectWatcher::restart(app, Some(&root));
+    }
     Ok(root)
 }
 
@@ -98,8 +103,9 @@ pub fn set_project_dir(
     path: String,
     confirm_bootstrap: bool,
     state: State<AppState>,
+    app: AppHandle,
 ) -> Result<ProjectInfo, String> {
-    let root = apply_project_dir(&state, &path, confirm_bootstrap)?;
+    let root = apply_project_dir(&state, &path, confirm_bootstrap, Some(&app))?;
     let cfg = list_projects().map_err(|e| e.to_string())?;
     let entry = cfg
         .projects
@@ -117,8 +123,9 @@ pub fn open_project_cmd(
     path: String,
     confirm_bootstrap: bool,
     state: State<AppState>,
+    app: AppHandle,
 ) -> Result<ProjectInfo, String> {
-    let root = apply_project_dir(&state, &path, confirm_bootstrap)?;
+    let root = apply_project_dir(&state, &path, confirm_bootstrap, Some(&app))?;
     let cfg = list_projects().map_err(|e| e.to_string())?;
     let entry = cfg
         .projects
@@ -708,4 +715,18 @@ pub fn get_workflow_catalog(
     let dir = get_dir(&state)?;
     let workspace = Workspace { root: dir };
     crate::workflow_catalog::build_workflow_catalog(&workspace).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_telemetry_run_detail(
+    run_id: String,
+    state: State<AppState>,
+) -> Result<TelemetryRunDetailDto, String> {
+    state.with_store(|store| {
+        let root = &store.workspace().root;
+        Ok(TelemetryRunDetailDto {
+            report: telemetry::report_run(root, &run_id),
+            spans: telemetry::read_wal_lines(root, &run_id),
+        })
+    })
 }

@@ -22,6 +22,7 @@ ui = [
     "dep:tauri-plugin-shell",
     "dep:rfd",
     "dep:intent-lang-visualizer",
+    "dep:notify",
     "tauri-build",
 ]
 
@@ -39,6 +40,7 @@ tauri-plugin-shell = { version = "2", optional = true }
 rfd = { version = "0.15", optional = true }
 intent-lang-syntax = { version = "0.1.3" }
 intent-lang-visualizer = { version = "0.1.3", optional = true }
+notify = { version = "7", optional = true }
 
 [build-dependencies]
 tauri-build = { version = "2", optional = true , features = [] }

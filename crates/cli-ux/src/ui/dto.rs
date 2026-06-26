@@ -136,6 +136,12 @@ pub struct StageCompleteResult {
     pub downstream_ready: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TelemetryRunDetailDto {
+    pub report: telemetry::RunReport,
+    pub spans: Vec<telemetry::WalLine>,
+}
+
 pub use crate::workspace_readers::{
     IntentBlockDetail, IntentFileFull, IntentRef, IssueGuidance, TaskFull,
 };

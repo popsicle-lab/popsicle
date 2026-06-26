@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BookOpen, GitBranch, Play } from "lucide-react";
 import {
   getIssue,
   getIssueGuidance,
   listDocsForRun,
   startIssue,
+  useRefresh,
   type DocInfo,
   type IssueGuidance,
   type IssueInfo,
 } from "../hooks/useTauri";
 import { LoadingState } from "../components/LoadingState";
 import { RetroDocBanner } from "../components/RetroDocBanner";
+import { TelemetryRunPanel } from "../components/TelemetryRunPanel";
 import { IssueTypeBadge } from "../components/IssueTypeBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import type { Page } from "../App";
@@ -34,7 +36,7 @@ export function IssueDetailView({
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     getIssue(issueKey)
       .then(async (i) => {
         setIssue(i);
@@ -50,11 +52,13 @@ export function IssueDetailView({
         setDocsByRun(Object.fromEntries(entries));
       })
       .catch((e) => setError(String(e)));
-  };
+  }, [issueKey]);
 
   useEffect(() => {
     load();
-  }, [issueKey]);
+  }, [load]);
+
+  useRefresh(load);
 
   const handleStart = async () => {
     setStarting(true);
@@ -350,7 +354,7 @@ export function IssueDetailView({
           </h3>
           <div className="space-y-2">
             {issue.run_ids.map((runId) => (
-              <div key={runId} className="card p-3">
+              <div key={runId} className="card p-3 space-y-2">
                 <button
                   type="button"
                   onClick={() => setPage({ kind: "pipeline", runId })}
@@ -358,6 +362,7 @@ export function IssueDetailView({
                 >
                   {runId}
                 </button>
+                <TelemetryRunPanel runId={runId} compact />
                 {(docsByRun[runId] ?? []).length > 0 && (
                   <div className="mt-2 space-y-0.5 border-t border-[var(--border)] pt-2">
                     {(docsByRun[runId] ?? []).map((doc) => (

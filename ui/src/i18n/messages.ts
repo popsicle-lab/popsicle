@@ -177,6 +177,26 @@ export type Messages = {
     exportFailed: string;
     openWorkflowHelp: string;
   };
+  telemetry: {
+    title: string;
+    loading: string;
+    spans: string;
+    stages: string;
+    docChecks: string;
+    gaps: string;
+    gapsTitle: string;
+    agentCoverage: string;
+    docBySkill: string;
+    tabOverview: string;
+    tabTimeline: string;
+    tabSequence: string;
+    tabSpans: string;
+    noData: string;
+    statusOk: string;
+    emptyHint: string;
+    noStages: string;
+    agentMissing: string;
+  };
   project: {
     bootstrap: {
       title: string;
@@ -360,6 +380,26 @@ const zhCN: Messages = {
     exportCopied: "已复制到剪贴板",
     exportFailed: "复制失败，请检查浏览器权限",
     openWorkflowHelp: "查看工作流帮助",
+  },
+  telemetry: {
+    title: "Run 观测",
+    loading: "加载 telemetry…",
+    spans: "Span",
+    stages: "Stage",
+    docChecks: "Doc check",
+    gaps: "Agent 缺口",
+    gapsTitle: "已通过 doc check 但缺 Agent span",
+    agentCoverage: "Agent 覆盖",
+    docBySkill: "Doc check 按 skill",
+    tabOverview: "概览",
+    tabTimeline: "Stage 耗时",
+    tabSequence: "序列图",
+    tabSpans: "Span 流",
+    noData: "无 WAL 数据",
+    statusOk: "已记录",
+    emptyHint: "此 run 尚无 `.popsicle/telemetry/` WAL 记录。Agent 执行 pipeline 后会自动写入编排 span。",
+    noStages: "无 stage 耗时数据",
+    agentMissing: "未上报",
   },
   project: {
     bootstrap: {
@@ -551,6 +591,26 @@ const en: Messages = {
     exportCopied: "Copied to clipboard",
     exportFailed: "Copy failed — check browser permissions",
     openWorkflowHelp: "Open workflow guide",
+  },
+  telemetry: {
+    title: "Run telemetry",
+    loading: "Loading telemetry…",
+    spans: "Spans",
+    stages: "Stages",
+    docChecks: "Doc checks",
+    gaps: "Agent gaps",
+    gapsTitle: "Passed doc check but missing Agent spans",
+    agentCoverage: "Agent coverage",
+    docBySkill: "Doc checks by skill",
+    tabOverview: "Overview",
+    tabTimeline: "Stage timing",
+    tabSequence: "Sequence",
+    tabSpans: "Span stream",
+    noData: "No WAL data",
+    statusOk: "Recorded",
+    emptyHint: "No `.popsicle/telemetry/` WAL for this run yet. Orchestration spans appear after pipeline activity.",
+    noStages: "No stage timing data",
+    agentMissing: "not reported",
   },
   project: {
     bootstrap: {

@@ -14,6 +14,7 @@ import {
 import {
   getPipelineStatus,
   getWorkflowCatalog,
+  useRefresh,
   type PipelineCatalogEntry,
   type PipelineStatusFull,
   type SkillCatalogEntry,
@@ -125,6 +126,20 @@ export function WorkflowsView({
   useEffect(() => {
     load();
   }, [load]);
+
+  const refreshRunStatus = useCallback(() => {
+    if (!contextRunId) return;
+    getPipelineStatus(contextRunId)
+      .then(setRunStatus)
+      .catch(() => setRunStatus(null));
+  }, [contextRunId]);
+
+  const refreshAll = useCallback(() => {
+    load();
+    refreshRunStatus();
+  }, [load, refreshRunStatus]);
+
+  useRefresh(refreshAll);
 
   useEffect(() => {
     setTab(initialTab);

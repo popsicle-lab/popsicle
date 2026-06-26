@@ -13,12 +13,14 @@ import {
   getPipelineStatus,
   getProjectConfig,
   stageNeedsExplicitConfirm,
+  useRefresh,
   type ApprovalMode,
   type PipelineStatusFull,
   type StageStatusInfo,
 } from "../hooks/useTauri";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
+import { TelemetryRunPanel } from "../components/TelemetryRunPanel";
 import { useLocale } from "../i18n/LocaleContext";
 import type { Page } from "../App";
 
@@ -131,6 +133,8 @@ export function PipelineView({ runId, setPage }: Props) {
     load();
   }, [load]);
 
+  useRefresh(load);
+
   const flow = useMemo(
     () => (status ? layoutStages(status.stages) : { nodes: [], edges: [] }),
     [status]
@@ -205,8 +209,9 @@ export function PipelineView({ runId, setPage }: Props) {
         </button>
       </div>
 
-      <div className="pipeline-split min-h-0 flex-1">
-        <div className="graph-panel">
+      <div className="pipeline-layout min-h-0 flex-1 flex flex-col gap-3">
+        <div className="pipeline-split min-h-0 flex-[3]">
+          <div className="graph-panel">
           <ReactFlow
             nodes={flow.nodes}
             edges={flow.edges}
@@ -315,6 +320,9 @@ export function PipelineView({ runId, setPage }: Props) {
             </div>
           )}
         </aside>
+        </div>
+
+        <TelemetryRunPanel runId={runId} className="min-h-[220px] max-h-[42vh] shrink-0" />
       </div>
     </div>
   );

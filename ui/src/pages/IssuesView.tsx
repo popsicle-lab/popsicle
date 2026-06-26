@@ -17,6 +17,7 @@ import {
   getCreateIssueFormOptions,
   listIssues,
   scanProductTaskGraph,
+  useRefresh,
   type CreateIssueFormOptions,
   type IssueInfo,
   type TaskNode,
@@ -149,6 +150,8 @@ export function IssuesView({ setPage, initialSelectedKey }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useRefresh(load);
 
   useEffect(() => {
     const products = [

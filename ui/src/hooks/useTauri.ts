@@ -154,6 +154,51 @@ export interface StageCompleteResult {
   downstream_ready: boolean;
 }
 
+export interface TelemetryStageReport {
+  name: string;
+  skill: string | null;
+  completed: boolean;
+  duration_ms?: number | null;
+}
+
+export interface TelemetryAgentGap {
+  doc_id: string;
+  skill?: string | null;
+  missing: string[];
+}
+
+export interface TelemetryRunReport {
+  run_id: string;
+  issue_key?: string | null;
+  pipeline?: string | null;
+  span_count: number;
+  stages: TelemetryStageReport[];
+  doc_checks: {
+    total: number;
+    passed: number;
+    failed: number;
+    by_skill: Record<string, { passed: number; failed: number }>;
+  };
+  agent_coverage: {
+    gen_ai_chat: boolean;
+    run_score: boolean;
+    decision: boolean;
+    gaps: TelemetryAgentGap[];
+  };
+  status: string;
+}
+
+export interface TelemetrySpan {
+  ts: string;
+  span: string;
+  [key: string]: string;
+}
+
+export interface TelemetryRunDetail {
+  report: TelemetryRunReport;
+  spans: TelemetrySpan[];
+}
+
 export interface TaskNode {
   task_id: string;
   title: string;
@@ -358,6 +403,12 @@ export async function getPipelineStatus(
   runId: string
 ): Promise<PipelineStatusFull> {
   return invoke("get_pipeline_status", { runId });
+}
+
+export async function getTelemetryRunDetail(
+  runId: string
+): Promise<TelemetryRunDetail> {
+  return invoke("get_telemetry_run_detail", { runId });
 }
 
 export async function completeStage(

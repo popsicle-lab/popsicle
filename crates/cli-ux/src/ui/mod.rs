@@ -22,6 +22,7 @@ pub fn run(project: Option<String>) {
     let initial_project = resolve_ui_startup_root(cli_project.as_deref())
         .ok()
         .flatten();
+    let startup_project = initial_project.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -65,11 +66,13 @@ pub fn run(project: Option<String>) {
             commands::get_project_context_md,
             commands::save_project_context_md,
             commands::get_workflow_catalog,
+            commands::get_telemetry_run_detail,
         ])
-        .setup(|app| {
-            app.manage(watcher::ProjectWatcher {
-                last_emit: Mutex::new(None),
-            });
+        .setup(move |app| {
+            app.manage(watcher::ProjectWatcher::new());
+            if let Some(root) = startup_project.as_ref() {
+                watcher::ProjectWatcher::restart(app.handle(), Some(root));
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

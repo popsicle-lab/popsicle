@@ -3,7 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { CheckCircle2, XCircle } from "lucide-react";
-import { readDoc, type DocFull } from "../hooks/useTauri";
+import { readDoc, useRefresh, type DocFull } from "../hooks/useTauri";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
 import { MermaidRenderer } from "../components/MermaidRenderer";
@@ -27,6 +27,8 @@ export function DocumentView({ docId, setPage: _setPage }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useRefresh(load);
 
   if (error) {
     return (

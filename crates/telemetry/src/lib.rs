@@ -9,7 +9,11 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 pub use config::load_config;
-pub use report::{health_summary_line, report_recent, report_run, RecentReport, RunReport};
+pub use report::{
+    health_summary_line, report_recent, report_run, AgentCoverageReport, AgentSpanGap,
+    DocChecksReport, RecentReport, RunReport, SkillCheckCounts, StageReport,
+};
+pub use wal::{read_wal_lines, WalLine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordOutcome {

@@ -12,6 +12,7 @@ import {
   listProductNames,
   scanIntentGraph,
   scanProductTaskGraph,
+  useRefresh,
   type IntentBlockNode,
   type ProductHealthReport,
   type TaskNode,
@@ -171,6 +172,8 @@ export function ProductExplorerView({
   useEffect(() => {
     load();
   }, [load]);
+
+  useRefresh(load);
 
   const intentBlocks = intentGraph?.blocks ?? [];
   const journeyGroups = useMemo(() => groupByJourney(tasks), [tasks]);

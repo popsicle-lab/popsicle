@@ -69,7 +69,8 @@ export default function App() {
     finishBootstrapPrompt,
   } = useProjectSession();
   const [page, setPage] = useState<Page>({ kind: "issues" });
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [projectSwitchKey, setProjectSwitchKey] = useState(0);
+  const [workspaceTick, setWorkspaceTick] = useState(0);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [locale, setLocale] = useState<Locale>("zh-CN");
@@ -81,8 +82,10 @@ export default function App() {
     }
   });
 
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-  useRefresh(refresh);
+  const onWorkspaceDataChange = useCallback(() => {
+    setWorkspaceTick((k) => k + 1);
+  }, []);
+  useRefresh(onWorkspaceDataChange);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,14 +129,14 @@ export default function App() {
     getProjectConfig()
       .then((cfg) => setLocale(normalizeLocale(cfg.language)))
       .catch(() => {});
-  }, [project, refreshKey]);
+  }, [project, workspaceTick]);
 
   const handleSwitchProject = useCallback(
     async (path: string) => {
       const opened = await openProjectDir(path);
       if (!opened) return;
       setPage({ kind: "issues" });
-      setRefreshKey((k) => k + 1);
+      setProjectSwitchKey((k) => k + 1);
     },
     [openProjectDir]
   );
@@ -214,35 +217,35 @@ export default function App() {
           <main className="main-content page-enter flex-1 overflow-hidden px-4 py-3">
             {page.kind === "issues" && (
               <IssuesView
-                key={refreshKey}
+                key={projectSwitchKey}
                 setPage={setPage}
                 initialSelectedKey={page.selectedKey}
               />
             )}
             {page.kind === "issue" && (
               <IssueDetailView
-                key={`${page.issueKey}-${refreshKey}`}
+                key={`${page.issueKey}-${projectSwitchKey}`}
                 issueKey={page.issueKey}
                 setPage={setPage}
               />
             )}
             {page.kind === "pipeline" && (
               <PipelineView
-                key={`${page.runId}-${refreshKey}`}
+                key={`${page.runId}-${projectSwitchKey}`}
                 runId={page.runId}
                 setPage={setPage}
               />
             )}
             {page.kind === "document" && (
               <DocumentView
-                key={`${page.docId}-${refreshKey}`}
+                key={`${page.docId}-${projectSwitchKey}`}
                 docId={page.docId}
                 setPage={setPage}
               />
             )}
             {page.kind === "products" && (
               <ProductExplorerView
-                key={`${page.product ?? ""}-${refreshKey}`}
+                key={`${page.product ?? ""}-${projectSwitchKey}`}
                 setPage={setPage}
                 product={page.product}
                 tab={page.tab}
@@ -253,7 +256,7 @@ export default function App() {
             )}
             {page.kind === "task" && (
               <TaskDetailPage
-                key={`${page.taskId}-${refreshKey}`}
+                key={`${page.taskId}-${projectSwitchKey}`}
                 product={page.product}
                 taskId={page.taskId}
                 returnTo={page.returnTo}
@@ -262,7 +265,7 @@ export default function App() {
             )}
             {page.kind === "intent" && (
               <IntentDetailPage
-                key={`${page.file}-${page.block ?? ""}-${refreshKey}`}
+                key={`${page.file}-${page.block ?? ""}-${projectSwitchKey}`}
                 product={page.product}
                 file={page.file}
                 block={page.block}
@@ -271,11 +274,15 @@ export default function App() {
               />
             )}
             {page.kind === "settings" && (
-              <SettingsView key={refreshKey} setPage={setPage} onSaved={() => setRefreshKey((k) => k + 1)} />
+              <SettingsView
+                key={projectSwitchKey}
+                setPage={setPage}
+                onSaved={() => setWorkspaceTick((k) => k + 1)}
+              />
             )}
             {page.kind === "workflows" && (
               <WorkflowsView
-                key={`${page.tab ?? "pipelines"}-${page.contextRunId ?? ""}-${refreshKey}`}
+                key={`${page.tab ?? "pipelines"}-${page.contextRunId ?? ""}-${projectSwitchKey}`}
                 setPage={setPage}
                 tab={page.tab}
                 pipeline={page.pipeline}
