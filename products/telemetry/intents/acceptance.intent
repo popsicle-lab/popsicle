@@ -1,0 +1,79 @@
+// Product:        telemetry
+// Layer:          L2 acceptance（验收契约 — prd-writer 种子）
+// Status:         draft seed — 待 intent-spec-writer 收紧
+// Source PDR:     PDR-001, PDR-002 (Block 4)
+// Last-Updated:   2026-06-26
+//
+// D2：时间/性能约束不写本文件 —— 见各 task「可观察的成功标志」。
+
+type OtlpConfig {
+  endpointSet: Bool
+  failOpen: Bool
+}
+
+type TelemetryRecordResult {
+  walAppended: Bool
+  mainExitZero: Bool
+}
+
+type OrchestrationSpanResult {
+  spanRecorded: Bool
+  issueStartSucceeded: Bool
+}
+
+// ---- Block 1 ----
+// task:          T-TEL-0001
+// pdr:           PDR-001
+// journey_stage: admin
+// query_anchors:
+//   - "OTLP 端点配置写在哪里？"
+@tobe
+intent OtlpConfigRoundTrips(c: OtlpConfig) {
+  require c.endpointSet
+  ensure c.failOpen'
+  ensure c.failOpen' == true
+}
+
+// ---- Block 2 ----
+// task:          T-TEL-0002
+// pdr:           PDR-001
+// journey_stage: daily-ops
+// query_anchors:
+//   - "telemetry record 失败会打断 stage 吗？"
+@tobe
+intent TelemetryRecordFailOpen(r: TelemetryRecordResult) {
+  require r.walAppended == false
+  ensure r.mainExitZero'
+  ensure r.mainExitZero' == true
+}
+
+// ---- Block 3 ----
+// task:          T-TEL-0003
+// pdr:           PDR-001
+// journey_stage: daily-ops
+// query_anchors:
+//   - "issue start 会自动写 span 吗？"
+@tobe
+intent OrchestrationSpanOnIssueStart(s: OrchestrationSpanResult) {
+  require s.issueStartSucceeded
+  ensure s.issueStartSucceeded'
+  ensure s.issueStartSucceeded' == true
+}
+
+type TelemetryReportResult {
+  walReadable: Bool
+  mainExitZero: Bool
+}
+
+// ---- Block 4 ----
+// task:          T-TEL-0004
+// pdr:           PDR-002
+// journey_stage: daily-ops
+// query_anchors:
+//   - "怎么从 WAL 看 run 耗时？"
+@tobe
+intent TelemetryReportFailOpen(r: TelemetryReportResult) {
+  require r.walReadable == false
+  ensure r.mainExitZero'
+  ensure r.mainExitZero' == true
+}

@@ -1,0 +1,48 @@
+name: telemetry
+description: >
+  Agent 观测旁路 tool（Rust 实现 record/flush/status/report；本 yaml 供 action=guide 与参数文档）。
+  init 后 guide 位于 .popsicle/modules/intent-coder/tools/telemetry/guide.md。
+version: "0.1.0"
+
+args:
+  - name: action
+    description: guide|record|flush|status|report（record/flush/status/report 由 Rust 处理；guide 由本 yaml）
+    required: true
+  - name: run
+    description: pipeline run_id（record/report/status/flush）
+    required: false
+    default: ""
+  - name: span
+    description: record 时 span 名（默认 gen_ai.chat）
+    required: false
+    default: ""
+  - name: limit
+    description: report 时最近 N 个 run（无 run= 时）
+    required: false
+    default: "10"
+  - name: format
+    description: text 或 json
+    required: false
+    default: json
+
+command: |
+  set -e
+  ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  TOOL_DIR="$ROOT/intent-coder/tools/telemetry"
+  if [ ! -f "$TOOL_DIR/guide.md" ]; then
+    TOOL_DIR="$ROOT/.popsicle/modules/intent-coder/tools/telemetry"
+  fi
+  if [ ! -f "$TOOL_DIR/guide.md" ]; then
+    echo "error: telemetry guide not found; run popsicle init or admin sync-intent-coder" >&2
+    exit 127
+  fi
+  ACTION="{{action}}"
+  case "$ACTION" in
+    guide)
+      cat "$TOOL_DIR/guide.md"
+      ;;
+    *)
+      echo "error: action=$ACTION is handled by popsicle Rust telemetry (use: popsicle tool run telemetry action=$ACTION ...)" >&2
+      exit 1
+      ;;
+  esac

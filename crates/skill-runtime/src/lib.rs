@@ -22,6 +22,7 @@ pub mod memory_layer;
 pub mod pipeline_session;
 pub mod registry;
 pub mod runs;
+pub mod session_span;
 pub mod skill_load;
 pub mod state_machine;
 pub mod upstream;
@@ -40,6 +41,10 @@ pub use registry::{PipelineRegistry, SkillRegistry};
 pub use runs::{
     apply_skill_upgrade, bootstrap_to_first_pause, recover_blocked_pipeline, BootstrapError,
     RecoverError,
+};
+pub use session_span::{
+    NoopSessionSpanSink, RecordingSessionSpanSink, SessionSpanContext, SessionSpanEvent,
+    SessionSpanSink, SessionSpanSinkHandle,
 };
 pub use skill_load::{is_backward_compatible_upgrade, SkillLoadResult, StateMachine};
 pub use state_machine::{

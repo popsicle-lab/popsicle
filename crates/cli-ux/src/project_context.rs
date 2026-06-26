@@ -68,3 +68,29 @@ pub fn project_context_injection_block(workspace_root: &Path, max_bytes: usize) 
     }
     format!("\n\n[Project context]\n{body}")
 }
+
+const TELEMETRY_HEALTH_ROW: &str = "| Telemetry 健康 |";
+
+/// Refresh §现在状态 telemetry row from WAL (doc-sync-weekly / living-doc-author).
+pub fn refresh_telemetry_health_row(
+    workspace_root: &Path,
+    limit: usize,
+) -> Result<(), WorkspaceError> {
+    let summary = telemetry::health_summary_line(workspace_root, limit);
+    let mut content = load_project_context(workspace_root)?;
+    let marker = "## 现在状态";
+    let Some(section_start) = content.find(marker) else {
+        return Ok(());
+    };
+    let row = format!("{TELEMETRY_HEALTH_ROW} {summary} |");
+    if let Some(idx) = content.find(TELEMETRY_HEALTH_ROW) {
+        if let Some(line_end) = content[idx..].find('\n') {
+            let end = idx + line_end;
+            content.replace_range(idx..end, &row);
+        }
+    } else if let Some(table_end) = content[section_start..].find("\n\n") {
+        let insert_at = section_start + table_end;
+        content.insert_str(insert_at, format!("\n{row}").as_str());
+    }
+    save_project_context(workspace_root, &content)
+}

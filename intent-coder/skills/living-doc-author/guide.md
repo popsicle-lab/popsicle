@@ -68,3 +68,7 @@ PRODUCT 实质内容、intent 逻辑的改动都越界——发现了就记到 s
 
 `{slug}.living-doc-sync-report.md`：drift 信号四类明细 + 刷新动作 + 健康度快照 +
 待人工处置。被刷新的活文档（README、task 元数据）作为副作用直接落到现有文件。
+
+## Agent 观测
+
+doc-sync 阶段按 `popsicle tool run telemetry action=guide` 可选上报 stage score。

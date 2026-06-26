@@ -6,6 +6,7 @@ use crate::loader::PipelineDef;
 use crate::runs::{
     bootstrap_to_first_pause, recover_blocked_pipeline, BootstrapError, RecoverError,
 };
+use crate::session_span::{SessionSpanContext, SessionSpanEvent, SessionSpanSinkHandle};
 use crate::state_machine::{advance_stage_with_approval, StageAdvanceError};
 
 /// Errors mutating a [`PipelineSession`].
@@ -38,14 +39,59 @@ impl From<RecoverError> for SessionError {
 }
 
 /// A pipeline run with per-stage state aligned to a [`PipelineDef`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PipelineSession {
     pub pipeline: PipelineDef,
     pub run: PipelineRun,
     pub stages: Vec<Stage>,
+    span_sink: Option<SessionSpanSinkHandle>,
+}
+
+impl std::fmt::Debug for PipelineSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PipelineSession")
+            .field("pipeline", &self.pipeline)
+            .field("run", &self.run)
+            .field("stages", &self.stages)
+            .field("span_sink", &self.span_sink.as_ref().map(|_| "<sink>"))
+            .finish()
+    }
 }
 
 impl PipelineSession {
+    /// Attach a best-effort telemetry sink (ADR-001). Default: none.
+    pub fn with_span_sink(mut self, sink: SessionSpanSinkHandle) -> Self {
+        self.span_sink = Some(sink);
+        self
+    }
+
+    /// Attach or replace the span sink on a loaded session.
+    pub fn set_span_sink(&mut self, sink: SessionSpanSinkHandle) {
+        self.span_sink = Some(sink);
+    }
+
+    fn span_context(&self) -> SessionSpanContext {
+        SessionSpanContext {
+            run_id: self.run.id.clone(),
+            pipeline_name: self.pipeline.name.clone(),
+            run_status: self.run.status,
+            current_stage_index: self.run.current_stage_index,
+        }
+    }
+
+    fn stage_skill_at(&self, idx: usize) -> String {
+        self.pipeline
+            .stages
+            .get(idx)
+            .map(|def| def.skill_names().join(","))
+            .unwrap_or_default()
+    }
+
+    fn emit_span(&self, event: SessionSpanEvent) {
+        if let Some(sink) = &self.span_sink {
+            sink.emit(&self.span_context(), event);
+        }
+    }
     /// Fresh pending run; first stage `blocked`, rest `ready`.
     pub fn new_pending(run_id: impl Into<String>, pipeline: PipelineDef) -> Self {
         let total = pipeline.stages.len() as i64;
@@ -74,6 +120,7 @@ impl PipelineSession {
                 total_stages: total,
             },
             stages,
+            span_sink: None,
         }
     }
 
@@ -95,6 +142,18 @@ impl PipelineSession {
         let (run2, stage2) = bootstrap_to_first_pause(&self.run, stage)?;
         self.run = run2;
         *stage = stage2;
+        let idx = self.run.current_stage_index as usize;
+        let stage_name = self
+            .stages
+            .get(idx)
+            .map(|s| s.name.clone())
+            .unwrap_or_default();
+        let stage_skill = self.stage_skill_at(idx);
+        self.emit_span(SessionSpanEvent::PipelineStarted {
+            stage_name,
+            stage_index: self.run.current_stage_index,
+            stage_skill,
+        });
         Ok(())
     }
 
@@ -116,6 +175,13 @@ impl PipelineSession {
             return Err(SessionError::RunNotActive);
         }
         let idx = self.run.current_stage_index as usize;
+        let stage_name = self
+            .stages
+            .get(idx)
+            .map(|s| s.name.clone())
+            .unwrap_or_default();
+        let stage_index = self.run.current_stage_index;
+        let stage_skill = self.stage_skill_at(idx);
         let stage = self
             .stages
             .get_mut(idx)
@@ -131,6 +197,12 @@ impl PipelineSession {
         } else {
             self.run.status = PipelineRunStatus::RunCompleted;
         }
+        self.emit_span(SessionSpanEvent::StageCompleted {
+            stage_name,
+            stage_index,
+            stage_skill,
+            run_status: self.run.status,
+        });
         Ok(())
     }
 

@@ -66,6 +66,7 @@
 | **migration-slice-delivery** ✅ | **迁移 slice 交付**：implement → equivalence → cutover → living-docs。见 [`pipelines/migration-slice-delivery.pipeline.yaml`](pipelines/migration-slice-delivery.pipeline.yaml)。 |
 | **product-greenfield-spec** ✅ | **新产品 / 新模块 spec**。见 [`pipelines/product-greenfield-spec.pipeline.yaml`](pipelines/product-greenfield-spec.pipeline.yaml)。 |
 | **feature-spec** ✅ | **已有 product 增量能力 spec**（无 legacy facts）。见 [`pipelines/feature-spec.pipeline.yaml`](pipelines/feature-spec.pipeline.yaml)。 |
+| **feature-arch-spec** ✅ | **已有 product 大增量 full spec**（PDR+ADR+task+intent；无 product-debate）。见 [`pipelines/feature-arch-spec.pipeline.yaml`](pipelines/feature-arch-spec.pipeline.yaml)。ADR-030。 |
 | **feature-delivery** ✅ | **日常能力交付**（implement → verify）。见 [`pipelines/feature-delivery.pipeline.yaml`](pipelines/feature-delivery.pipeline.yaml)。 |
 | **doc-retro-spec** ✅ | **代码已合并后补 PDR/task/intent**。见 [`pipelines/doc-retro-spec.pipeline.yaml`](pipelines/doc-retro-spec.pipeline.yaml)。 |
 | **doc-sync-weekly** ✅ | **周期性巡检**：tasks-index + product-context。见 [`pipelines/doc-sync-weekly.pipeline.yaml`](pipelines/doc-sync-weekly.pipeline.yaml)。 |

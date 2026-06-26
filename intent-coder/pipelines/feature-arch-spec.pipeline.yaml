@@ -1,0 +1,64 @@
+name: feature-arch-spec
+description: >-
+  能力域 · 已有 product 上的大增量 capability spec（无 legacy facts、无 product-debate）。
+  prd → arch-debate → rfc → adr → intent-spec → intent-check → living-docs。
+  完成后用 feature-delivery 实现。补充 ADR-030 / ADR-029 feature- 域。
+scale: full
+keywords:
+  - feature
+  - capability
+  - arch
+  - prd
+  - intent
+  - spec
+  - incremental
+  - full-spec
+
+stages:
+  - name: prd
+    skill: prd-writer
+    description: >-
+      为单个大增量能力产出 PDR + task + acceptance.intent 种子 + PRODUCT 增量。
+      需求已在 issue 描述中收敛时可快速过（无 product-debate）。
+    depends_on: []
+    requires_approval: true
+
+  - name: arch-debate
+    skill: arch-debate
+    description: >-
+      技术侧支线：跨 crate 边界、存储/API、OTel 等架构议题。PRD 无 [ADR 候选] 时可快速过。
+    depends_on: [prd]
+    requires_approval: true
+
+  - name: rfc
+    skill: rfc-writer
+    description: >-
+      RFC + ARCHITECTURE.md 增量 + contracts.intent 种子 + ADR 骨架。
+    depends_on: [arch-debate]
+    requires_approval: true
+
+  - name: adr
+    skill: adr-writer
+    description: >-
+      固化 Accepted ADR，解锁 contracts.intent 收紧工单。
+    depends_on: [rfc]
+    requires_approval: true
+
+  - name: intent-spec
+    skill: intent-spec-writer
+    description: >-
+      收紧 acceptance 种子与 ADR 解锁的 contracts，合并到 products/<product>/intents/。
+    depends_on: [prd, adr]
+
+  - name: intent-check
+    skill: intent-consistency-check
+    description: >-
+      Z3 一致性验证（observe）。通过后解锁 feature-delivery。
+    depends_on: [intent-spec]
+
+  - name: living-docs
+    skill: living-doc-author
+    description: >-
+      同步 tasks/README、product header、proposed→linked task 晋升。
+    depends_on: [intent-check]
+    requires_approval: true

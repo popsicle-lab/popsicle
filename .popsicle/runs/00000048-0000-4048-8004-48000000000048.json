@@ -1,0 +1,51 @@
+{
+  "pipeline_name": "feature-arch-spec",
+  "run_id": "00000048-0000-4048-8004-48000000000048",
+  "run_status": "completed",
+  "current_stage_index": 6,
+  "total_stages": 7,
+  "stages": [
+    {
+      "name": "prd",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "arch-debate",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "rfc",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "adr",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "intent-spec",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "intent-check",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "living-docs",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+// Product:   telemetry
+// Layer:     L4 contracts
+// Status:     ADR-001 Accepted — 待 intent-spec-writer 收紧
+// Source ADR: ADR-001-telemetry-otel-sidecar.md
+
+enum RecordOutcome { OutcomeOk, OutcomeDegraded }
+
+type SinkRecordResult {
+  outcome: RecordOutcome
+  mainMustContinue: Bool
+}
+
+// [ADR-001 Accepted] TelemetrySink：record 永不向上返回 Err；Degraded 时主流程继续。
+
+@tobe
+intent TelemetrySinkFailOpen(r: SinkRecordResult) {
+  require r.outcome == OutcomeDegraded
+  ensure r.mainMustContinue'
+  ensure r.mainMustContinue' == true
+}

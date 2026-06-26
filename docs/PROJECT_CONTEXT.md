@@ -1,7 +1,7 @@
 # Project Context
 
-> **Last-Updated**: 2026-06-24
-> **Last-Decision-Ref**: ADR-032
+> **Last-Updated**: 2026-06-26
+> **Last-Decision-Ref**: ADR-001
 > **Owner**: 仓库维护者 + Settings UI；§现在状态 由 doc-sync-weekly 刷新
 
 `docs/PROJECT_CONTEXT.md` 是本仓库**唯一的工程画像权威源**（git 追踪）。Agent 在 `inject_on_run: true` 时通过 `issue start` / `doc create` 的 `agent_context` 注入 §工程画像（不含 §现在状态）。
@@ -13,7 +13,7 @@
 - **语言**：Rust（workspace，`rust-toolchain.toml` pin）
 - **前端**：Tauri 2 + React + TypeScript（`ui/`，`cargo build --features ui -p cli-ux`）
 - **形式化**：IntentLang + Z3（`intent-validate` / `make intent`）
-- **存储**：SQLite @ `.popsicle/state.db`（ADR-013 / ADR-032）
+- **存储**：SQLite @ `.popsicle/state.db`（ADR-013 / ADR-032）；本仓库 `git.track_workspace: true`，`.popsicle/`（含 state、artifacts、runs）纳入 git
 
 ### 仓库布局（目标态）
 
@@ -21,7 +21,8 @@
 |---|---|
 | `crates/skill-runtime/` | Skill 加载、Pipeline 会话、Issue 实体 |
 | `crates/artifact-system/` | Document、Guard、Context 装配 |
-| `crates/cli-ux/` | `popsicle` CLI + Tauri IPC |
+| `crates/cli-ux/` | `popsicle` CLI + Tauri IPC + telemetry inject |
+| `crates/telemetry/` | Agent 观测旁路：WAL + OTLP export（fail-open） |
 | `crates/storage/` | DocumentRow / WorkspaceStore |
 | `products/<product>/` | IDD 四件套（PRODUCT / ARCHITECTURE / intents / decisions） |
 | `migration/` | 切流 traceability + progress 看板（历史归档） |
@@ -44,15 +45,31 @@ Workspace members：`crates/*`（ADR-003）。
 - Spec 门禁：新能力须 `feature-spec` / `migration-slice-spec` → `feature-delivery` / `migration-slice-delivery`；`fix-regression` 不得滥用（PROJ-53）
 - 活文档：只用现在时；历史进 ADR/PDR / `migration/traceability.md`
 
+### intent-coder 分发物 vs 本仓库 products（dogfood 边界）
+
+| 层 | 路径 | 谁读 | 内容 |
+|---|---|---|---|
+| **Module tool guide** | `intent-coder/tools/<tool>/guide.md` → `init` 后 `.popsicle/modules/intent-coder/...` | 任意已 init 项目的 Agent | **自包含**操作约定；`action=guide` 打印全文 |
+| **本仓库 product spec** | `products/<product>/`（如 `SPAN_SCHEMA.md`） | 仅 popsicle monorepo dogfood | IDD 字段表、ARCHITECTURE manifest、intent 追溯 |
+
+**反例（PROJ-75）**：在 `intent-coder/tools/telemetry/guide.md` 里写「monorepo 另有 `products/telemetry/SPAN_SCHEMA.md`」——会把**本仓库路径**塞进**公共分发物**，init 后的外部项目无法解析，且与「span schema 留在 products/」的定案矛盾。
+
+**正确分工**：
+
+- Module guide：内嵌 span 速查与命令模板（Agent 唯一 portable 入口）。
+- `products/telemetry/SPAN_SCHEMA.md` / `AGENT_TELEMETRY.md`：monorepo 产品文档；可**指向** module guide，**不得**被 module guide **反向引用**。
+- 本仓库 `AGENTS.md` Workflow Rule 12 仅指向 `action=guide`；`products/telemetry/SPAN_SCHEMA.md` 供 spec/实现对账，Agent 运行时不必读。
+
 ## 现在状态
 
 > 由 `doc-sync-weekly` pipeline + `living-doc-author --target product-context` 机械刷新。请勿在 Settings 中手工编辑本节。
 
 | 指标 | 值 |
 |---|---|
-| Products | skill-runtime, artifact-system, cli-ux |
+| Products | skill-runtime, artifact-system, cli-ux, telemetry（MVP 已交付） |
 | 迁移 slice | skill-runtime / artifact-system / cli-ux → cutover-done（见 `migration/progress.md`） |
-| 最近决策 | ADR-026（工程画像单一源 + weekly 巡检） |
+| 最近决策 | ADR-002（telemetry report）；PROJ-67–75 telemetry MVP + guide 链已交付 |
+| Telemetry 健康 | 最近 8 个 run；doc_check 失败 0 次；1 个 run 含 Agent score（weekly 2026-06-26 刷新） |
 
 ## 相关链接
 

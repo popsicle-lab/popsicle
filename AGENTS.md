@@ -104,6 +104,7 @@ The bundled pipeline templates are:
 | `migration-slice-delivery` | implement → equivalence → cutover → living-docs | — |
 | `product-greenfield-spec` | new product/module with no legacy code | `product` |
 | `feature-spec` | incremental capability spec (no legacy facts) | — |
+| `feature-arch-spec` | large incremental spec on existing product (PDR+ADR+task+intent) | — |
 | `feature-delivery` | spec-ready feature implement + verify | — |
 | `doc-retro-spec` | backfill PDR/task/intent after code merged | — |
 | `doc-sync-weekly` | periodic tasks-index + PROJECT_CONTEXT §现在状态 | — |
@@ -125,6 +126,7 @@ templates self-heal: bundled definitions are installed on demand, and a
 | New product module, no spec | `product-greenfield-spec` (`--type product` default) |
 | Migration slice, capability not in intent yet | `migration-slice-spec` |
 | Daily feature, capability not in intent yet | `feature-spec` |
+| Large incremental on existing product (needs ADR) | `feature-arch-spec` |
 | Spec decided, migration cutover | `migration-slice-delivery` |
 | Spec decided, daily feature | `feature-delivery` |
 | Architecture decision only | `arch-decision` (`--type technical` default) |
@@ -216,6 +218,7 @@ removed (see below).
 ### Tool & Admin
 
 - `popsicle tool run intent-validate path=<dir> [format=<text|json>]` — Z3 intent check
+- `popsicle tool run telemetry action=<guide|record|flush|status|report> run=<run_id> [span=…] [format=<text|json>]` — Agent 观测旁路（fail-open）；`action=guide` 打印 `intent-coder/tools/telemetry/guide.md`
 - `popsicle tool run mermaid-diagram action=<guide|scaffold|validate> [type=…] [path=…] [title=…] [format=<text|json>]` — Mermaid 画图技能（PRD/task/RFC/ADR）；`action=guide` 打印 `intent-coder/tools/mermaid-diagram/guide.md`
 - `popsicle admin migrate [--workspace <path>]` — migrate legacy TSV state to the SQLite backend (`.popsicle/state.db`); idempotent, keeps `state.tsv.migrated` for rollback
 - `popsicle admin relocate-workspace [--dry-run] [--workspace <path>]` — lift `.popsicle/self-host/` to flat layout (ADR-032)
@@ -260,6 +263,7 @@ Replacement practices until these are re-adjudicated:
 9. **NEVER report a task as "complete" unless `pipeline status` shows all stages completed.** If stages remain, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
 10. Run `popsicle tool run intent-validate path=products` before completing implementation/cutover stages when intents changed
 11. Run `popsicle doc check <doc_id>` on every stage document after filling it; complete the run, then `popsicle issue close <key>` to close the loop
+12. **Agent 观测（telemetry，fail-open）**：不确定用法时先 `popsicle tool run telemetry action=guide`；每个 pipeline stage 内至少上报一次 `gen_ai.chat`；`doc check` 通过后可上报 `popsicle.run.score`。编排 span 已自动写入，无需重复 `issue start` / `stage complete` 类事件。
 
 ---
 

@@ -98,6 +98,7 @@ mod tests {
     fn domain_labels_follow_prefix() {
         assert_eq!(pipeline_domain("slice-spec"), "migration");
         assert_eq!(pipeline_domain("feature-delivery"), "feature");
+        assert_eq!(pipeline_domain("feature-arch-spec"), "feature");
         assert_eq!(pipeline_domain("doc-sync-weekly"), "doc");
     }
 

@@ -1,7 +1,7 @@
 # cli-ux — Tasks 索引
 
-> **Status**: 18/18 task 已实现（含 T-CU-0017 PROJ-57）；Roadmap P1–P6 + issue_tasks 已交付（PROJ-42/43 / ADR-022/023）
-> **Last-Updated**: 2026-06-23
+> **Status**: 19/19 task 已实现（含 T-CU-0018 feature-arch-spec / ADR-030）；Roadmap P1–P6 + issue_tasks 已交付（PROJ-42/43 / ADR-022/023）
+> **Last-Updated**: 2026-06-26
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
 
@@ -11,7 +11,7 @@
 | `daily-ops/` | 7 | 7 | 🟢 implemented |
 | `troubleshooting/` | 1 | 1 | 🟢 implemented |
 | `admin/` | 1 | 1 | 🟢 implemented |
-| `lifecycle/` | 2 | 2 | 🟢 implemented |
+| `lifecycle/` | 3 | 3 | 🟢 implemented |
 
 ## Task 清单（PDR-001）
 
@@ -34,6 +34,7 @@
 | T-CU-0015 | daily-ops | 维护 Issue 与 Task 关联（issue link） | IssueTaskLinksMutable |
 | T-CU-0016 | daily-ops | 工程画像（PROJECT_CONTEXT）与 weekly 健康巡检 | ProjectContextEditableInSettings / WeeklyHealthCheckPipeline / AgentContextIncludesProjectContext |
 | T-CU-0017 | onboarding | 浏览 intent-coder 工作流帮助（Pipeline / Skill） | WorkflowHelpCenterBrowsable |
+| T-CU-0018 | lifecycle | 为大增量能力选用 feature-arch-spec pipeline 并完成 bundled 安装 | ADR-030 |
 
 ## 命名约定
 

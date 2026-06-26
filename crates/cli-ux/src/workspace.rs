@@ -746,7 +746,9 @@ impl WorkspaceStore for LocalWorkspace {
         }
         let pipeline_def = load_pipeline_def(&self.workspace, &pipeline_name)?;
         let run_id = alloc_run_id(&mut self.state.next_run_num);
-        let mut session = PipelineSession::new_pending(&run_id, pipeline_def);
+        let span_sink = crate::telemetry_bridge::session_span_sink(&self.workspace.root, key);
+        let mut session =
+            PipelineSession::new_pending(&run_id, pipeline_def).with_span_sink(span_sink);
         session
             .start()
             .map_err(|e| WorkspaceError::InvalidState(format!("pipeline start failed: {e:?}")))?;
@@ -800,6 +802,13 @@ impl WorkspaceStore for LocalWorkspace {
         let row = DocumentRow::from_document(&doc, rel_path.clone());
         self.state.documents.insert(doc_id.clone(), row);
         self.save()?;
+        crate::telemetry_bridge::orchestration_span(
+            &self.workspace.root,
+            run_id,
+            self.state.runs.get(run_id),
+            "popsicle.doc.create",
+            &[("popsicle.doc_id", &doc_id), ("popsicle.skill", skill)],
+        );
         Ok(DocCreateRow {
             doc_id,
             file_path: rel_path,
@@ -866,9 +875,9 @@ impl WorkspaceStore for LocalWorkspace {
         let checkboxes_total = checkboxes_checked + count_occurrences(body, "- [ ]") as u32;
 
         let passed = file_exists && frontmatter_complete && body_filled && placeholder_count == 0;
-        Ok(DocCheckRow {
-            doc_id: row.id,
-            file_path: row.file_path,
+        let result = DocCheckRow {
+            doc_id: row.id.clone(),
+            file_path: row.file_path.clone(),
             file_exists,
             frontmatter_complete,
             body_filled,
@@ -876,7 +885,12 @@ impl WorkspaceStore for LocalWorkspace {
             checkboxes_total,
             checkboxes_checked,
             passed,
-        })
+        };
+        if let Some(run_id) = crate::telemetry_bridge::run_id_from_artifact_path(&row.file_path) {
+            let run_row = self.state.runs.get(&run_id);
+            crate::telemetry_bridge::doc_check_span(&self.workspace.root, run_row, &result);
+        }
+        Ok(result)
     }
 
     fn pipeline_status(&self, run_id: &str) -> Result<PipelineStatusRow, WorkspaceError> {
@@ -968,6 +982,16 @@ impl WorkspaceStore for LocalWorkspace {
                 .approve_current(1)
                 .map_err(|e| WorkspaceError::InvalidState(format!("approve failed: {e:?}")))?;
         }
+        let issue_key = self
+            .state
+            .runs
+            .get(run_id)
+            .map(|r| r.issue_key.as_str())
+            .unwrap_or("");
+        session.set_span_sink(crate::telemetry_bridge::session_span_sink(
+            &self.workspace.root,
+            issue_key,
+        ));
         session
             .complete_current()
             .map_err(|e| WorkspaceError::InvalidState(format!("complete failed: {e:?}")))?;
@@ -2109,9 +2133,9 @@ impl crate::CliDomain for WorkspaceDomain {
 
     fn check_doc(&self, doc_id: &str) -> Result<BTreeMap<String, String>, crate::CliError> {
         let check = self.store.check_doc(doc_id).map_err(ws_err)?;
-        Ok(BTreeMap::from([
-            ("doc_id".into(), check.doc_id),
-            ("file_path".into(), check.file_path),
+        let mut fields = BTreeMap::from([
+            ("doc_id".into(), check.doc_id.clone()),
+            ("file_path".into(), check.file_path.clone()),
             ("file_exists".into(), check.file_exists.to_string()),
             (
                 "frontmatter_complete".into(),
@@ -2131,7 +2155,18 @@ impl crate::CliDomain for WorkspaceDomain {
                 check.checkboxes_checked.to_string(),
             ),
             ("passed".into(), check.passed.to_string()),
-        ]))
+        ]);
+        if check.passed {
+            if let Some(run_id) =
+                crate::telemetry_bridge::run_id_from_artifact_path(&check.file_path)
+            {
+                fields.insert(
+                    "telemetry_hint".into(),
+                    crate::telemetry_bridge::score_hint(&run_id, &check.doc_id),
+                );
+            }
+        }
+        Ok(fields)
     }
 
     fn pipeline_status(&self, run_id: &str) -> Result<BTreeMap<String, String>, crate::CliError> {
@@ -2300,11 +2335,21 @@ impl crate::CliDomain for WorkspaceDomain {
         &self,
         tool: &str,
         args: &BTreeMap<String, String>,
-    ) -> Result<i32, crate::CliError> {
+    ) -> Result<crate::ToolRunResult, crate::CliError> {
+        if tool == "telemetry" {
+            let format = args.get("format").map(String::as_str).unwrap_or("json");
+            let json = format == "json";
+            let (code, fields) =
+                crate::telemetry_bridge::run_telemetry_tool(&self.store.workspace.root, args, json);
+            return Ok(crate::ToolRunResult {
+                exit_code: code,
+                fields,
+            });
+        }
         if tool == "intent-validate" {
             let path = args.get("path").map(String::as_str).unwrap_or("");
             let format = args.get("format").map(String::as_str).unwrap_or("json");
-            return run_intent_validate(&self.store.workspace, path, format).map_err(|e| match e {
+            let code = run_intent_validate(&self.store.workspace, path, format).map_err(|e| match e {
                 WorkspaceError::NotFound(name) => crate::CliError::actionable(
                     "not-found",
                     tool,
@@ -2318,9 +2363,13 @@ impl crate::CliDomain for WorkspaceDomain {
                     &msg,
                 ),
                 other => ws_err(other),
+            })?;
+            return Ok(crate::ToolRunResult {
+                exit_code: code,
+                fields: BTreeMap::new(),
             });
         }
-        run_tool(&self.store.workspace, tool, args).map_err(|e| match e {
+        let code = run_tool(&self.store.workspace, tool, args).map_err(|e| match e {
             WorkspaceError::NotFound(name) => crate::CliError::actionable(
                 "not-found",
                 tool,
@@ -2334,6 +2383,10 @@ impl crate::CliDomain for WorkspaceDomain {
                 &msg,
             ),
             other => ws_err(other),
+        })?;
+        Ok(crate::ToolRunResult {
+            exit_code: code,
+            fields: BTreeMap::new(),
         })
     }
 

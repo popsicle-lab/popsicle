@@ -52,6 +52,18 @@ fn agent_context_includes_project_context_when_inject_on() {
 }
 
 #[test]
+fn refresh_telemetry_health_row_inserts_summary() {
+    use cli_ux::project_context::refresh_telemetry_health_row;
+
+    let root = temp_workspace();
+    let md = "# Project Context\n\n## 现在状态\n\n| 指标 | 值 |\n|---|---|\n| Products | x |\n";
+    save_project_context(&root, md).unwrap();
+    refresh_telemetry_health_row(&root, 5).unwrap();
+    let updated = load_project_context(&root).unwrap();
+    assert!(updated.contains("| Telemetry 健康 |"));
+}
+
+#[test]
 fn bundled_weekly_health_pipeline_name() {
     assert!(cli_ux::bundled_pipeline_names()
         .iter()

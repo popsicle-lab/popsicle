@@ -1,0 +1,22 @@
+// Product:   telemetry
+// Layer:     L1 product invariants
+// Status:    intent-spec-writer 收紧
+// Source PDR: PDR-001
+// Source ADR: ADR-001
+
+type MainCommandResult {
+  exitZero: Bool
+  telemetryFailed: Bool
+}
+
+// fail-open：telemetry 失败时主命令仍 exit 0
+safety TelemetryNeverBlocksMain(m: MainCommandResult) {
+  invariant m.telemetryFailed' ==> m.exitZero'
+}
+
+@tobe
+intent MainCommandDespiteTelemetryFailure(m: MainCommandResult) {
+  require m.telemetryFailed
+  ensure m.exitZero'
+  ensure m.exitZero' == true
+}

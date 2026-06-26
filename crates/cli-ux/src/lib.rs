@@ -10,6 +10,7 @@ mod pipeline_gate;
 mod pipeline_taxonomy;
 pub mod project_config;
 pub mod project_context;
+mod telemetry_bridge;
 pub mod workflow_catalog;
 pub mod workspace;
 pub mod workspace_readers;
@@ -235,6 +236,12 @@ pub struct AdminResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolRunResult {
+    pub exit_code: i32,
+    pub fields: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandResponse {
     pub status: &'static str,
     pub next_step: Option<String>,
@@ -372,7 +379,11 @@ pub trait CliDomain {
         let _ = format;
         Err(not_workspace("doctor"))
     }
-    fn tool_run(&self, tool: &str, args: &BTreeMap<String, String>) -> Result<i32, CliError> {
+    fn tool_run(
+        &self,
+        tool: &str,
+        args: &BTreeMap<String, String>,
+    ) -> Result<ToolRunResult, CliError> {
         let _ = (tool, args);
         Err(not_workspace("tool run"))
     }
@@ -971,12 +982,22 @@ pub fn run_command<D: CliDomain>(
             })
         }
         Command::ToolRun { tool, args } => {
-            let code = domain.tool_run(&tool, &args)?;
-            let mut fields = BTreeMap::new();
-            fields.insert("exit_code".into(), code.to_string());
-            fields.insert("tool".into(), tool);
+            let result = domain.tool_run(&tool, &args)?;
+            let mut fields = result.fields;
+            fields.insert("exit_code".into(), result.exit_code.to_string());
+            fields.insert("tool".into(), tool.clone());
+            let status: &'static str = if tool == "telemetry" {
+                match fields.get("telemetry_outcome").map(String::as_str) {
+                    Some("degraded") => "degraded",
+                    _ => "ok",
+                }
+            } else if result.exit_code == 0 {
+                "ok"
+            } else {
+                "failed"
+            };
             Ok(CommandResponse {
-                status: if code == 0 { "ok" } else { "failed" },
+                status,
                 next_step: None,
                 fields,
             })
@@ -1280,7 +1301,7 @@ pub const COMMAND_USAGE: &[&str] = &[
     "doc list [--run <run_id>]",
     "doc show <doc_id>",
     "doc check <doc_id>",
-    "tool run <name> key=value ...  # e.g. intent-validate path=products; mermaid-diagram action=guide",
+    "tool run <name> key=value ...  # intent-validate path=products; telemetry action=guide; mermaid-diagram action=guide",
     "admin migrate [--workspace <path>]",
     "admin reinit [--workspace <path>]",
     "admin sync-intent-coder",

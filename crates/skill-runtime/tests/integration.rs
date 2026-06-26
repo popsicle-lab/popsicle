@@ -10,6 +10,7 @@ use skill_runtime::loader::{load_skill, PipelineDef, SKILL_LOAD_SCHEMA_VERSION};
 use skill_runtime::memory_layer::{MemoriesLayer, Memory};
 use skill_runtime::pipeline_session::PipelineSession;
 use skill_runtime::registry::{PipelineRegistry, SkillRegistry};
+use skill_runtime::session_span::{RecordingSessionSpanSink, SessionSpanEvent};
 use skill_runtime::upstream::PipelineUpstreamChecker;
 use skill_runtime::SkillLoadResult;
 use skill_runtime::StateMachine;
@@ -51,6 +52,35 @@ fn load_pipeline_yaml_and_run_session_happy_path() {
     let snap = session.snapshot();
     assert_eq!(snap.pipeline_name, "demo-pipeline");
     assert_eq!(snap.current_stage_name(), Some("facts"));
+}
+
+#[test]
+fn session_span_sink_emits_on_start_and_complete() {
+    let pipeline_path = fixtures_dir().join("demo.pipeline.yaml");
+    let pipeline = PipelineDef::load(&pipeline_path).unwrap();
+    let recorder = std::sync::Arc::new(RecordingSessionSpanSink::default());
+    let sink: skill_runtime::SessionSpanSinkHandle = recorder.clone();
+    let mut session = PipelineSession::new_pending("run-span", pipeline).with_span_sink(sink);
+    session.start().unwrap();
+    session.approve_current(1).unwrap();
+    session.complete_current().unwrap();
+
+    let events = recorder.events.lock().unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0].1,
+        SessionSpanEvent::PipelineStarted {
+            stage_skill,
+            ..
+        } if stage_skill == "project-init"
+    ));
+    assert!(matches!(
+        &events[1].1,
+        SessionSpanEvent::StageCompleted {
+            stage_skill,
+            ..
+        } if stage_skill == "project-init"
+    ));
 }
 
 #[test]

@@ -17,4 +17,5 @@ _planning/
 
 # popsicle:gitignore:start
 # git.track_workspace: true — .popsicle/ is not ignored
+.popsicle/telemetry/
 # popsicle:gitignore:end
