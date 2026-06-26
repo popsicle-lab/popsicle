@@ -2160,10 +2160,10 @@ impl crate::CliDomain for WorkspaceDomain {
             if let Some(run_id) =
                 crate::telemetry_bridge::run_id_from_artifact_path(&check.file_path)
             {
-                fields.insert(
-                    "telemetry_hint".into(),
-                    crate::telemetry_bridge::score_hint(&run_id, &check.doc_id),
-                );
+                let (gen_ai, score) =
+                    crate::telemetry_bridge::stage_telemetry_hints(&run_id, &check.doc_id);
+                fields.insert("telemetry_gen_ai_hint".into(), gen_ai);
+                fields.insert("telemetry_hint".into(), score);
             }
         }
         Ok(fields)

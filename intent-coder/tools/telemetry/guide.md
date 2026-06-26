@@ -23,9 +23,11 @@ popsicle tool run telemetry action=guide
 
 ## 每个 pipeline stage
 
-1. **工作中**：至少一次 `gen_ai.chat`（含 model、token 估算）。
-2. **`doc check` 通过后**：可选 `popsicle.run.score`（1–5）。
-3. **重大分支**：`popsicle.decision` + 简短 `summary`。
+1. **工作中**：至少一次 `gen_ai.chat`（含 model、token 估算）；`doc check` 通过前完成。
+2. **`doc check` 通过后**（JSON 含 `telemetry_gen_ai_hint` / `telemetry_hint`）：
+   - 若工作中未打 `gen_ai.chat` → 按 `telemetry_gen_ai_hint` 补打；
+   - **必须**打 `popsicle.run.score`（1–5，非可选）；
+3. **重大分支**：`popsicle.decision` + 简短 `summary`（≤120 字，不含 prompt/thinking 全文）。
 
 编排 span（`issue start`、`stage complete`、`doc create`、`doc check`）**自动**写入，勿重复上报。
 
@@ -80,6 +82,8 @@ popsicle tool run telemetry action=report limit=10 format=json --format json
 - **fail-open**：失败不改变主命令 exit code。
 - 不要把 trace 写进 artifact frontmatter（WAL 旁路已足够）。
 - 数据：`.popsicle/telemetry/{run_id}/spans.wal.jsonl`（通常 gitignore）。
+- **不存** prompt / response / thinking 全文；`popsicle.decision.summary` 仅结构化摘要。
+- `action=report` 的 `agent_coverage.gaps` 列出已通过 doc 但缺 Agent span 的 stage-doc，供 weekly 巡检。
 
 ## 不要
 

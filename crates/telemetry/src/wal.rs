@@ -106,12 +106,10 @@ fn format_system_time(time: SystemTime) -> String {
 }
 
 fn redact_attributes(attrs: &BTreeMap<String, String>) -> BTreeMap<String, String> {
-    const SENSITIVE: &[&str] = &["authorization", "token", "password", "api_key", "secret"];
     attrs
         .iter()
         .map(|(k, v)| {
-            let lower = k.to_ascii_lowercase();
-            if SENSITIVE.iter().any(|s| lower.contains(s)) {
+            if is_sensitive_attribute_key(k) {
                 (k.clone(), "[REDACTED]".into())
             } else {
                 (k.clone(), v.clone())
@@ -120,9 +118,52 @@ fn redact_attributes(attrs: &BTreeMap<String, String>) -> BTreeMap<String, Strin
         .collect()
 }
 
+/// Redact secrets but preserve OTel token *counts* (`input_tokens`, `output_tokens`, …).
+fn is_sensitive_attribute_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "input_tokens" | "output_tokens" | "total_tokens" | "prompt_tokens" | "completion_tokens"
+    ) {
+        return false;
+    }
+    const SENSITIVE: &[&str] = &["authorization", "password", "api_key", "secret", "bearer"];
+    if SENSITIVE.iter().any(|s| lower.contains(s)) {
+        return true;
+    }
+    lower == "token" || lower.ends_with("_token")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_counts_are_not_redacted() {
+        let tmp = std::env::temp_dir().join(format!("wal-redact-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let run = "run-redact";
+        let mut attrs = BTreeMap::new();
+        attrs.insert("input_tokens".into(), "1200".into());
+        attrs.insert("output_tokens".into(), "400".into());
+        attrs.insert("access_token".into(), "secret-value".into());
+        append_span(&tmp, run, "gen_ai.chat", &attrs).unwrap();
+        let content = fs::read_to_string(wal_path(&tmp, run)).unwrap();
+        let line: WalLine = serde_json::from_str(content.lines().next().unwrap()).unwrap();
+        assert_eq!(
+            line.attributes.get("input_tokens").map(String::as_str),
+            Some("1200")
+        );
+        assert_eq!(
+            line.attributes.get("output_tokens").map(String::as_str),
+            Some("400")
+        );
+        assert_eq!(
+            line.attributes.get("access_token").map(String::as_str),
+            Some("[REDACTED]")
+        );
+        let _ = fs::remove_dir_all(&tmp);
+    }
 
     #[test]
     fn duration_ms_on_second_append() {

@@ -45,4 +45,4 @@ docs/baseline/<YYYY-MM-DD>/<slice>/
 
 ## Agent 观测
 
-verify 阶段若使用 LLM，先 `popsicle tool run telemetry action=guide` 再上报；`doc check` 通过后可打 score。
+verify 阶段若使用 LLM，先 `popsicle tool run telemetry action=guide` 再上报；`doc check` 通过后 **必须**打 `popsicle.run.score`（见 JSON `telemetry_hint`），并确认 `agent_coverage.gaps` 无本 stage 的 doc。

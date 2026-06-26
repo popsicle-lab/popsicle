@@ -42,6 +42,24 @@
 | `gen_ai_chat` | 是否有 `gen_ai.chat` |
 | `run_score` | 是否有 `popsicle.run.score` |
 | `decision` | 是否有 `popsicle.decision` |
+| `gaps` | 已通过 `doc check` 但缺 Agent span 的 stage-doc 列表 |
+
+## agent_coverage.gaps[]
+
+| 字段 | 说明 |
+|------|------|
+| `doc_id` | artifact doc id |
+| `skill` | 从 doc 路径推断的 skill |
+| `missing` | 缺的 span 名，如 `gen_ai.chat`、`popsicle.run.score` |
+
+## recent 模式额外字段
+
+| 字段 | 说明 |
+|------|------|
+| `runs_with_gen_ai` | 含 `gen_ai.chat` 的 run 数 |
+| `runs_with_score` | 含 `popsicle.run.score` 的 run 数 |
+| `runs_with_agent_gaps` | `gaps` 非空的 run 数 |
+| `total_agent_gaps` | 所有 run 的 gap 条数之和 |
 
 ## 约束
 

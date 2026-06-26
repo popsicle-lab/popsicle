@@ -61,7 +61,15 @@ slice-spec / migration-bootstrap（spec 完成）
 
 ## Agent 观测（telemetry）
 
-Stage 内 LLM 工作与自评须 `popsicle tool run telemetry action=guide` 后调用 `tool run telemetry`（fail-open）。`doc check` 通过后 JSON 响应含 `telemetry_hint` 可作 score 命令模板。
+Stage 内 LLM 工作与自评须 `popsicle tool run telemetry action=guide` 后调用 `tool run telemetry`（fail-open）。
+
+**Stage 末 checklist（`doc check` 通过前/后）**
+
+- [ ] 工作中至少一次 `gen_ai.chat`（含 `model`、`input_tokens`、`output_tokens`）
+- [ ] `doc check` 通过后执行 JSON 里的 `telemetry_hint`（`popsicle.run.score`，1–5）
+- [ ] 若缺 `gen_ai.chat`，按 `telemetry_gen_ai_hint` 补打
+- [ ] 重大分支：`popsicle.decision summary="…"`（短摘要，非 thinking 全文）
+- [ ] `action=report run=<run_id>` 确认 `agent_coverage.gaps` 为空
 
 ## 与 legacy 的关系
 

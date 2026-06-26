@@ -36,6 +36,17 @@ pub struct AgentCoverageReport {
     pub gen_ai_chat: bool,
     pub run_score: bool,
     pub decision: bool,
+    /// Passed doc checks with no matching Agent span on the same `doc_id`.
+    pub gaps: Vec<AgentSpanGap>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentSpanGap {
+    pub doc_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill: Option<String>,
+    /// Missing span names, e.g. `gen_ai.chat`, `popsicle.run.score`.
+    pub missing: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -57,7 +68,10 @@ pub struct RecentReport {
     pub runs: Vec<RunReport>,
     pub run_count: u32,
     pub doc_check_failures: u32,
+    pub runs_with_gen_ai: u32,
     pub runs_with_score: u32,
+    pub runs_with_agent_gaps: u32,
+    pub total_agent_gaps: u32,
     pub status: &'static str,
 }
 
@@ -76,25 +90,42 @@ pub fn report_recent(workspace_root: &Path, limit: usize) -> RecentReport {
             runs: vec![],
             run_count: 0,
             doc_check_failures: 0,
+            runs_with_gen_ai: 0,
             runs_with_score: 0,
+            runs_with_agent_gaps: 0,
+            total_agent_gaps: 0,
             status: "degraded",
         };
     }
     let mut runs = Vec::new();
     let mut doc_check_failures = 0u32;
+    let mut runs_with_gen_ai = 0u32;
     let mut runs_with_score = 0u32;
+    let mut runs_with_agent_gaps = 0u32;
+    let mut total_agent_gaps = 0u32;
     for id in &ids {
         let report = report_run(workspace_root, id);
         doc_check_failures += report.doc_checks.failed;
+        if report.agent_coverage.gen_ai_chat {
+            runs_with_gen_ai += 1;
+        }
         if report.agent_coverage.run_score {
             runs_with_score += 1;
+        }
+        let gap_count = report.agent_coverage.gaps.len() as u32;
+        if gap_count > 0 {
+            runs_with_agent_gaps += 1;
+            total_agent_gaps += gap_count;
         }
         runs.push(report);
     }
     RecentReport {
         run_count: runs.len() as u32,
         doc_check_failures,
+        runs_with_gen_ai,
         runs_with_score,
+        runs_with_agent_gaps,
+        total_agent_gaps,
         runs,
         status: "ok",
     }
@@ -107,8 +138,13 @@ pub fn health_summary_line(workspace_root: &Path, limit: usize) -> String {
         return "最近无 WAL run（telemetry 旁路未写入或未配置）".into();
     }
     format!(
-        "最近 {} 个 run；doc_check 失败 {} 次；{} 个 run 含 Agent score",
-        recent.run_count, recent.doc_check_failures, recent.runs_with_score
+        "最近 {} 个 run；doc_check 失败 {} 次；{} 个 run 含 gen_ai、{} 个含 score；{} 个 run 共 {} 处 stage-doc 缺 Agent span",
+        recent.run_count,
+        recent.doc_check_failures,
+        recent.runs_with_gen_ai,
+        recent.runs_with_score,
+        recent.runs_with_agent_gaps,
+        recent.total_agent_gaps
     )
 }
 
@@ -128,6 +164,7 @@ fn empty_run_report(run_id: &str, status: &'static str) -> RunReport {
             gen_ai_chat: false,
             run_score: false,
             decision: false,
+            gaps: vec![],
         },
         status,
     }
@@ -142,7 +179,11 @@ fn build_run_report(run_id: &str, lines: Vec<WalLine>, status: &'static str) -> 
         gen_ai_chat: false,
         run_score: false,
         decision: false,
+        gaps: vec![],
     };
+    let mut passed_docs: Vec<(String, Option<String>)> = Vec::new();
+    let mut gen_ai_docs = std::collections::BTreeSet::new();
+    let mut score_docs = std::collections::BTreeSet::new();
 
     for line in &lines {
         if issue_key.is_none() {
@@ -152,8 +193,18 @@ fn build_run_report(run_id: &str, lines: Vec<WalLine>, status: &'static str) -> 
             pipeline = attr(line, "popsicle.pipeline");
         }
         match line.span.as_str() {
-            "gen_ai.chat" => agent.gen_ai_chat = true,
-            "popsicle.run.score" => agent.run_score = true,
+            "gen_ai.chat" => {
+                agent.gen_ai_chat = true;
+                if let Some(doc) = doc_id_from_line(line) {
+                    gen_ai_docs.insert(doc);
+                }
+            }
+            "popsicle.run.score" => {
+                agent.run_score = true;
+                if let Some(doc) = doc_id_from_line(line) {
+                    score_docs.insert(doc);
+                }
+            }
             "popsicle.decision" => agent.decision = true,
             "popsicle.doc.check" => {
                 doc_checks.total += 1;
@@ -163,7 +214,7 @@ fn build_run_report(run_id: &str, lines: Vec<WalLine>, status: &'static str) -> 
                     .unwrap_or(false);
                 let entry = doc_checks
                     .by_skill
-                    .entry(skill)
+                    .entry(skill.clone())
                     .or_insert(SkillCheckCounts {
                         passed: 0,
                         failed: 0,
@@ -171,6 +222,9 @@ fn build_run_report(run_id: &str, lines: Vec<WalLine>, status: &'static str) -> 
                 if passed {
                     doc_checks.passed += 1;
                     entry.passed += 1;
+                    if let Some(doc_id) = attr(line, "popsicle.doc_id") {
+                        passed_docs.push((doc_id, Some(skill)));
+                    }
                 } else {
                     doc_checks.failed += 1;
                     entry.failed += 1;
@@ -204,6 +258,8 @@ fn build_run_report(run_id: &str, lines: Vec<WalLine>, status: &'static str) -> 
         }
     }
 
+    agent.gaps = build_agent_gaps(&passed_docs, &gen_ai_docs, &score_docs);
+
     RunReport {
         run_id: run_id.to_string(),
         issue_key,
@@ -227,6 +283,35 @@ fn empty_doc_checks() -> DocChecksReport {
 
 fn attr(line: &WalLine, key: &str) -> Option<String> {
     line.attributes.get(key).cloned()
+}
+
+fn doc_id_from_line(line: &WalLine) -> Option<String> {
+    attr(line, "popsicle.doc_id").or_else(|| attr(line, "doc"))
+}
+
+fn build_agent_gaps(
+    passed_docs: &[(String, Option<String>)],
+    gen_ai_docs: &std::collections::BTreeSet<String>,
+    score_docs: &std::collections::BTreeSet<String>,
+) -> Vec<AgentSpanGap> {
+    let mut gaps = Vec::new();
+    for (doc_id, skill) in passed_docs {
+        let mut missing = Vec::new();
+        if !gen_ai_docs.contains(doc_id) {
+            missing.push("gen_ai.chat");
+        }
+        if !score_docs.contains(doc_id) {
+            missing.push("popsicle.run.score");
+        }
+        if !missing.is_empty() {
+            gaps.push(AgentSpanGap {
+                doc_id: doc_id.clone(),
+                skill: skill.clone(),
+                missing,
+            });
+        }
+    }
+    gaps
 }
 
 fn list_run_ids(workspace_root: &Path, limit: usize) -> Vec<String> {
@@ -258,7 +343,11 @@ mod tests {
     use crate::wal::append_span;
 
     fn tmp() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("telemetry-report-{}", std::process::id()));
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("telemetry-report-{}-{}", std::process::id(), n));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -289,10 +378,48 @@ mod tests {
         assert_eq!(r.doc_checks.passed, 1);
         assert!(r.agent_coverage.gen_ai_chat);
         assert!(r.agent_coverage.run_score);
+        assert!(r.agent_coverage.gaps.is_empty());
         assert!(r
             .stages
             .iter()
             .any(|s| s.name == "implement" && s.completed));
+    }
+
+    #[test]
+    fn report_lists_agent_gaps_per_passed_doc() {
+        let root = tmp();
+        let run = "run-gaps";
+        let mut base = BTreeMap::new();
+        base.insert("popsicle.issue_key".into(), "PROJ-1".into());
+        base.insert("popsicle.pipeline".into(), "feature-delivery".into());
+        base.insert("popsicle.skill".into(), "shadow-implementer".into());
+
+        let mut doc1 = base.clone();
+        doc1.insert("popsicle.doc_id".into(), "doc-a".into());
+        doc1.insert("popsicle.doc_check.passed".into(), "true".into());
+        append_span(&root, run, "popsicle.doc.check", &doc1).unwrap();
+
+        let mut doc2 = base.clone();
+        doc2.insert("popsicle.doc_id".into(), "doc-b".into());
+        doc2.insert("popsicle.skill".into(), "equivalence-baseline".into());
+        doc2.insert("popsicle.doc_check.passed".into(), "true".into());
+        append_span(&root, run, "popsicle.doc.check", &doc2).unwrap();
+
+        let mut gen_ai = base.clone();
+        gen_ai.insert("doc".into(), "doc-a".into());
+        append_span(&root, run, "gen_ai.chat", &gen_ai).unwrap();
+
+        let mut score = base.clone();
+        score.insert("doc".into(), "doc-a".into());
+        append_span(&root, run, "popsicle.run.score", &score).unwrap();
+
+        let r = report_run(&root, run);
+        assert_eq!(r.agent_coverage.gaps.len(), 1);
+        assert_eq!(r.agent_coverage.gaps[0].doc_id, "doc-b");
+        assert_eq!(
+            r.agent_coverage.gaps[0].missing,
+            vec!["gen_ai.chat", "popsicle.run.score"]
+        );
     }
 
     #[test]

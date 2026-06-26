@@ -70,8 +70,8 @@ Workspace members：`crates/*`（ADR-003）。
 |---|---|
 | Products | skill-runtime, artifact-system, cli-ux, telemetry（MVP 已交付） |
 | 迁移 slice | skill-runtime / artifact-system / cli-ux → cutover-done（见 `migration/progress.md`） |
-| 最近决策 | ADR-002（telemetry report）；PROJ-67–75 telemetry MVP + guide 链已交付 |
-| Telemetry 健康 | 最近 8 个 run；doc_check 失败 0 次；1 个 run 含 Agent score（weekly 2026-06-26 刷新） |
+| 最近决策 | ADR-002（telemetry report）；PROJ-67–77 telemetry MVP + 观测增强已交付 |
+| Telemetry 健康 | 最近 10 个 run；doc_check 失败 0 次；3 个 run 含 gen_ai、2 个含 score；6 个 run 共 19 处 stage-doc 缺 Agent span（weekly 2026-06-26；`action=report` 含 `agent_coverage.gaps`） |
 
 ## 相关链接
 

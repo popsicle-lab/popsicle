@@ -71,4 +71,4 @@ PRODUCT 实质内容、intent 逻辑的改动都越界——发现了就记到 s
 
 ## Agent 观测
 
-doc-sync 阶段按 `popsicle tool run telemetry action=guide` 可选上报 stage score。
+doc-sync 阶段按 `popsicle tool run telemetry action=guide` 上报：`gen_ai.chat`（若用 LLM）+ **`popsicle.run.score`**（`doc check` 后 `telemetry_hint`）；重大 doc 变更可打 `popsicle.decision summary="…"`。

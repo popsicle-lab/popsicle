@@ -156,6 +156,18 @@ pub fn score_hint(run_id: &str, doc_id: &str) -> String {
     )
 }
 
+/// Suggested `gen_ai.chat` record after LLM work in a stage.
+pub fn gen_ai_hint(run_id: &str, doc_id: &str) -> String {
+    format!(
+        "popsicle tool run telemetry action=record span=gen_ai.chat run={run_id} doc={doc_id} model=<model> input_tokens=<n> output_tokens=<n> format=json --format json"
+    )
+}
+
+/// Combined hints for doc check JSON (`telemetry_hint` + `telemetry_gen_ai_hint`).
+pub fn stage_telemetry_hints(run_id: &str, doc_id: &str) -> (String, String) {
+    (gen_ai_hint(run_id, doc_id), score_hint(run_id, doc_id))
+}
+
 /// `.popsicle/artifacts/{run}/{doc_id}.{skill}.md` → skill segment.
 fn skill_from_doc_path(file_path: &str) -> Option<String> {
     let name = file_path.rsplit('/').next()?;

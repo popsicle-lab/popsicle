@@ -7,8 +7,8 @@
 ## 每个 pipeline stage 结束前
 
 1. **工作中**：至少一次 `gen_ai.chat`（含 model / token 估算）。
-2. **`doc check` 通过后**：可选 `popsicle.run.score`（1–5）。
-3. **重大分支**：`popsicle.decision` + 简短 `summary`。
+2. **`doc check` 通过后**：**必须** `popsicle.run.score`（1–5）；JSON 含 `telemetry_gen_ai_hint` / `telemetry_hint`。
+3. **重大分支**：`popsicle.decision` + 简短 `summary`（不含 thinking 全文）。
 
 ## 示例（替换 `<run_id>` / `<doc_id>`）
 

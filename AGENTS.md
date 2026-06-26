@@ -263,7 +263,7 @@ Replacement practices until these are re-adjudicated:
 9. **NEVER report a task as "complete" unless `pipeline status` shows all stages completed.** If stages remain, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
 10. Run `popsicle tool run intent-validate path=products` before completing implementation/cutover stages when intents changed
 11. Run `popsicle doc check <doc_id>` on every stage document after filling it; complete the run, then `popsicle issue close <key>` to close the loop
-12. **Agent 观测（telemetry，fail-open）**：不确定用法时先 `popsicle tool run telemetry action=guide`；每个 pipeline stage 内至少上报一次 `gen_ai.chat`；`doc check` 通过后可上报 `popsicle.run.score`。编排 span 已自动写入，无需重复 `issue start` / `stage complete` 类事件。
+12. **Agent 观测（telemetry，fail-open）**：不确定用法时先 `popsicle tool run telemetry action=guide`；每个 pipeline stage 内至少上报一次 `gen_ai.chat`；`doc check` 通过后**必须**上报 `popsicle.run.score`（见 JSON `telemetry_hint`）。编排 span 已自动写入，无需重复 `issue start` / `stage complete` 类事件；stage 末用 `action=report` 确认 `agent_coverage.gaps` 为空。
 
 ---
 
