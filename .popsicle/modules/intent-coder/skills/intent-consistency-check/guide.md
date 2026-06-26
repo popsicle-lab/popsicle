@@ -88,9 +88,10 @@ Z3 通过后，`popsicle tool run intent-validate path=products/...` 还会对**
 |---|---|
 | `E_GOAL_UNLINKED` | `contracts.intent` 中某 goal 的 `realized_by` 为空 |
 | `E_GOAL_UNKNOWN_REF` | `realized_by` 引用了合并程序中不存在的符号 |
+| `E_PRODUCT_MISSING_GOALS` | 存在 `contracts.intent` 但合并程序中**零个** `goal` 块 |
 
-任一命中 → tool **exit 1**（与 VC failed 同等，可进 CI gate）。单文件 `intent check`
-对跨文件 `realized_by` 只报 W0010 warning——**以合并闸为准**。
+任一命中 → tool **exit 1**（与 VC failed 同等，可进 CI gate）。**零 goal 亦 FAIL**——
+不可仅因 per-file Z3 全绿就 complete intent-spec / intent-check stage。
 
 ## 写 .intent 的四条硬规则（来自 dogfood 发现）
 

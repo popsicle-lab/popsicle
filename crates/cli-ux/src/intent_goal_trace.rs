@@ -16,7 +16,8 @@ pub struct GoalTraceFinding {
 
 /// When `validate_path` is under `products/`, merge each product's `intents/*.intent`
 /// and require every `goal` to have non-empty `realized_by` pointing at declared
-/// safety/intent/theorem names.
+/// safety/intent/theorem names. Products with `contracts.intent` must declare at least
+/// one goal (`E_PRODUCT_MISSING_GOALS` when absent).
 pub fn check_products_goal_trace(
     workspace_root: &Path,
     validate_path: &str,
@@ -106,7 +107,8 @@ fn check_one_product(product: &str, intents_dir: &Path) -> Result<Vec<GoalTraceF
     }
     let program = parse(&merged)
         .map_err(|e| format!("{product}: merged intents parse error: {}", e.message))?;
-    Ok(audit_goal_trace(product, &program))
+    let requires_goals = intents_dir.join("contracts.intent").is_file();
+    Ok(audit_goal_trace(product, &program, requires_goals))
 }
 
 fn merge_intent_sources(intents_dir: &Path) -> Result<String, String> {
@@ -124,7 +126,11 @@ fn merge_intent_sources(intents_dir: &Path) -> Result<String, String> {
     Ok(merged)
 }
 
-fn audit_goal_trace(product: &str, program: &Program) -> Vec<GoalTraceFinding> {
+fn audit_goal_trace(
+    product: &str,
+    program: &Program,
+    requires_goals: bool,
+) -> Vec<GoalTraceFinding> {
     let mut decls = std::collections::HashSet::new();
     for sp in &program.declarations {
         match &sp.node {
@@ -141,7 +147,23 @@ fn audit_goal_trace(product: &str, program: &Program) -> Vec<GoalTraceFinding> {
         }
     }
 
+    let goal_count = program
+        .declarations
+        .iter()
+        .filter(|sp| matches!(sp.node, Declaration::Goal(_)))
+        .count();
+
     let mut findings = Vec::new();
+    if requires_goals && goal_count == 0 {
+        findings.push(GoalTraceFinding {
+            product: product.to_string(),
+            goal: "(contracts)".into(),
+            code: "E_PRODUCT_MISSING_GOALS".into(),
+            message: "contracts.intent exists but merged program has no goal blocks — add goals with realized_by (intent-spec-writer Step 4)".into(),
+        });
+        return findings;
+    }
+
     for sp in &program.declarations {
         let Declaration::Goal(g) = &sp.node else {
             continue;
@@ -203,8 +225,23 @@ intent Foo(x: Int) {
 }
 "#;
         let program = parse(src).unwrap();
-        let findings = audit_goal_trace("test", &program);
+        let findings = audit_goal_trace("test", &program, false);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].code, "E_GOAL_UNLINKED");
+    }
+
+    #[test]
+    fn missing_goals_when_contracts_file_expected() {
+        let src = r#"
+@tobe
+intent Foo(x: Int) {
+  require true
+  ensure x' == x
+}
+"#;
+        let program = parse(src).unwrap();
+        let findings = audit_goal_trace("telemetry", &program, true);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].code, "E_PRODUCT_MISSING_GOALS");
     }
 }

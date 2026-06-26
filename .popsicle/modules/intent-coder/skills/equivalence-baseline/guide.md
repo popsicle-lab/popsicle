@@ -42,3 +42,7 @@ docs/baseline/<YYYY-MM-DD>/<slice>/
 - 不臆造 pass——必须实跑脚本
 - 不把 divergence 静默吞掉
 - 不修改 `.intent`（修 spec 走 intent-spec-writer + PDR）
+
+## Agent 观测
+
+verify 阶段若使用 LLM，先 `popsicle tool run telemetry action=guide` 再上报；`doc check` 通过后可打 score。

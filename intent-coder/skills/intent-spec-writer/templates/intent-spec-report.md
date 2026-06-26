@@ -100,6 +100,7 @@ query_anchors:
 | "{goal 名}" | {SafetyOrIntent}, … | ADR-XXX § … / PRD row N |
 
 - [ ] 每个 goal 的 `realized_by` 非空
+- [ ] `contracts.intent` 存在时合并程序至少 1 个 goal（否则 `E_PRODUCT_MISSING_GOALS`）
 - [ ] 引用的符号均在合并后的 `products/{target_product}/intents/` 可解析
 - [ ] `popsicle tool run intent-validate path=products/{target_product}/intents` exit 0（含 goal 追溯闸）
 
@@ -113,3 +114,4 @@ query_anchors:
 - [ ] 无重复声明 / 命名冲突
 - [ ] 合并计划写明追加位置与类型复用方式
 - [ ] 每个 contracts goal 已回填 `realized_by`（见 Goal 追溯段）
+- [ ] 存在 `contracts.intent` 时 goal 数 ≥ 1（`E_PRODUCT_MISSING_GOALS` 不得出现）

@@ -59,6 +59,10 @@ slice-spec / migration-bootstrap（spec 完成）
 3. **测试追溯**：每个 acceptance `intent` 至少一条 property test。
 4. **可多轮**：implementing ↔ verifying 可反复，不要求一次 PR 全做完。
 
+## Agent 观测（telemetry）
+
+Stage 内 LLM 工作与自评须 `popsicle tool run telemetry action=guide` 后调用 `tool run telemetry`（fail-open）。`doc check` 通过后 JSON 响应含 `telemetry_hint` 可作 score 命令模板。
+
 ## 与 legacy 的关系
 
 本 skill 产出的是 **in-shadow** 实现——legacy 仍是主路径，直到

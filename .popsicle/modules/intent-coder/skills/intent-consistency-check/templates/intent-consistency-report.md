@@ -55,13 +55,17 @@ query_anchors:
 |---|---|
 | 检查的 product | {product} |
 | 孤儿 goal（realized_by 空）| 0 |
+| 缺失 goal（contracts 存在但零 goal）| 0 |
 | 未知引用 | 0 |
 | goal 追溯结论 | PASS / FAIL |
+
+> **硬门禁**：`contracts.intent` 存在时合并程序须 ≥1 个 `goal`；否则 `E_PRODUCT_MISSING_GOALS`。
+> goal 总数 = 0 且 product 非 trivial → 结论必须 **FAIL**，不可 complete intent-check stage。
 
 失败明细（逐条抄 tool 输出）：
 
 ```
-（粘贴 E_GOAL_UNLINKED / E_GOAL_UNKNOWN_REF）
+（粘贴 E_PRODUCT_MISSING_GOALS / E_GOAL_UNLINKED / E_GOAL_UNKNOWN_REF）
 ```
 
 ## Failures

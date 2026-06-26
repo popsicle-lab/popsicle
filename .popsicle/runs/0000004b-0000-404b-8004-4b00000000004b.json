@@ -1,0 +1,27 @@
+{
+  "pipeline_name": "platform-refactor",
+  "run_id": "0000004b-0000-404b-8004-4b00000000004b",
+  "run_status": "completed",
+  "current_stage_index": 2,
+  "total_stages": 3,
+  "stages": [
+    {
+      "name": "implement",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "verify",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "adr-close",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    }
+  ]
+}

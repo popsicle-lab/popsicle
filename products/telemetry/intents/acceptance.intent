@@ -1,6 +1,6 @@
 // Product:        telemetry
 // Layer:          L2 acceptance（验收契约 — prd-writer 种子）
-// Status:         draft seed — 待 intent-spec-writer 收紧
+// Status:         已收紧 — intent-spec-writer（PROJ-76）；Z3 trivial verified
 // Source PDR:     PDR-001, PDR-002 (Block 4)
 // Last-Updated:   2026-06-26
 //

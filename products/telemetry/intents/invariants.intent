@@ -1,6 +1,6 @@
 // Product:   telemetry
 // Layer:     L1 product invariants
-// Status:    intent-spec-writer 收紧
+// Status:    已收紧 — ADR-001（PROJ-76）
 // Source PDR: PDR-001
 // Source ADR: ADR-001
 

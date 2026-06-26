@@ -25,7 +25,8 @@
 ├─ 所属 slice 的 PRD / intent 尚未覆盖本能力（迁移域）？
 │  └─ yes → migration-slice-spec（或 arch-decision，若仅需架构决策）
 ├─ 已有 product 增量能力 spec 未覆盖？
-│  └─ yes → feature-spec
+│  ├─ 小增量、无跨模块架构 ADR？ → feature-spec
+│  └─ 大增量：需 PDR+ADR+task+intent，但不是新 product？ → feature-arch-spec
 ├─ 仅架构/技术选型（无实现）？
 │  └─ yes → arch-decision
 ├─ 单点回归/缺陷修复？
@@ -188,6 +189,10 @@ popsicle tool run mermaid-diagram action=scaffold type=flowchart title="本 Issu
 | `--description` 写明每个 `--tasks` id | 只 linked 邻近 task 却交付新能力 |
 | 新旅程用 `--proposed-task` + spec pipeline | delivery pipeline + proposed |
 | 单点缺陷用 `--type bug` + `fix-regression` | 用 `fix-regression` 改 intent 文件 / intent-coder 技能链 / 新 UI 能力 |
+
+## Agent 观测
+
+Issue / pipeline 工作中 Agent 应先 `popsicle tool run telemetry action=guide`，再按 guide 上报 `gen_ai.chat` 与可选 score；编排事件已自动 span，勿重复。
 
 ## 下游检查
 

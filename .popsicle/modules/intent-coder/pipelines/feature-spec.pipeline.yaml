@@ -24,10 +24,11 @@ stages:
     skill: intent-spec-writer
     description: >-
       收紧 acceptance 种子为合法 intent-lang，合并到 products/<product>/intents/。
+      须回填 contracts goal + realized_by（无 E_PRODUCT_MISSING_GOALS）。
     depends_on: [prd]
 
   - name: intent-check
     skill: intent-consistency-check
     description: >-
-      Z3 一致性验证（observe）。通过后解锁 feature-delivery。
+      Z3 一致性验证（observe）。合并 goal 追溯闸须 PASS。通过后解锁 feature-delivery。
     depends_on: [intent-spec]

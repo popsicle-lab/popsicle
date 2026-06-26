@@ -55,12 +55,14 @@ stages:
     skill: intent-spec-writer
     description: >-
       Tighten acceptance and unlocked contracts into valid intent-lang files.
+      Backfill contracts goal + realized_by; no E_PRODUCT_MISSING_GOALS on validate.
     depends_on: [prd, adr]
 
   - name: intent-check
     skill: intent-consistency-check
     description: >-
       Run intent-lang/Z3 consistency checks in observe mode.
+      Merged goal trace must PASS (incl. E_PRODUCT_MISSING_GOALS).
     depends_on: [intent-spec]
 
   - name: living-docs

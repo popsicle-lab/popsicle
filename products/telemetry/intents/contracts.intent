@@ -1,7 +1,7 @@
 // Product:   telemetry
 // Layer:     L4 contracts
-// Status:     ADR-001 Accepted — 待 intent-spec-writer 收紧
-// Source ADR: ADR-001-telemetry-otel-sidecar.md
+// Status:     已收紧 — ADR-001/002 Accepted（PROJ-76）
+// Source ADR: ADR-001-telemetry-otel-sidecar.md, ADR-002-telemetry-run-report.md
 
 enum RecordOutcome { OutcomeOk, OutcomeDegraded }
 
@@ -11,6 +11,33 @@ type SinkRecordResult {
 }
 
 // [ADR-001 Accepted] TelemetrySink：record 永不向上返回 Err；Degraded 时主流程继续。
+
+goal "Agent 观测旁路 fail-open" {
+  rationale: "telemetry WAL/OTLP/report 失败不得改变主命令 exit code"
+  stakeholder: ["ai-coding-agent", "maintainer"]
+  measure: "record/flush/report degraded 时 CLI 仍 exit 0；编排主平面不阻塞"
+  realized_by: [
+    TelemetryNeverBlocksMain,
+    MainCommandDespiteTelemetryFailure,
+    TelemetrySinkFailOpen,
+    TelemetryRecordFailOpen,
+    TelemetryReportFailOpen
+  ]
+}
+
+goal "OTLP 端点可配置且 fail-open" {
+  rationale: "管理员配置 exporter 不阻塞日常 pipeline"
+  stakeholder: ["human-maintainer", "ai-coding-agent"]
+  measure: "endpoint 未配置或错误时主命令仍 exit 0"
+  realized_by: [OtlpConfigRoundTrips]
+}
+
+goal "编排命令自动 emit 观测 span" {
+  rationale: "issue start / stage complete / doc create / doc check 自动 best-effort span"
+  stakeholder: ["ai-coding-agent"]
+  measure: "主命令成功时对应 span 写入 WAL（fail-open）"
+  realized_by: [OrchestrationSpanOnIssueStart]
+}
 
 @tobe
 intent TelemetrySinkFailOpen(r: SinkRecordResult) {
