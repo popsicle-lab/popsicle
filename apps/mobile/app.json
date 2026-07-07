@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Popsicle Agent",
+    "slug": "popsicle-agent",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "popsicle",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.popsicle.agent"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      },
+      "package": "dev.popsicle.agent"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset",
+      "expo-font",
+      "expo-image"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

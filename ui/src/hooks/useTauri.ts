@@ -603,3 +603,96 @@ export async function getWorkflowCatalog(): Promise<WorkflowCatalog> {
 }
 
 export type IssueGroupBy = "none" | "product" | "pipeline" | "epic";
+
+export interface AgentRuntimeConfigDto {
+  server_url: string;
+  runtime_id: string;
+  config_path: string;
+  cursor_agent_installed: boolean;
+}
+
+export interface SaveAgentRuntimeConfigInput {
+  server_url: string;
+  runtime_id: string;
+}
+
+export interface CursorAgentStatusDto {
+  installed: boolean;
+  binary_path: string;
+  logged_in: boolean;
+  output: string;
+  error: string | null;
+}
+
+export interface DaemonStatusDto {
+  online: boolean;
+  poll_running: boolean;
+  pid: number | null;
+  workspace: string;
+  detected_clis: string[];
+  note: string | null;
+  last_error: string | null;
+  log_path: string;
+  foreground_hint: string;
+}
+
+export interface DaemonControlResultDto {
+  poll_running: boolean;
+  pid: number | null;
+  message: string;
+}
+
+export interface AgentRuntimeServerStatusDto {
+  server_url: string;
+  runtime_id: string;
+  server_ok: boolean;
+  storage: string;
+  runtime_state: string;
+}
+
+export interface DispatchIssueResultDto {
+  accepted: boolean;
+  state: string;
+  reason: string | null;
+  task_id: string | null;
+}
+
+export async function getAgentRuntimeConfig(): Promise<AgentRuntimeConfigDto> {
+  return invoke("get_agent_runtime_config");
+}
+
+export async function saveAgentRuntimeConfig(
+  input: SaveAgentRuntimeConfigInput
+): Promise<AgentRuntimeConfigDto> {
+  return invoke("save_agent_runtime_config_cmd", { input });
+}
+
+export async function cursorAgentStatus(): Promise<CursorAgentStatusDto> {
+  return invoke("cursor_agent_status_cmd");
+}
+
+export async function cursorAgentLogin(): Promise<string> {
+  return invoke("cursor_agent_login_cmd");
+}
+
+export async function daemonStatus(): Promise<DaemonStatusDto> {
+  return invoke("daemon_status_cmd");
+}
+
+export async function daemonStart(): Promise<DaemonControlResultDto> {
+  return invoke("daemon_start_cmd");
+}
+
+export async function daemonStop(): Promise<DaemonControlResultDto> {
+  return invoke("daemon_stop_cmd");
+}
+
+export async function agentRuntimeServerStatus(): Promise<AgentRuntimeServerStatusDto> {
+  return invoke("agent_runtime_server_status");
+}
+
+export async function dispatchIssueRemote(
+  issueKey: string
+): Promise<DispatchIssueResultDto> {
+  return invoke("dispatch_issue_remote", { issueKey });
+}

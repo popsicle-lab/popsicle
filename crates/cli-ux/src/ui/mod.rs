@@ -1,5 +1,6 @@
 mod commands;
 mod dto;
+mod runtime_commands;
 mod state;
 mod watcher;
 
@@ -67,6 +68,16 @@ pub fn run(project: Option<String>) {
             commands::save_project_context_md,
             commands::get_workflow_catalog,
             commands::get_telemetry_run_detail,
+            runtime_commands::get_agent_runtime_config,
+            runtime_commands::save_agent_runtime_config_cmd,
+            runtime_commands::cursor_agent_status_cmd,
+            runtime_commands::cursor_agent_login_cmd,
+            runtime_commands::daemon_status_cmd,
+            runtime_commands::daemon_start_cmd,
+            runtime_commands::daemon_stop_cmd,
+            runtime_commands::agent_runtime_server_status,
+            runtime_commands::dispatch_issue_remote,
+            runtime_commands::list_remote_runs,
         ])
         .setup(move |app| {
             app.manage(watcher::ProjectWatcher::new());

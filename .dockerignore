@@ -1,0 +1,30 @@
+# agent-server image build (deploy/agent-runtime/Dockerfile, context = repo root).
+# Without this, `target/` alone can be tens of GB.
+
+target/
+**/*.rs.bk
+
+.git/
+.github/
+.idea/
+.vscode/
+**/.DS_Store
+
+# Not needed to compile agent-server
+ui/
+docs/
+products/
+migration/
+intent-coder/
+.popsicle/
+_planning/
+.cursor/
+
+# Frontend / release artifacts
+**/node_modules/
+**/*.dmg
+**/*.app
+
+# Local deploy helpers (not copied into image)
+deploy/agent-runtime/up.sh
+deploy/agent-runtime/down.sh

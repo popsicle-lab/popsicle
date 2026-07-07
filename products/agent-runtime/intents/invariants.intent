@@ -1,0 +1,25 @@
+// Product:        agent-runtime
+// Layer:          L1 invariants（领域自然律 — prd-writer 种子）
+// Status:         已收紧 — ADR-001 Accepted 2026-07-06；Z3 verified
+// Source PDR:     PDR-001
+// Last-Updated:   2026-07-06
+
+enum SecretLocation { OnRuntime, OnServer }
+
+type ExecutionContext {
+  apiKeysOnServer: Bool
+  repoOnServer: Bool
+}
+
+// ---- Block 1 ----
+// task:          跨 task（T-AR-0001..0006）
+// pdr:           PDR-001
+// query_anchors:
+//   - "API Key 会上传 Server 吗？"
+@tobe
+intent SecretsStayOnRuntimeMachine(ctx: ExecutionContext) {
+  require ctx.apiKeysOnServer == false
+  require ctx.repoOnServer == false
+  ensure ctx.apiKeysOnServer' == false
+  ensure ctx.repoOnServer' == false
+}

@@ -27,6 +27,7 @@ ui = [
 ]
 
 [dependencies]
+agent-daemon = { path = "../agent-daemon" }
 artifact-system.workspace = true
 skill-runtime.workspace = true
 storage.workspace = true

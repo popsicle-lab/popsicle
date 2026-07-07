@@ -21,3 +21,5 @@ artifact-system = { path = "crates/artifact-system" }
 skill-runtime = { path = "crates/skill-runtime" }
 storage = { path = "crates/storage" }
 telemetry = { path = "crates/telemetry" }
+agent-daemon = { path = "crates/agent-daemon" }
+agent-server = { path = "crates/agent-server" }

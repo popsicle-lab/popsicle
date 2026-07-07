@@ -1,0 +1,56 @@
+// Product:        agent-runtime
+// Layer:          L4 contracts（模块契约 — rfc-writer 种子）
+// Status:         已解锁 — ADR-001 Accepted 2026-07-06
+// Source RFC:     doc-188.rfc-writer.md
+// Last-Updated:   2026-07-06
+
+enum TaskPhase { Queued, Dispatched, Running, Terminal }
+
+type DaemonInvokeResult {
+  subprocessStarted: Bool
+  exitZero: Bool
+}
+
+type ServerRole {
+  executesAgent: Bool
+  holdsApiKeys: Bool
+}
+
+// ---- goal + port 契约（ADR-001 解锁后标 Accepted 日期）----
+
+goal "Daemon 以 subprocess 调用 workspace popsicle" { // [ADR-001 Accepted 2026-07-06]
+  rationale: "复用 skill-runtime 状态机，禁止在 daemon 内重写 pipeline FSM"
+  stakeholder: "ENGLD"
+  measure: "golden: daemon 调 popsicle pipeline next 与手工 CLI 状态一致"
+  realized_by: [DaemonSubprocessInvokesPopsicle]
+}
+
+goal "Server 仅协调不执行 Agent" { // [ADR-001 Accepted 2026-07-06]
+  rationale: "API Key 与代码留在 Runtime 机器"
+  stakeholder: "SEC"
+  measure: "Server 代码路径无 Agent CLI spawn"
+  realized_by: [ServerNeverExecutesAgent]
+}
+
+// ---- Block 1 ----
+// task:          T-AR-0001
+// adr:           ADR-001 [Accepted 2026-07-06]
+@tobe
+intent DaemonSubprocessInvokesPopsicle(r: DaemonInvokeResult) {
+  require !r.subprocessStarted
+  ensure r.subprocessStarted'
+  ensure r.subprocessStarted' == true
+  ensure r.exitZero'
+  ensure r.exitZero' == true
+}
+
+// ---- Block 2 ----
+// task:          跨 task
+// adr:           ADR-001 [Accepted 2026-07-06]
+@tobe
+intent ServerNeverExecutesAgent(s: ServerRole) {
+  require s.executesAgent == false
+  require s.holdsApiKeys == false
+  ensure s.executesAgent' == false
+  ensure s.holdsApiKeys' == false
+}

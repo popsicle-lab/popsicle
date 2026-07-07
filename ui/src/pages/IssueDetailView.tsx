@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, GitBranch, Play } from "lucide-react";
+import { BookOpen, GitBranch, Play, Radio } from "lucide-react";
 import {
+  agentRuntimeServerStatus,
+  dispatchIssueRemote,
   getIssue,
   getIssueGuidance,
   listDocsForRun,
@@ -30,11 +32,16 @@ export function IssueDetailView({
   variant = "page",
 }: Props) {
   const { m } = useLocale();
+  const ar = m.agentRuntime;
   const [issue, setIssue] = useState<IssueInfo | null>(null);
   const [docsByRun, setDocsByRun] = useState<Record<string, DocInfo[]>>({});
   const [guidance, setGuidance] = useState<IssueGuidance | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
+  const [dispatchMsg, setDispatchMsg] = useState<string | null>(null);
+  const [runtimeOnline, setRuntimeOnline] = useState(false);
+  const [serverConfigured, setServerConfigured] = useState(false);
 
   const load = useCallback(() => {
     getIssue(issueKey)
@@ -60,6 +67,18 @@ export function IssueDetailView({
 
   useRefresh(load);
 
+  useEffect(() => {
+    agentRuntimeServerStatus()
+      .then((s) => {
+        setServerConfigured(Boolean(s.server_url));
+        setRuntimeOnline(s.runtime_state === "online");
+      })
+      .catch(() => {
+        setServerConfigured(false);
+        setRuntimeOnline(false);
+      });
+  }, [issueKey]);
+
   const handleStart = async () => {
     setStarting(true);
     try {
@@ -69,6 +88,26 @@ export function IssueDetailView({
       setError(String(e));
     } finally {
       setStarting(false);
+    }
+  };
+
+  const handleRemoteDispatch = async () => {
+    setDispatching(true);
+    setDispatchMsg(null);
+    setError(null);
+    try {
+      const result = await dispatchIssueRemote(issueKey);
+      if (result.accepted) {
+        setDispatchMsg(ar.dispatchQueued);
+        load();
+      } else {
+        const reason = result.reason ?? "unknown";
+        setDispatchMsg(`${ar.dispatchRejected}: ${reason}`);
+      }
+    } catch (e: unknown) {
+      setError(String(e));
+    } finally {
+      setDispatching(false);
     }
   };
 
@@ -138,15 +177,44 @@ export function IssueDetailView({
             </div>
           </div>
           {!issue.active_run_id && issue.status !== "done" && (
-            <button
-              type="button"
-              onClick={handleStart}
-              disabled={starting}
-              className="btn btn-primary shrink-0"
-            >
-              <Play size={15} />
-              {starting ? "Starting…" : "Start pipeline"}
-            </button>
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleStart}
+                  disabled={starting}
+                  className="btn btn-primary shrink-0"
+                  title={ar.localStartHint}
+                >
+                  <Play size={15} />
+                  {starting ? "Starting…" : "Start pipeline"}
+                </button>
+                {issue.pipeline && (
+                  <button
+                    type="button"
+                    onClick={handleRemoteDispatch}
+                    disabled={
+                      dispatching || !serverConfigured || !runtimeOnline
+                    }
+                    className="btn shrink-0 border border-[var(--border-strong)] bg-[var(--bg-elevated)]"
+                    title={ar.dispatchHint}
+                  >
+                    <Radio size={15} />
+                    {dispatching ? ar.dispatching : ar.dispatchRemote}
+                  </button>
+                )}
+              </div>
+              {issue.pipeline && !serverConfigured && (
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  {ar.dispatchHint}
+                </p>
+              )}
+              {dispatchMsg && (
+                <p className="text-[11px] text-[var(--accent-green)]">
+                  {dispatchMsg}
+                </p>
+              )}
+            </div>
           )}
         </div>
 

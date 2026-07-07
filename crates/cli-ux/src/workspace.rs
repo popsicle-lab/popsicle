@@ -1889,6 +1889,10 @@ impl WorkspaceDomain {
 }
 
 impl crate::CliDomain for WorkspaceDomain {
+    fn workspace_root(&self) -> Result<&std::path::Path, crate::CliError> {
+        Ok(WorkspaceDomain::workspace_root(self))
+    }
+
     fn project_language(&self) -> crate::project_config::AgentLanguage {
         WorkspaceDomain::project_language(self)
     }

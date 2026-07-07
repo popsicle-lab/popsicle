@@ -1,6 +1,8 @@
 //! Thin IO shell for the `cli-ux` slice (ADR-007 / ADR-009 Phase 1).
 
+pub mod agent_runtime_config;
 pub mod cli_install;
+mod daemon;
 pub mod global_config;
 pub mod i18n;
 mod intent_coder_bundle;
@@ -42,7 +44,7 @@ use storage::{DocumentRow, MemoryDocumentStore};
 /// The implemented workspace command surface (PROJ-17 re-adjudication of
 /// PDR-001). Help must only advertise commands that `parse_args` accepts.
 pub const TOP_LEVEL_COMMANDS: &[&str] = &[
-    "init", "doctor", "issue", "pipeline", "doc", "tool", "admin", "project", "ui",
+    "init", "doctor", "issue", "pipeline", "doc", "tool", "admin", "project", "daemon", "ui",
 ];
 
 /// Legacy commands PDR-001 marked "preserve" but that are not part of the
@@ -144,6 +146,7 @@ pub enum Command {
     Ui {
         project: Option<String>,
     },
+    Daemon(daemon::DaemonCommand),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -289,6 +292,9 @@ impl std::fmt::Display for CliError {
 impl std::error::Error for CliError {}
 
 pub trait CliDomain {
+    fn workspace_root(&self) -> Result<&std::path::Path, CliError> {
+        Err(not_workspace("workspace"))
+    }
     fn init_workspace(&mut self) -> Result<InitResult, CliError>;
     #[allow(clippy::too_many_arguments)]
     fn create_issue(
@@ -672,6 +678,11 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
         "ui" => Ok(Command::Ui {
             project: optional_flag_value(args, "--project"),
         }),
+        "daemon" => daemon::parse_daemon_args(&args[1..])
+            .map(Command::Daemon)
+            .map_err(|msg| {
+                CliError::actionable("invalid-args", "daemon", msg, "daemon subcommand")
+            }),
         "migrate" | "reinit" => Err(CliError::actionable(
             "invalid-args",
             args[0].clone(),
@@ -1038,6 +1049,24 @@ pub fn run_command<D: CliDomain>(
             "run `popsicle ui` without other CLI dispatch",
             "desktop UI is launched from main, not run_command",
         )),
+        Command::Daemon(cmd) => {
+            let root = domain.workspace_root()?;
+            match cmd {
+                daemon::DaemonCommand::Start {
+                    foreground,
+                    background,
+                } => {
+                    if background {
+                        daemon::daemon_start_background(root)
+                    } else {
+                        daemon::daemon_start(root, foreground)
+                    }
+                }
+                daemon::DaemonCommand::Stop => daemon::daemon_stop(),
+                daemon::DaemonCommand::Status => daemon::daemon_status(root),
+                daemon::DaemonCommand::Logs => daemon::daemon_logs(),
+            }
+        }
     }
 }
 

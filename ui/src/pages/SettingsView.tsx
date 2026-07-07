@@ -9,6 +9,7 @@ import {
 } from "../hooks/useTauri";
 import { normalizeLocale, useLocale } from "../i18n/LocaleContext";
 import type { Page } from "../App";
+import { AgentRuntimeSection } from "../components/AgentRuntimeSection";
 
 interface Props {
   setPage?: (p: Page) => void;
@@ -267,6 +268,8 @@ export function SettingsView({ setPage, onSaved }: Props) {
           </label>
         </div>
       </section>
+
+      <AgentRuntimeSection />
 
       <section className="card space-y-4 p-5">
         <div>

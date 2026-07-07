@@ -206,6 +206,48 @@ export type Messages = {
       cancel: string;
     };
   };
+  agentRuntime: {
+    title: string;
+    intro: string;
+    serverUrl: string;
+    serverUrlHint: string;
+    runtimeId: string;
+    runtimeIdHint: string;
+    save: string;
+    saving: string;
+    saved: string;
+    cursorAgent: string;
+    cursorAgentInstalled: string;
+    cursorAgentMissing: string;
+    cursorAgentLogin: string;
+    cursorAgentRefresh: string;
+    cursorAgentLoggedIn: string;
+    cursorAgentNotLoggedIn: string;
+    daemon: string;
+    daemonOnline: string;
+    daemonOffline: string;
+    daemonPollRunning: string;
+    daemonPollStopped: string;
+    daemonStart: string;
+    daemonStop: string;
+    daemonStarting: string;
+    daemonStopping: string;
+    daemonNeedServerUrl: string;
+    daemonHint: string;
+    serverStatus: string;
+    serverOk: string;
+    serverUnreachable: string;
+    runtimeOnline: string;
+    runtimeOffline: string;
+    refreshStatus: string;
+    configPath: string;
+    dispatchRemote: string;
+    dispatching: string;
+    dispatchQueued: string;
+    dispatchRejected: string;
+    dispatchHint: string;
+    localStartHint: string;
+  };
 };
 
 const zhCN: Messages = {
@@ -413,6 +455,49 @@ const zhCN: Messages = {
       confirm: "初始化并打开",
       cancel: "取消",
     },
+  },
+  agentRuntime: {
+    title: "Agent Runtime",
+    intro:
+      "配置本机 Runtime 与 agent-server 连接。API Key 仅保存在本机（cursor-agent login），不上传 Server。",
+    serverUrl: "Server URL",
+    serverUrlHint: "agent-server 地址，如 http://127.0.0.1:8787",
+    runtimeId: "Runtime ID",
+    runtimeIdHint: "与 Daemon 环境变量 AGENT_RUNTIME_ID 一致，默认 default",
+    save: "保存 Runtime 配置",
+    saving: "保存中…",
+    saved: "已保存",
+    cursorAgent: "cursor-agent",
+    cursorAgentInstalled: "已安装",
+    cursorAgentMissing: "未安装（需加入 PATH）",
+    cursorAgentLogin: "登录（打开浏览器）",
+    cursorAgentRefresh: "刷新状态",
+    cursorAgentLoggedIn: "已登录",
+    cursorAgentNotLoggedIn: "未登录",
+    daemon: "本机 Daemon",
+    daemonOnline: "工作区就绪",
+    daemonOffline: "未就绪",
+    daemonPollRunning: "Daemon 运行中",
+    daemonPollStopped: "Daemon 未启动",
+    daemonStart: "启动 Daemon",
+    daemonStop: "停止 Daemon",
+    daemonStarting: "启动中…",
+    daemonStopping: "停止中…",
+    daemonNeedServerUrl: "请先保存 Server URL",
+    daemonHint: "也可在终端运行：",
+    serverStatus: "Server / Runtime",
+    serverOk: "Server 可达",
+    serverUnreachable: "无法连接 Server",
+    runtimeOnline: "Runtime online",
+    runtimeOffline: "Runtime offline",
+    refreshStatus: "刷新",
+    configPath: "配置文件",
+    dispatchRemote: "远程派活",
+    dispatching: "派活中…",
+    dispatchQueued: "已入队，Daemon 将自动 issue start",
+    dispatchRejected: "派活被拒绝",
+    dispatchHint: "通过 agent-server 派给本机 Daemon；勿与本机「Start pipeline」同时使用",
+    localStartHint: "本机直接启动",
   },
 };
 
@@ -624,6 +709,49 @@ const en: Messages = {
       confirm: "Initialize and open",
       cancel: "Cancel",
     },
+  },
+  agentRuntime: {
+    title: "Agent Runtime",
+    intro:
+      "Configure local Runtime and agent-server. API keys stay on this machine (cursor-agent login), never uploaded to Server.",
+    serverUrl: "Server URL",
+    serverUrlHint: "agent-server base URL, e.g. http://127.0.0.1:8787",
+    runtimeId: "Runtime ID",
+    runtimeIdHint: "Must match Daemon AGENT_RUNTIME_ID; default is default",
+    save: "Save Runtime config",
+    saving: "Saving…",
+    saved: "Saved",
+    cursorAgent: "cursor-agent",
+    cursorAgentInstalled: "Installed",
+    cursorAgentMissing: "Not on PATH",
+    cursorAgentLogin: "Login (opens browser)",
+    cursorAgentRefresh: "Refresh status",
+    cursorAgentLoggedIn: "Logged in",
+    cursorAgentNotLoggedIn: "Not logged in",
+    daemon: "Local Daemon",
+    daemonOnline: "Workspace ready",
+    daemonOffline: "Not ready",
+    daemonPollRunning: "Daemon running",
+    daemonPollStopped: "Daemon stopped",
+    daemonStart: "Start Daemon",
+    daemonStop: "Stop Daemon",
+    daemonStarting: "Starting…",
+    daemonStopping: "Stopping…",
+    daemonNeedServerUrl: "Save Server URL first",
+    daemonHint: "Or run in terminal:",
+    serverStatus: "Server / Runtime",
+    serverOk: "Server reachable",
+    serverUnreachable: "Cannot reach Server",
+    runtimeOnline: "Runtime online",
+    runtimeOffline: "Runtime offline",
+    refreshStatus: "Refresh",
+    configPath: "Config file",
+    dispatchRemote: "Remote dispatch",
+    dispatching: "Dispatching…",
+    dispatchQueued: "Queued — Daemon will issue start",
+    dispatchRejected: "Dispatch rejected",
+    dispatchHint: "Sends to agent-server for local Daemon; do not use with local Start pipeline",
+    localStartHint: "Start locally",
   },
 };
 

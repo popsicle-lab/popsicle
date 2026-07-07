@@ -85,6 +85,10 @@ const COMMAND_USAGE_EN: &[&str] = &[
     "popsicle project use <name|path>",
     "popsicle project remove <name>",
     "popsicle project current",
+    "popsicle daemon start [--foreground|--background]",
+    "popsicle daemon stop",
+    "popsicle daemon status",
+    "popsicle daemon logs",
     "popsicle ui [--project <path>]",
 ];
 
@@ -116,5 +120,9 @@ const COMMAND_USAGE_ZH: &[&str] = &[
     "popsicle project use <名称|路径>",
     "popsicle project remove <名称>",
     "popsicle project current",
+    "popsicle daemon start [--foreground|--background]",
+    "popsicle daemon stop",
+    "popsicle daemon status",
+    "popsicle daemon logs",
     "popsicle ui [--project <path>]",
 ];

@@ -66,6 +66,7 @@ fn needs_workspace(command: &Command) -> bool {
             | Command::PipelineNext { .. }
             | Command::StageComplete { .. }
             | Command::ToolRun { .. }
+            | Command::Daemon(_)
             | Command::Admin(_)
             | Command::ProjectCurrent
     )

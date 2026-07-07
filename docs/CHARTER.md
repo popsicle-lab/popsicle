@@ -138,6 +138,18 @@
 
 ---
 
+## Product Scope Boundaries [CADR-001]
+
+`agent-runtime`（`products/agent-runtime/`）仅用于 **IDD 专用远程派活**：将 popsicle Issue / Pipeline Run 派发到本机 Runtime，由 Daemon subprocess 调用 workspace `popsicle` 与 Agent CLI adapter。
+
+- agent-runtime **不是**通用工作流引擎、Kanban 看板或非 IDD 自动化平台。
+- 不得扩展为任意第三方 workflow 定义或与 popsicle Issue/Pipeline 无关的任务队列。
+- Server 仅协调 popsicle 语义下的 Task Queue、Run 镜像与 stage 审批；执行与 API Key 留在 Runtime 机器。
+
+`Decision-Ref: CADR-001` · `PDR-001` · `ADR-001`
+
+---
+
 ## Charter 自指
 
-本 charter 本身就是一份活文档。修改它需要一类特殊的决策：**CADR**（Charter Amendment Decision Record），位于 `docs/decisions/cadr/`。CADR 与其它决策文件一样受四条铁律约束。
+本 charter 本身就是一份活文档。修改它需要一类特殊的决策：**CADR**（Charter Amendment Decision Record），位于 `docs/decisions/cadr/`（首份：`CADR-001-agent-runtime-idd-only-dispatch.md`）。CADR 与其它决策文件一样受四条铁律约束。

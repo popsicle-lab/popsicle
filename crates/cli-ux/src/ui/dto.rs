@@ -142,6 +142,69 @@ pub struct TelemetryRunDetailDto {
     pub spans: Vec<telemetry::WalLine>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentRuntimeConfigDto {
+    pub server_url: String,
+    pub runtime_id: String,
+    pub config_path: String,
+    pub cursor_agent_installed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CursorAgentStatusDto {
+    pub installed: bool,
+    pub binary_path: String,
+    pub logged_in: bool,
+    pub output: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DaemonStatusDto {
+    pub online: bool,
+    pub poll_running: bool,
+    pub pid: Option<u32>,
+    pub workspace: String,
+    pub detected_clis: Vec<String>,
+    pub note: Option<String>,
+    pub last_error: Option<String>,
+    pub log_path: String,
+    pub foreground_hint: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DaemonControlResultDto {
+    pub poll_running: bool,
+    pub pid: Option<u32>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentRuntimeServerStatusDto {
+    pub server_url: String,
+    pub runtime_id: String,
+    pub server_ok: bool,
+    pub storage: String,
+    pub runtime_state: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DispatchIssueResultDto {
+    pub accepted: bool,
+    pub state: String,
+    pub reason: Option<String>,
+    pub task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RemoteRunMirrorDto {
+    pub run_id: String,
+    pub issue_key: Option<String>,
+    pub pipeline: String,
+    pub run_status: String,
+    pub current_stage: String,
+}
+
 pub use crate::workspace_readers::{
     IntentBlockDetail, IntentFileFull, IntentRef, IssueGuidance, TaskFull,
 };

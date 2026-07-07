@@ -1,0 +1,90 @@
+// Product:        agent-runtime
+// Layer:          L2 acceptance（验收契约 — prd-writer 种子）
+// Status:         已收紧 — intent-spec-writer（PROJ-81）；Z3 verified
+// Source PDR:     PDR-001
+// Last-Updated:   2026-07-06
+//
+// D2：时间/性能约束（如「60s 内 running」）不写本文件 —— 见各 task「可观察的成功标志」。
+
+enum RuntimeState { Offline, Online }
+
+enum DispatchState { Rejected, Queued }
+
+type Runtime {
+  registered: Bool
+  state: RuntimeState
+}
+
+type DispatchRequest {
+  runtimeOnline: Bool
+}
+
+type DispatchResult {
+  accepted: Bool
+  state: DispatchState
+}
+
+type ApprovalAction {
+  stageRequiresApproval: Bool
+  confirmIssued: Bool
+}
+
+type ApprovalResult {
+  confirmTaskCreated: Bool
+}
+
+// ---- Block 1 ----
+// task:          T-AR-0001
+// pdr:           PDR-001
+// journey_stage: onboarding
+// query_anchors:
+//   - "Runtime 怎么 online？"
+@tobe
+intent RuntimeRegistersWhenDaemonStarts(r: Runtime) {
+  require !r.registered
+  ensure r.registered'
+  ensure r.registered' == true
+  ensure r.state' == Online
+}
+
+// ---- Block 2 ----
+// task:          T-AR-0002
+// pdr:           PDR-001
+// journey_stage: onboarding
+// query_anchors:
+//   - "怎么第一次在手机上派活？"
+@tobe
+intent DispatchQueuedWhenRuntimeOnline(req: DispatchRequest, d: DispatchResult) {
+  require req.runtimeOnline
+  ensure d.accepted'
+  ensure d.accepted' == true
+  ensure d.state' == Queued
+}
+
+// ---- Block 3 ----
+// task:          T-AR-0005
+// pdr:           PDR-001
+// journey_stage: troubleshooting
+// query_anchors:
+//   - "runtime_offline 是什么意思？"
+@tobe
+intent DispatchRejectedWhenRuntimeOffline(req: DispatchRequest, d: DispatchResult) {
+  require !req.runtimeOnline
+  ensure d.accepted'
+  ensure d.accepted' == false
+  ensure d.state' == Rejected
+}
+
+// ---- Block 4 ----
+// task:          T-AR-0004
+// pdr:           PDR-001
+// journey_stage: daily-ops
+// query_anchors:
+//   - "手机上怎么点批准？"
+@tobe
+intent ApprovalCreatesConfirmTask(a: ApprovalAction, r: ApprovalResult) {
+  require a.stageRequiresApproval
+  require a.confirmIssued
+  ensure r.confirmTaskCreated'
+  ensure r.confirmTaskCreated' == true
+}
