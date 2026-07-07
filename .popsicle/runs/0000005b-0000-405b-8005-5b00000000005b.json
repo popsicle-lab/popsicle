@@ -1,0 +1,27 @@
+{
+  "pipeline_name": "feature-spec",
+  "run_id": "0000005b-0000-405b-8005-5b00000000005b",
+  "run_status": "in_progress",
+  "current_stage_index": 0,
+  "total_stages": 3,
+  "stages": [
+    {
+      "name": "prd",
+      "status": "in_progress",
+      "requires_approval": true,
+      "approved_at": 0
+    },
+    {
+      "name": "intent-spec",
+      "status": "ready",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "intent-check",
+      "status": "ready",
+      "requires_approval": false,
+      "approved_at": 0
+    }
+  ]
+}

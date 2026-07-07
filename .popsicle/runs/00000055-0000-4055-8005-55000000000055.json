@@ -1,0 +1,27 @@
+{
+  "pipeline_name": "arch-decision",
+  "run_id": "00000055-0000-4055-8005-55000000000055",
+  "run_status": "completed",
+  "current_stage_index": 2,
+  "total_stages": 3,
+  "stages": [
+    {
+      "name": "arch-debate",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "rfc",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "adr",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    }
+  ]
+}

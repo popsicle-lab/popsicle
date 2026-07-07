@@ -1,0 +1,57 @@
+{
+  "pipeline_name": "product-greenfield-spec",
+  "run_id": "0000004f-0000-404f-8004-4f00000000004f",
+  "run_status": "completed",
+  "current_stage_index": 7,
+  "total_stages": 8,
+  "stages": [
+    {
+      "name": "debate",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "prd",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "arch-debate",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "rfc",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "adr",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    },
+    {
+      "name": "intent-spec",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "intent-check",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "living-docs",
+      "status": "completed",
+      "requires_approval": true,
+      "approved_at": 1
+    }
+  ]
+}

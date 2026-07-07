@@ -1,0 +1,27 @@
+{
+  "pipeline_name": "feature-delivery",
+  "run_id": "00000050-0000-4050-8005-50000000000050",
+  "run_status": "completed",
+  "current_stage_index": 2,
+  "total_stages": 3,
+  "stages": [
+    {
+      "name": "implement",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "verify",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    },
+    {
+      "name": "doc-sync",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    }
+  ]
+}
