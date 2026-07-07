@@ -657,6 +657,14 @@ export interface DispatchIssueResultDto {
   task_id: string | null;
 }
 
+export interface RemoteRunMirrorDto {
+  run_id: string;
+  issue_key: string | null;
+  pipeline: string;
+  run_status: string;
+  current_stage: string;
+}
+
 export async function getAgentRuntimeConfig(): Promise<AgentRuntimeConfigDto> {
   return invoke("get_agent_runtime_config");
 }
@@ -695,4 +703,10 @@ export async function dispatchIssueRemote(
   issueKey: string
 ): Promise<DispatchIssueResultDto> {
   return invoke("dispatch_issue_remote", { issueKey });
+}
+
+export async function getRemoteRunMirror(
+  runId: string
+): Promise<RemoteRunMirrorDto | null> {
+  return invoke("get_remote_run_mirror", { runId });
 }

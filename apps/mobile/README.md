@@ -36,6 +36,17 @@ npx expo start
 npm run lint   # tsc --noEmit
 ```
 
+### iOS 中文输入
+
+React Native 新架构在 **Expo Go** 下对中文拼音 IME 支持不稳定（只能输入字母、无法选字）。需求 Chat 输入框已集成原生模块 `modules/ios-text-input`，**请用开发构建**：
+
+```bash
+cd apps/mobile
+npx expo run:ios
+```
+
+首次会编译本地 App（需 Xcode），之后中文拼音可正常使用。继续用 Expo Go 扫描 QR 则仍可能无法输入中文。
+
 ## 架构
 
 - 布局：`src/components/layout.tsx`（`AppHost` = `Host` + `Column`）

@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 
@@ -37,6 +38,7 @@ const PIPELINE_PRESETS = [
 ] as const;
 
 export default function DispatchScreen() {
+  const router = useRouter();
   const { config, client } = useConfig();
   const { runtimeOnline } = useRuntimeStatus();
   const [issueKey, setIssueKey] = useState("");
@@ -66,6 +68,7 @@ export default function DispatchScreen() {
         setResult(`已入队 ${key} · ${pipe}`);
         setIssueKey("");
         hapticSuccess();
+        router.push("/(tabs)");
       } else {
         setError(resp.reason ?? "派活被拒绝");
         hapticError();

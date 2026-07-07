@@ -2,6 +2,7 @@
 //! Storage: in-memory default, PostgreSQL when `AGENT_RUNTIME_DATABASE_URL` is set.
 
 mod approval;
+mod chat;
 mod role;
 mod run_log;
 mod run_mirror;
@@ -10,6 +11,11 @@ mod storage;
 mod ws;
 
 pub use approval::{ApproveRequest, ApproveResult, ConfirmTask, ConfirmTaskStore};
+pub use chat::{
+    BootstrapResult, BootstrapTask, ChatMessage, ChatSession, ChatSessionView, ChatTurnResult,
+    ChatTurnTask, CompleteBootstrapRequest, CompleteChatTurnRequest, CreateChatSessionRequest,
+    PostChatMessageRequest,
+};
 pub use role::server_role;
 pub use run_log::{RunLogAppend, RunLogEntry};
 pub use run_mirror::{RunMirror, RunMirrorStore, RunMirrorUpsert, StageMirror};
@@ -253,6 +259,32 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/v1/runs/{run_id}/resume", post(resume_run))
         .route("/v1/runs/{run_id}/approve", post(approve_run))
+        .route("/v1/chat/sessions", post(chat::create_session))
+        .route("/v1/chat/sessions/{session_id}", get(chat::get_session))
+        .route(
+            "/v1/chat/sessions/{session_id}/messages",
+            post(chat::post_message),
+        )
+        .route(
+            "/v1/chat/sessions/{session_id}/bootstrap",
+            post(chat::bootstrap_session),
+        )
+        .route(
+            "/v1/chat/sessions/{session_id}/turn-complete",
+            post(chat::complete_chat_turn),
+        )
+        .route(
+            "/v1/chat/sessions/{session_id}/bootstrap-complete",
+            post(chat::complete_bootstrap),
+        )
+        .route(
+            "/v1/runtimes/{runtime_id}/chat-turns/claim",
+            post(chat::claim_chat_turn),
+        )
+        .route(
+            "/v1/runtimes/{runtime_id}/bootstraps/claim",
+            post(chat::claim_bootstrap),
+        )
         .route("/v1/ws", get(ws::ws_events))
         .layer(cors)
         .with_state(state)

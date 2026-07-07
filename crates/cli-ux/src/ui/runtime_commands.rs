@@ -290,3 +290,19 @@ pub fn list_remote_runs() -> Result<Vec<RemoteRunMirrorDto>, String> {
         })
         .collect())
 }
+
+#[tauri::command]
+pub fn get_remote_run_mirror(run_id: String) -> Result<Option<RemoteRunMirrorDto>, String> {
+    let cfg = load_agent_runtime_config().map_err(|e| e.to_string())?;
+    let client = client_for_config(&cfg)?;
+    let mirror = client
+        .get_run_mirror(&run_id)
+        .map_err(|e| format!("获取远程 run 失败：{e}"))?;
+    Ok(mirror.map(|r| RemoteRunMirrorDto {
+        run_id: r.run_id,
+        issue_key: r.issue_key,
+        pipeline: r.pipeline,
+        run_status: r.run_status,
+        current_stage: r.current_stage,
+    }))
+}

@@ -3,6 +3,7 @@
 use std::sync::Mutex;
 
 use crate::approval::ConfirmTaskStore;
+use crate::chat::ChatStore;
 use crate::run_log::RunLogStore;
 use crate::run_mirror::RunMirrorStore;
 use crate::runtime::RuntimeRegistry;
@@ -15,6 +16,7 @@ pub struct MemoryStorage {
     pub runtimes: Mutex<RuntimeRegistry>,
     pub mirrors: Mutex<RunMirrorStore>,
     pub logs: Mutex<RunLogStore>,
+    pub chat: Mutex<ChatStore>,
 }
 
 impl MemoryStorage {
@@ -25,6 +27,7 @@ impl MemoryStorage {
             runtimes: Mutex::new(RuntimeRegistry::new()),
             mirrors: Mutex::new(RunMirrorStore::default()),
             logs: Mutex::new(RunLogStore::default()),
+            chat: Mutex::new(ChatStore::default()),
         }
     }
 }

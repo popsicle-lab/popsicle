@@ -79,6 +79,58 @@ pub struct ClaimedConfirm {
     pub stage: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClaimedChatTurn {
+    #[serde(deserialize_with = "deserialize_uuid")]
+    pub id: String,
+    #[serde(deserialize_with = "deserialize_uuid")]
+    pub session_id: String,
+    pub runtime_id: String,
+    #[serde(deserialize_with = "deserialize_uuid")]
+    pub user_message_id: String,
+    pub user_content: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClaimedBootstrap {
+    #[serde(deserialize_with = "deserialize_uuid")]
+    pub id: String,
+    #[serde(deserialize_with = "deserialize_uuid")]
+    pub session_id: String,
+    pub runtime_id: String,
+    pub workspace_id: String,
+    pub product_id: String,
+    pub draft_title: String,
+    pub draft_pipeline: String,
+    pub draft_description: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatSessionView {
+    #[serde(default)]
+    pub product_id: Option<String>,
+    #[serde(default)]
+    pub draft_title: Option<String>,
+    #[serde(default)]
+    pub draft_pipeline: Option<String>,
+    #[serde(default)]
+    pub draft_description: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub linked_issue_key: Option<String>,
+    #[serde(default)]
+    pub linked_run_id: Option<String>,
+    #[serde(default)]
+    pub messages: Vec<ChatMessageRow>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatMessageRow {
+    pub role: String,
+    pub content: String,
+}
+
 fn deserialize_uuid<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -257,6 +309,132 @@ impl ServerClient {
             },
         )
     }
+
+    pub fn claim_chat_turn(&self) -> io::Result<Option<ClaimedChatTurn>> {
+        let url = format!(
+            "{}/v1/runtimes/{}/chat-turns/claim",
+            self.base_url, self.runtime_id
+        );
+        ureq_empty_on_not_found(
+            ureq::post(&url)
+                .set("Content-Type", "application/json")
+                .send_string(&format!(r#"{{"runtime_id":"{}"}}"#, self.runtime_id)),
+            |resp| {
+                if !(200..300).contains(&resp.status()) {
+                    return Err(io::Error::other(format!(
+                        "chat turn claim failed: HTTP {}",
+                        resp.status()
+                    )));
+                }
+                resp.into_json()
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+            },
+        )
+    }
+
+    pub fn claim_bootstrap(&self) -> io::Result<Option<ClaimedBootstrap>> {
+        let url = format!(
+            "{}/v1/runtimes/{}/bootstraps/claim",
+            self.base_url, self.runtime_id
+        );
+        ureq_empty_on_not_found(
+            ureq::post(&url)
+                .set("Content-Type", "application/json")
+                .send_string(&format!(r#"{{"runtime_id":"{}"}}"#, self.runtime_id)),
+            |resp| {
+                if !(200..300).contains(&resp.status()) {
+                    return Err(io::Error::other(format!(
+                        "bootstrap claim failed: HTTP {}",
+                        resp.status()
+                    )));
+                }
+                resp.into_json()
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+            },
+        )
+    }
+
+    pub fn get_chat_session(&self, session_id: &str) -> io::Result<Option<ChatSessionView>> {
+        let url = format!("{}/v1/chat/sessions/{session_id}", self.base_url);
+        ureq_empty_on_not_found(ureq::get(&url).call(), |resp| {
+            if !(200..300).contains(&resp.status()) {
+                return Err(io::Error::other(format!(
+                    "get chat session failed: HTTP {}",
+                    resp.status()
+                )));
+            }
+            resp.into_json()
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+        })
+    }
+
+    pub fn complete_chat_turn(&self, params: CompleteChatTurnParams<'_>) -> io::Result<()> {
+        let url = format!(
+            "{}/v1/chat/sessions/{}/turn-complete",
+            self.base_url, params.session_id
+        );
+        let body = serde_json::json!({
+            "runtime_id": self.runtime_id,
+            "turn_id": params.turn_id,
+            "assistant_content": params.assistant_content,
+            "draft_title": params.draft_title,
+            "draft_pipeline": params.draft_pipeline,
+            "draft_description": params.draft_description,
+            "mark_ready": params.mark_ready,
+        });
+        let resp = ureq::post(&url)
+            .set("Content-Type", "application/json")
+            .send_string(&body.to_string())
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        if !(200..300).contains(&resp.status()) {
+            return Err(io::Error::other(format!(
+                "complete chat turn failed: HTTP {}",
+                resp.status()
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn complete_bootstrap(
+        &self,
+        session_id: &str,
+        task_id: &str,
+        issue_key: &str,
+        run_id: &str,
+    ) -> io::Result<()> {
+        let url = format!(
+            "{}/v1/chat/sessions/{session_id}/bootstrap-complete",
+            self.base_url,
+        );
+        let body = serde_json::json!({
+            "runtime_id": self.runtime_id,
+            "task_id": task_id,
+            "issue_key": issue_key,
+            "run_id": run_id,
+        });
+        let resp = ureq::post(&url)
+            .set("Content-Type", "application/json")
+            .send_string(&body.to_string())
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        if !(200..300).contains(&resp.status()) {
+            return Err(io::Error::other(format!(
+                "complete bootstrap failed: HTTP {}",
+                resp.status()
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CompleteChatTurnParams<'a> {
+    pub session_id: &'a str,
+    pub turn_id: &'a str,
+    pub assistant_content: &'a str,
+    pub draft_title: Option<&'a str>,
+    pub draft_pipeline: Option<&'a str>,
+    pub draft_description: Option<&'a str>,
+    pub mark_ready: bool,
 }
 
 pub fn parse_run_id_from_issue_start(stdout: &str) -> Option<String> {
@@ -327,29 +505,59 @@ pub fn execute_issue_close(
     invoker.run(["issue", "close", issue_key, "--format", "json"])
 }
 
+pub fn execute_issue_create(
+    invoker: &PopsicleInvoker,
+    issue_type: &str,
+    title: &str,
+    product: &str,
+    pipeline: &str,
+    description: &str,
+) -> io::Result<PopsicleInvokeResult> {
+    invoker.run([
+        "issue",
+        "create",
+        "--type",
+        issue_type,
+        "--title",
+        title,
+        "--product",
+        product,
+        "--pipeline",
+        pipeline,
+        "--description",
+        description,
+        "--format",
+        "json",
+    ])
+}
+
+pub fn parse_issue_key_from_create(stdout: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(stdout.trim())
+        .ok()
+        .and_then(|v| v.get("key").and_then(|k| k.as_str()).map(str::to_string))
+        .filter(|s| !s.is_empty())
+}
+
 impl ServerClient {
     pub fn run_issue_key(&self, run_id: &str) -> io::Result<Option<String>> {
+        Ok(self
+            .get_run_mirror(run_id)?
+            .and_then(|m| m.issue_key)
+            .filter(|s| !s.is_empty()))
+    }
+
+    pub fn get_run_mirror(&self, run_id: &str) -> io::Result<Option<RunMirrorSummary>> {
         let url = format!("{}/v1/runs/{run_id}", self.base_url);
-        match ureq::get(&url).call() {
-            Ok(resp) => {
-                if !(200..300).contains(&resp.status()) {
-                    return Err(io::Error::other(format!(
-                        "get run failed: HTTP {}",
-                        resp.status()
-                    )));
-                }
-                let mirror: serde_json::Value = resp
-                    .into_json()
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-                Ok(mirror
-                    .get("issue_key")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string)
-                    .filter(|s| !s.is_empty()))
+        ureq_empty_on_not_found(ureq::get(&url).call(), |resp| {
+            if !(200..300).contains(&resp.status()) {
+                return Err(io::Error::other(format!(
+                    "get run failed: HTTP {}",
+                    resp.status()
+                )));
             }
-            Err(ureq::Error::Status(404, _)) => Ok(None),
-            Err(e) => Err(io::Error::other(e.to_string())),
-        }
+            resp.into_json()
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+        })
     }
 
     pub fn post_run_mirror(
@@ -361,7 +569,7 @@ impl ServerClient {
         let mut body: serde_json::Map<String, serde_json::Value> =
             serde_json::from_str(status_json.trim())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        if let Some(key) = issue_key {
+        if let Some(key) = issue_key.filter(|k| !k.is_empty() && *k != "UNKNOWN") {
             body.insert("issue_key".into(), serde_json::Value::String(key.into()));
         }
         let url = format!("{}/v1/runs/{run_id}/mirror", self.base_url);
@@ -408,7 +616,73 @@ pub fn sync_run_mirror(
             status.exit_code
         )));
     }
-    client.post_run_mirror(run_id, issue_key, &status.stdout)
+    let key = resolve_issue_key(issue_key, &status.stdout, client, run_id);
+    client.post_run_mirror(run_id, key.as_deref(), &status.stdout)
+}
+
+fn issue_key_from_status_json(status_json: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(status_json.trim())
+        .ok()
+        .and_then(|v| {
+            v.get("issue_key")
+                .and_then(|x| x.as_str())
+                .map(str::to_string)
+        })
+        .filter(|s| !s.is_empty())
+}
+
+fn resolve_issue_key(
+    explicit: Option<&str>,
+    status_json: &str,
+    client: &ServerClient,
+    run_id: &str,
+) -> Option<String> {
+    if let Some(key) = explicit.filter(|s| !s.is_empty() && *s != "UNKNOWN") {
+        return Some(key.to_string());
+    }
+    if let Some(key) = issue_key_from_status_json(status_json) {
+        return Some(key);
+    }
+    client
+        .run_issue_key(run_id)
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty() && s != "UNKNOWN")
+}
+
+fn resolve_issue_key_for_run(
+    invoker: &PopsicleInvoker,
+    client: &ServerClient,
+    run_id: &str,
+) -> String {
+    if let Ok(status) = execute_pipeline_status(invoker, run_id) {
+        if status.exit_code == 0 {
+            if let Some(key) = resolve_issue_key(None, &status.stdout, client, run_id) {
+                return key;
+            }
+        }
+    }
+    client
+        .run_issue_key(run_id)
+        .ok()
+        .flatten()
+        .filter(|s| !s.is_empty() && s != "UNKNOWN")
+        .unwrap_or_else(|| "UNKNOWN".into())
+}
+
+fn reconcile_run_mirrors(
+    invoker: &PopsicleInvoker,
+    client: &ServerClient,
+    log_path: Option<&Path>,
+) {
+    let Ok(runs) = client.list_run_mirrors() else {
+        return;
+    };
+    for run in runs {
+        if let Err(e) = sync_run_mirror(client, invoker, &run.run_id, run.issue_key.as_deref()) {
+            append_log(log_path, &format!("mirror reconcile {}: {e}", run.run_id));
+        }
+    }
 }
 
 /// Blocking poll loop: heartbeat, claim tasks, subprocess issue start + pipeline next.
@@ -429,7 +703,10 @@ pub fn run_poll_loop(invoker: &PopsicleInvoker, client: &ServerClient, log_path:
     loop {
         if last_heartbeat.elapsed() >= heartbeat_interval {
             match client.heartbeat() {
-                Ok(()) => append_log(log_path, "heartbeat ok"),
+                Ok(()) => {
+                    append_log(log_path, "heartbeat ok");
+                    reconcile_run_mirrors(invoker, client, log_path);
+                }
                 Err(e) => append_log(log_path, &format!("heartbeat error: {e}")),
             }
             last_heartbeat = Instant::now();
@@ -468,90 +745,125 @@ pub fn run_poll_loop(invoker: &PopsicleInvoker, client: &ServerClient, log_path:
                     Err(e) => append_log(log_path, &format!("stage complete error: {e}")),
                 }
             }
-            Ok(None) => match client.claim() {
+            Ok(None) => match client.claim_bootstrap() {
                 Ok(Some(task)) => {
-                    if let Some(ref run_id) = task.run_id {
-                        let msg = format!(
-                            "claimed resume {} issue={} run={}",
-                            task.id, task.issue_key, run_id
+                    append_log(
+                        log_path,
+                        &format!("claimed bootstrap {} session={}", task.id, task.session_id),
+                    );
+                    if let Err(e) =
+                        crate::chat_intake::handle_bootstrap(invoker, client, &task, log_path)
+                    {
+                        append_log(log_path, &format!("bootstrap error: {e}"));
+                    }
+                }
+                Ok(None) => match client.claim_chat_turn() {
+                    Ok(Some(turn)) => {
+                        append_log(
+                            log_path,
+                            &format!("claimed chat turn {} session={}", turn.id, turn.session_id),
                         );
-                        append_log(log_path, &msg);
+                        let log = |msg: &str| append_log(log_path, msg);
                         if let Err(e) =
-                            sync_run_mirror(client, invoker, run_id, Some(task.issue_key.as_str()))
+                            crate::chat_intake::handle_chat_turn(invoker, client, &turn, log)
                         {
-                            append_log(log_path, &format!("mirror sync error: {e}"));
+                            append_log(log_path, &format!("chat turn error: {e}"));
                         }
-                        if orchestrator_enabled() {
-                            run_orchestrator_for_task(
-                                invoker,
-                                client,
-                                run_id,
-                                task.issue_key.as_str(),
-                                log_path,
-                            );
-                        } else {
-                            run_legacy_bootstrap(
-                                invoker,
-                                client,
-                                run_id,
-                                Some(task.issue_key.as_str()),
-                                log_path,
-                            );
-                        }
-                    } else {
-                        let msg = format!(
-                            "claimed task {} issue={} pipeline={}",
-                            task.id, task.issue_key, task.pipeline
-                        );
-                        append_log(log_path, &msg);
-                        match execute_issue_start(invoker, &task.issue_key) {
-                            Ok(result) => {
-                                append_log(
-                                    log_path,
-                                    &format!(
-                                        "issue start exit={} stdout_len={}",
-                                        result.exit_code,
-                                        result.stdout.len()
-                                    ),
+                    }
+                    Ok(None) => match client.claim() {
+                        Ok(Some(task)) => {
+                            if let Some(ref run_id) = task.run_id {
+                                let msg = format!(
+                                    "claimed resume {} issue={} run={}",
+                                    task.id, task.issue_key, run_id
                                 );
-                                if result.exit_code == 0 {
-                                    if let Some(run_id) =
-                                        parse_run_id_from_issue_start(&result.stdout)
-                                    {
-                                        let issue_key = task.issue_key.as_str();
-                                        if let Err(e) = sync_run_mirror(
-                                            client,
-                                            invoker,
-                                            &run_id,
-                                            Some(issue_key),
-                                        ) {
-                                            append_log(
-                                                log_path,
-                                                &format!("mirror sync error: {e}"),
-                                            );
+                                append_log(log_path, &msg);
+                                if let Err(e) = sync_run_mirror(
+                                    client,
+                                    invoker,
+                                    run_id,
+                                    Some(task.issue_key.as_str()),
+                                ) {
+                                    append_log(log_path, &format!("mirror sync error: {e}"));
+                                }
+                                if orchestrator_enabled() {
+                                    run_orchestrator_for_task(
+                                        invoker,
+                                        client,
+                                        run_id,
+                                        task.issue_key.as_str(),
+                                        log_path,
+                                    );
+                                } else {
+                                    run_legacy_bootstrap(
+                                        invoker,
+                                        client,
+                                        run_id,
+                                        Some(task.issue_key.as_str()),
+                                        log_path,
+                                    );
+                                }
+                            } else {
+                                let msg = format!(
+                                    "claimed task {} issue={} pipeline={}",
+                                    task.id, task.issue_key, task.pipeline
+                                );
+                                append_log(log_path, &msg);
+                                match execute_issue_start(invoker, &task.issue_key) {
+                                    Ok(result) => {
+                                        append_log(
+                                            log_path,
+                                            &format!(
+                                                "issue start exit={} stdout_len={}",
+                                                result.exit_code,
+                                                result.stdout.len()
+                                            ),
+                                        );
+                                        if result.exit_code == 0 {
+                                            if let Some(run_id) =
+                                                parse_run_id_from_issue_start(&result.stdout)
+                                            {
+                                                let issue_key = task.issue_key.as_str();
+                                                if let Err(e) = sync_run_mirror(
+                                                    client,
+                                                    invoker,
+                                                    &run_id,
+                                                    Some(issue_key),
+                                                ) {
+                                                    append_log(
+                                                        log_path,
+                                                        &format!("mirror sync error: {e}"),
+                                                    );
+                                                }
+                                                if orchestrator_enabled() {
+                                                    run_orchestrator_for_task(
+                                                        invoker, client, &run_id, issue_key,
+                                                        log_path,
+                                                    );
+                                                } else {
+                                                    run_legacy_bootstrap(
+                                                        invoker,
+                                                        client,
+                                                        &run_id,
+                                                        Some(issue_key),
+                                                        log_path,
+                                                    );
+                                                }
+                                            }
                                         }
-                                        if orchestrator_enabled() {
-                                            run_orchestrator_for_task(
-                                                invoker, client, &run_id, issue_key, log_path,
-                                            );
-                                        } else {
-                                            run_legacy_bootstrap(
-                                                invoker,
-                                                client,
-                                                &run_id,
-                                                Some(issue_key),
-                                                log_path,
-                                            );
-                                        }
+                                    }
+                                    Err(e) => {
+                                        append_log(log_path, &format!("issue start error: {e}"))
                                     }
                                 }
                             }
-                            Err(e) => append_log(log_path, &format!("issue start error: {e}")),
                         }
-                    }
-                }
-                Ok(None) => {}
-                Err(e) => append_log(log_path, &format!("claim error: {e}")),
+                        Ok(None) => {}
+                        Err(e) => append_log(log_path, &format!("claim error: {e}")),
+                    },
+                    Err(e) => append_log(log_path, &format!("chat turn claim error: {e}")),
+                },
+                Err(e) => append_log(log_path, &format!("bootstrap claim error: {e}")),
             },
             Err(e) => append_log(log_path, &format!("confirm claim error: {e}")),
         }
@@ -650,11 +962,7 @@ fn resume_orchestrator_after_confirm(
     run_id: &str,
     log_path: Option<&Path>,
 ) {
-    let issue_key = client
-        .run_issue_key(run_id)
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| "UNKNOWN".into());
+    let issue_key = resolve_issue_key_for_run(invoker, client, run_id);
     if issue_key == "UNKNOWN" {
         append_log(
             log_path,
@@ -664,7 +972,7 @@ fn resume_orchestrator_after_confirm(
     run_orchestrator_for_task(invoker, client, run_id, &issue_key, log_path);
 }
 
-fn append_log(path: Option<&Path>, line: &str) {
+pub(crate) fn append_log(path: Option<&Path>, line: &str) {
     if let Some(path) = path {
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -700,6 +1008,15 @@ mod tests {
         assert_eq!(
             parse_run_id_from_issue_start(stdout),
             Some("00000051-0000-4051-8005-51000000000051".into())
+        );
+    }
+
+    #[test]
+    fn issue_key_from_pipeline_status_json() {
+        let stdout = r#"{"run_id":"run-1","issue_key":"PROJ-93","run_status":"completed"}"#;
+        assert_eq!(
+            issue_key_from_status_json(stdout).as_deref(),
+            Some("PROJ-93")
         );
     }
 }

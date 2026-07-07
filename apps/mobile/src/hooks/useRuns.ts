@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { RunMirror } from "@/api/types";
 import { useConfig } from "@/hooks/useConfig";
+import { sanitizeRunMirror } from "@/utils/run-mirror";
 
 export function useRuns() {
   const { client } = useConfig();
@@ -16,7 +17,7 @@ export function useRuns() {
       setError(null);
       try {
         const list = await client.listRuns();
-        setRuns(list);
+        setRuns(list.map((run) => sanitizeRunMirror(run)));
       } catch (e) {
         setError(String(e));
       } finally {
@@ -40,8 +41,10 @@ export function useRuns() {
     const disconnect = client.connectEvents((event) => {
       if (event.type === "run_updated" && event.mirror) {
         setRuns((prev) => {
-          const next = prev.filter((r) => r.run_id !== event.mirror!.run_id);
-          return [event.mirror!, ...next].sort(
+          const existing = prev.find((r) => r.run_id === event.mirror!.run_id);
+          const merged = sanitizeRunMirror(event.mirror!, existing);
+          const next = prev.filter((r) => r.run_id !== merged.run_id);
+          return [merged, ...next].sort(
             (a, b) => b.updated_at - a.updated_at
           );
         });

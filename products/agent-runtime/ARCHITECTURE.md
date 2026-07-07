@@ -118,6 +118,8 @@ flowchart TB
 | `AGENT_RUNTIME_AUTO_AGENT` | 开 | 设为 `0`/`false`/`off` 跳过 adapter |
 | `AGENT_RUNTIME_AGENT_DRY_RUN` | 关 | `1` 时只记录 prompt 长度，不 spawn cursor-agent |
 | `AGENT_RUNTIME_AGENT_TIMEOUT_SECS` | 600 | 子进程超时 |
+| `AGENT_RUNTIME_AGENT_OUTPUT_FORMAT` | `stream-json` | `text` 回退旧版批量 text 输出 |
+| `AGENT_RUNTIME_AGENT_STREAM_PARTIAL` | 关 | `1` 时启用 `--stream-partial-output`（字符级流，Run 日志会合并缓冲） |
 
 ## P2 API（Run 镜像 / T-AR-0003）
 
@@ -160,6 +162,32 @@ Daemon 可在 Settings **启动 / 停止**，或终端 `popsicle daemon start --
 | Run 详情 · 批准 | `POST /v1/runs/{id}/approve` | T-AR-0004 |
 
 真机须填开发机局域网 IP（非 `127.0.0.1`）。`agent-server` 启用 CORS（Expo Web 调试）。安装见 `apps/mobile/README.md`。
+
+## P9 Intake Chat（spec PROJ-94 / PDR-002 / T-AR-0007–0008）
+
+Issue 之前的 **需求澄清** 阶段：Mobile Chat ↔ Server 会话存储 ↔ Daemon `cursor-agent` 多轮回复；用户确认 draft 后 **bootstrap** 在本机 `issue create` + `issue start` + orchestrator。
+
+**真相源**：Chat 在 Server（`chat_sessions` / `chat_messages`）；Issue/run 仍在本机 `state.db`（bootstrap 后单向 mirror）。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/v1/chat/sessions` | 新建 Intake 会话 |
+| GET | `/v1/chat/sessions/{id}` | 会话 + messages + draft |
+| POST | `/v1/chat/sessions/{id}/messages` | 用户消息 → 入队 `chat_turn` |
+| POST | `/v1/chat/sessions/{id}/bootstrap` | 确认草案 → 入队 `bootstrap` |
+| POST | `/v1/runtimes/{id}/chat-turns/claim` | Daemon 认领 chat turn（TBD 与 dispatch claim 并列）|
+| POST | `/v1/runtimes/{id}/bootstraps/claim` | Daemon 认领 bootstrap |
+
+WS 事件（增量）：`chat_message`、`chat_draft_updated`、`session_bootstrapped`。
+
+| 组件变更 | 路径 |
+|---|---|
+| Server schema | `deploy/agent-runtime/schema.sql` — `chat_*` |
+| Server handlers | `crates/agent-server/` |
+| Daemon handlers | `crates/agent-daemon/` — chat_turn + bootstrap |
+| Mobile UI | `apps/mobile/app/(tabs)/intake.tsx`（TBD）|
+
+`Decision-Ref: PDR-002` · 实现跟踪 **feature-delivery**（PROJ-94 后续 run 或新 Issue）。
 
 ## Open Questions
 

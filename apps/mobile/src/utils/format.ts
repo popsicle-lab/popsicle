@@ -21,7 +21,8 @@ export function stageStatusLabel(status: string): string {
   return STAGE_STATUS_ZH[status] ?? status;
 }
 
-export function formatRelativeTime(epochMs: number): string {
+export function formatRelativeTime(epoch: number): string {
+  const epochMs = normalizeEpochMs(epoch);
   const diff = Date.now() - epochMs;
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return "刚刚";
@@ -46,4 +47,35 @@ export function shortWorkspace(path: string): string {
   const parts = path.split("/").filter(Boolean);
   if (parts.length <= 2) return path;
   return `…/${parts.slice(-2).join("/")}`;
+}
+
+/** Server `updated_at` is unix seconds; run log `ts` is milliseconds. */
+export function normalizeEpochMs(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return Date.now();
+  return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
+export function isValidIssueKey(key?: string | null): key is string {
+  if (!key) return false;
+  const trimmed = key.trim();
+  return trimmed.length > 0 && trimmed !== "UNKNOWN";
+}
+
+export function displayRunTitle(run: {
+  issue_key?: string | null;
+  run_id: string;
+}): string {
+  if (isValidIssueKey(run.issue_key)) return run.issue_key;
+  return truncateMiddle(run.run_id, 10, 8);
+}
+
+export function displayRunSubtitle(run: {
+  issue_key?: string | null;
+  run_id: string;
+  pipeline: string;
+}): string {
+  const issuePart = isValidIssueKey(run.issue_key)
+    ? run.issue_key
+    : `Run ${truncateMiddle(run.run_id, 8, 6)}`;
+  return `${issuePart} · ${run.pipeline}`;
 }

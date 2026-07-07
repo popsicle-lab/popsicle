@@ -36,7 +36,12 @@ pub struct RunMirrorStore {
 }
 
 impl RunMirrorStore {
-    pub fn upsert_from_status(&mut self, run_id: &str, upsert: RunMirrorUpsert) -> RunMirror {
+    pub fn upsert_from_status(&mut self, run_id: &str, mut upsert: RunMirrorUpsert) -> RunMirror {
+        if upsert.issue_key.is_none() {
+            if let Some(existing) = self.runs.get(run_id) {
+                upsert.issue_key = existing.issue_key.clone();
+            }
+        }
         let mirror = build_mirror(run_id, upsert);
         self.runs.insert(run_id.to_string(), mirror.clone());
         mirror
@@ -96,9 +101,10 @@ pub fn build_mirror(run_id: &str, upsert: RunMirrorUpsert) -> RunMirror {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let issue_key = upsert.issue_key.filter(|k| !k.is_empty() && k != "UNKNOWN");
     RunMirror {
         run_id: run_id.to_string(),
-        issue_key: upsert.issue_key,
+        issue_key,
         pipeline,
         run_status,
         current_stage,
@@ -132,6 +138,33 @@ mod tests {
         assert_eq!(mirror.stages.len(), 2);
         assert_eq!(mirror.current_stage, "implement");
         assert_eq!(mirror.issue_key.as_deref(), Some("PROJ-84"));
+    }
+
+    #[test]
+    fn upsert_preserves_issue_key_when_absent() {
+        let mut store = RunMirrorStore::default();
+        let mut status = serde_json::Map::new();
+        status.insert("pipeline".into(), "feature-delivery".into());
+        status.insert("run_status".into(), "in_progress".into());
+        status.insert("current_stage".into(), "implement".into());
+        status.insert("total_stages".into(), "1".into());
+        status.insert("stage_0_name".into(), "implement".into());
+        status.insert("stage_0_status".into(), "in_progress".into());
+        store.upsert_from_status(
+            "run-1",
+            RunMirrorUpsert {
+                issue_key: Some("PROJ-93".into()),
+                status: status.clone(),
+            },
+        );
+        let updated = store.upsert_from_status(
+            "run-1",
+            RunMirrorUpsert {
+                issue_key: None,
+                status,
+            },
+        );
+        assert_eq!(updated.issue_key.as_deref(), Some("PROJ-93"));
     }
 
     #[test]

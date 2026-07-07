@@ -2,14 +2,20 @@
 //!
 //! Resolves the agent CLI even when GUI apps lack shell PATH (macOS Tauri):
 //! checks `~/.local/bin/cursor-agent`, then falls back to `cursor agent …`.
+//!
+//! Default output: `--output-format stream-json` with per-event run-log lines.
+//! Set `AGENT_RUNTIME_AGENT_OUTPUT_FORMAT=text` to restore legacy batch text mode.
 
-use std::io;
+use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 use crate::pipeline_skill::skill_from_status_json;
 use crate::prompt::load_skill_prompt;
+use crate::stream_json::{format_stream_event, stream_partial_enabled};
 use crate::PopsicleInvoker;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 600;
@@ -73,12 +79,21 @@ impl CursorAgentTool {
     }
 
     fn spawn_prompt(&self, workspace: &Path, prompt: &str) -> io::Result<std::process::Child> {
-        self.command()
-            .arg("-p")
-            .arg("--output-format")
-            .arg("text")
-            .arg(prompt)
+        let mut cmd = self.command();
+        cmd.arg("-p").arg("--trust");
+        if agent_output_format() == AgentOutputFormat::Text {
+            cmd.arg("--output-format").arg("text");
+        } else {
+            cmd.arg("--output-format").arg("stream-json");
+            if stream_partial_enabled() {
+                cmd.arg("--stream-partial-output");
+            }
+        }
+        cmd.arg(prompt)
             .current_dir(workspace)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
     }
 
@@ -94,6 +109,22 @@ impl CursorAgentTool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AgentOutputFormat {
+    StreamJson,
+    Text,
+}
+
+fn agent_output_format() -> AgentOutputFormat {
+    match std::env::var("AGENT_RUNTIME_AGENT_OUTPUT_FORMAT")
+        .ok()
+        .as_deref()
+    {
+        Some("text") => AgentOutputFormat::Text,
+        _ => AgentOutputFormat::StreamJson,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CursorAgentAdapter {
     tool: CursorAgentTool,
@@ -105,6 +136,14 @@ impl CursorAgentAdapter {
         let tool = CursorAgentTool::detect()?;
         let workspace = std::env::current_dir().ok()?;
         Some(Self { tool, workspace })
+    }
+
+    pub fn for_workspace(workspace: impl Into<PathBuf>) -> Option<Self> {
+        let tool = CursorAgentTool::detect()?;
+        Some(Self {
+            tool,
+            workspace: workspace.into(),
+        })
     }
 
     pub fn new(binary: impl Into<PathBuf>, workspace: impl Into<PathBuf>) -> Self {
@@ -122,7 +161,16 @@ impl CursorAgentAdapter {
     }
 
     pub fn invoke_prompt(&self, prompt: &str) -> io::Result<AgentInvokeResult> {
+        self.invoke_prompt_with_log(prompt, |_| {})
+    }
+
+    pub fn invoke_prompt_with_log(
+        &self,
+        prompt: &str,
+        mut log: impl FnMut(&str),
+    ) -> io::Result<AgentInvokeResult> {
         if dry_run_enabled() {
+            log("[dry-run] cursor-agent prompt skipped");
             return Ok(AgentInvokeResult {
                 exit_code: 0,
                 stdout: format!("[dry-run] cursor-agent prompt len={}", prompt.len()),
@@ -137,14 +185,10 @@ impl CursorAgentAdapter {
                 .unwrap_or(DEFAULT_TIMEOUT_SECS),
         );
         let child = self.tool.spawn_prompt(&self.workspace, prompt)?;
-        let output = wait_timeout::wait_timeout(child, timeout)?
-            .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "cursor-agent timed out"))?;
-        Ok(AgentInvokeResult {
-            exit_code: output.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            dry_run: false,
-        })
+        if agent_output_format() == AgentOutputFormat::Text {
+            return invoke_text_batch(child, timeout, &mut log);
+        }
+        invoke_stream_json(child, timeout, &mut log)
     }
 
     pub fn maybe_run_for_run(
@@ -168,6 +212,159 @@ impl CursorAgentAdapter {
         let prompt = load_skill_prompt(invoker.workspace(), &skill, run_id)?;
         self.invoke_prompt(&prompt).map(Some)
     }
+}
+
+fn invoke_text_batch(
+    child: std::process::Child,
+    timeout: Duration,
+    log: &mut impl FnMut(&str),
+) -> io::Result<AgentInvokeResult> {
+    let output = wait_timeout::wait_timeout(child, timeout)?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "cursor-agent timed out"))?;
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    log(&format!("cursor-agent: exit={exit_code} dry_run=false"));
+    for line in stdout.lines().take(120) {
+        let t = line.trim();
+        if !t.is_empty() {
+            log(&format!("› {t}"));
+        }
+    }
+    for line in stderr.lines().take(60) {
+        let t = line.trim();
+        if !t.is_empty() {
+            log(&format!("✗ {t}"));
+        }
+    }
+    Ok(AgentInvokeResult {
+        exit_code,
+        stdout,
+        stderr,
+        dry_run: false,
+    })
+}
+
+fn invoke_stream_json(
+    mut child: std::process::Child,
+    timeout: Duration,
+    log: &mut impl FnMut(&str),
+) -> io::Result<AgentInvokeResult> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("cursor-agent stdout pipe missing"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("cursor-agent stderr pipe missing"))?;
+
+    let (stdout_tx, stdout_rx) = mpsc::channel::<io::Result<String>>();
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            if stdout_tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let (stderr_tx, stderr_rx) = mpsc::channel::<io::Result<String>>();
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            if stderr_tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut stdout_acc = String::new();
+    let mut stderr_acc = String::new();
+    let mut partial_buf = String::new();
+    let start = std::time::Instant::now();
+
+    log("cursor-agent: stream-json started");
+
+    loop {
+        while let Ok(Ok(line)) = stdout_rx.try_recv() {
+            stdout_acc.push_str(&line);
+            stdout_acc.push('\n');
+            if let Some(msg) = format_stream_event(&line) {
+                if stream_partial_enabled() && msg.starts_with('›') {
+                    partial_buf.push_str(msg.trim_start_matches('›').trim_start());
+                    if partial_buf.contains('\n') || partial_buf.chars().count() >= 240 {
+                        flush_partial_buffer(log, &mut partial_buf);
+                    }
+                } else {
+                    flush_partial_buffer(log, &mut partial_buf);
+                    log(&msg);
+                }
+            }
+        }
+        while let Ok(Ok(line)) = stderr_rx.try_recv() {
+            stderr_acc.push_str(&line);
+            stderr_acc.push('\n');
+            let t = line.trim();
+            if !t.is_empty() {
+                log(&format!("✗ {t}"));
+            }
+        }
+
+        match child.try_wait()? {
+            Some(status) => {
+                flush_partial_buffer(log, &mut partial_buf);
+                // Drain remaining pipe lines.
+                while let Ok(Ok(line)) = stdout_rx.try_recv() {
+                    stdout_acc.push_str(&line);
+                    stdout_acc.push('\n');
+                    if let Some(msg) = format_stream_event(&line) {
+                        log(&msg);
+                    }
+                }
+                while let Ok(Ok(line)) = stderr_rx.try_recv() {
+                    stderr_acc.push_str(&line);
+                    stderr_acc.push('\n');
+                    let t = line.trim();
+                    if !t.is_empty() {
+                        log(&format!("✗ {t}"));
+                    }
+                }
+                let exit_code = status.code().unwrap_or(-1);
+                log(&format!("cursor-agent: exit={exit_code} dry_run=false"));
+                return Ok(AgentInvokeResult {
+                    exit_code,
+                    stdout: stdout_acc,
+                    stderr: stderr_acc,
+                    dry_run: false,
+                });
+            }
+            None if start.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "cursor-agent timed out",
+                ));
+            }
+            None => thread::sleep(Duration::from_millis(50)),
+        }
+    }
+}
+
+fn flush_partial_buffer(log: &mut impl FnMut(&str), buf: &mut String) {
+    let t = buf.trim();
+    if t.is_empty() {
+        buf.clear();
+        return;
+    }
+    let line = if t.chars().count() > 500 {
+        format!("› {}…", t.chars().take(500).collect::<String>())
+    } else {
+        format!("› {t}")
+    };
+    log(&line);
+    buf.clear();
 }
 
 pub fn auto_agent_enabled() -> bool {
@@ -336,9 +533,13 @@ mod tests {
     fn dry_run_skips_subprocess() {
         std::env::set_var("AGENT_RUNTIME_AGENT_DRY_RUN", "1");
         let adapter = CursorAgentAdapter::new("cursor-agent", "/tmp");
-        let result = adapter.invoke_prompt("hello").expect("invoke");
+        let mut lines = Vec::new();
+        let result = adapter
+            .invoke_prompt_with_log("hello", |l| lines.push(l.to_string()))
+            .expect("invoke");
         assert!(result.dry_run);
         assert!(result.stdout.contains("dry-run"));
+        assert!(lines.iter().any(|l| l.contains("dry-run")));
         std::env::remove_var("AGENT_RUNTIME_AGENT_DRY_RUN");
     }
 
@@ -346,6 +547,19 @@ mod tests {
     fn auto_agent_defaults_on() {
         std::env::remove_var("AGENT_RUNTIME_AUTO_AGENT");
         assert!(auto_agent_enabled());
+    }
+
+    #[test]
+    fn default_output_format_is_stream_json() {
+        std::env::remove_var("AGENT_RUNTIME_AGENT_OUTPUT_FORMAT");
+        assert_eq!(agent_output_format(), AgentOutputFormat::StreamJson);
+    }
+
+    #[test]
+    fn text_output_format_env() {
+        std::env::set_var("AGENT_RUNTIME_AGENT_OUTPUT_FORMAT", "text");
+        assert_eq!(agent_output_format(), AgentOutputFormat::Text);
+        std::env::remove_var("AGENT_RUNTIME_AGENT_OUTPUT_FORMAT");
     }
 
     #[test]

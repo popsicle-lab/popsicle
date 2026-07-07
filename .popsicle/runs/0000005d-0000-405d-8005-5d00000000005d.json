@@ -1,7 +1,7 @@
 {
   "pipeline_name": "feature-delivery",
   "run_id": "0000005d-0000-405d-8005-5d00000000005d",
-  "run_status": "in_progress",
+  "run_status": "completed",
   "current_stage_index": 2,
   "total_stages": 3,
   "stages": [
@@ -19,7 +19,7 @@
     },
     {
       "name": "doc-sync",
-      "status": "in_progress",
+      "status": "completed",
       "requires_approval": false,
       "approved_at": 0
     }

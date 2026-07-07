@@ -78,6 +78,7 @@ pub fn run(project: Option<String>) {
             runtime_commands::agent_runtime_server_status,
             runtime_commands::dispatch_issue_remote,
             runtime_commands::list_remote_runs,
+            runtime_commands::get_remote_run_mirror,
         ])
         .setup(move |app| {
             app.manage(watcher::ProjectWatcher::new());

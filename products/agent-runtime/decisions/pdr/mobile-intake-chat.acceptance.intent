@@ -1,0 +1,71 @@
+// Seed: mobile-intake-chat (PROJ-94 / PDR-002)
+// Merge target: products/agent-runtime/intents/acceptance.intent
+// Status: seed — intent-spec-writer 收紧
+
+enum ChatTurnState { Rejected, Queued }
+
+type ChatTurnRequest {
+  runtimeOnline: Bool
+}
+
+type ChatTurnResult {
+  accepted: Bool
+  state: ChatTurnState
+}
+
+type BootstrapRequest {
+  runtimeOnline: Bool
+  draftReady: Bool
+}
+
+type BootstrapResult {
+  accepted: Bool
+  issueCreated: Bool
+  runStarted: Bool
+}
+
+// ---- Block 5 ----
+// task:          T-AR-0007
+// pdr:           PDR-002
+// journey_stage: onboarding
+// query_anchors:
+//   - "手机上怎么一句话澄清需求？"
+@tobe
+intent ChatTurnQueuedWhenRuntimeOnline(req: ChatTurnRequest, r: ChatTurnResult) {
+  require req.runtimeOnline
+  ensure r.accepted'
+  ensure r.accepted' == true
+  ensure r.state' == Queued
+}
+
+// ---- Block 6 ----
+// task:          T-AR-0007
+// pdr:           PDR-002
+// journey_stage: onboarding
+// query_anchors:
+//   - "Runtime 离线时 Chat 会怎样？"
+@tobe
+intent ChatTurnRejectedWhenRuntimeOffline(req: ChatTurnRequest, r: ChatTurnResult) {
+  require !req.runtimeOnline
+  ensure r.accepted'
+  ensure r.accepted' == false
+  ensure r.state' == Rejected
+}
+
+// ---- Block 7 ----
+// task:          T-AR-0008
+// pdr:           PDR-002
+// journey_stage: daily-ops
+// query_anchors:
+//   - "Chat 聊完怎么自动建 Issue？"
+@tobe
+intent BootstrapCreatesIssueAndRun(req: BootstrapRequest, r: BootstrapResult) {
+  require req.runtimeOnline
+  require req.draftReady
+  ensure r.accepted'
+  ensure r.accepted' == true
+  ensure r.issueCreated'
+  ensure r.issueCreated' == true
+  ensure r.runStarted'
+  ensure r.runStarted' == true
+}

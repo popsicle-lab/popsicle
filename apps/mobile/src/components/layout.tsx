@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { forwardRef } from "react";
 import { Platform } from "react-native";
 import {
   ActivityIndicator,
@@ -351,39 +352,30 @@ export function WarningBanner({ children }: { children: string }) {
   );
 }
 
-export function FormInput({
-  value,
-  defaultValue,
-  onChangeText,
-  placeholder,
-  autoCapitalize,
-  autoCorrect,
-}: {
-  value?: string;
-  defaultValue?: string;
-  onChangeText?: (text: string) => void;
-  placeholder?: string;
-  autoCapitalize?: "none" | "sentences" | "words" | "characters";
-  autoCorrect?: boolean;
-}) {
+type FormInputProps = ComponentProps<typeof TextInput>;
+
+export const FormInput = forwardRef<TextInput, FormInputProps>(function FormInput(
+  { placeholder, placeholderTextColor, style, ...rest },
+  ref
+) {
   return (
     <TextInput
-      value={value}
-      defaultValue={defaultValue}
-      onChangeText={onChangeText}
+      ref={ref}
       placeholder={placeholder}
-      placeholderTextColor={colors.tertiaryLabel as string}
-      autoCapitalize={autoCapitalize}
-      autoCorrect={autoCorrect}
-      style={{
-        ...typography.body,
-        color: colors.label as string,
-        paddingVertical: spacing.sm,
-        minHeight: 36,
-      }}
+      placeholderTextColor={placeholderTextColor ?? (colors.tertiaryLabel as string)}
+      style={[
+        {
+          ...typography.body,
+          color: colors.label as string,
+          paddingVertical: spacing.sm,
+          minHeight: 36,
+        },
+        style,
+      ]}
+      {...rest}
     />
   );
-}
+});
 
 export function Chip({
   label,

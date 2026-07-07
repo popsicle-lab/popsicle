@@ -1,7 +1,8 @@
 import type { RunLogEntry } from "@/api/types";
 
 export function formatLogTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString("zh-CN", {
+  const epochMs = ts < 1_000_000_000_000 ? ts * 1000 : ts;
+  return new Date(epochMs).toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",

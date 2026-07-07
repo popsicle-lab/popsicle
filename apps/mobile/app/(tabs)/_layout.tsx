@@ -10,6 +10,7 @@ const iosTabBarStyle = Platform.OS === "ios";
 export default function TabsLayout() {
   return (
     <Tabs
+      initialRouteName="intake"
       screenOptions={{
         headerShown: true,
         headerShadowVisible: false,
@@ -42,14 +43,14 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="intake"
         options={{
-          title: "进度",
-          tabBarLabel: "进度",
-          headerTitle: "Pipeline",
+          title: "需求",
+          tabBarLabel: "需求",
+          headerTitle: "需求",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name="list.bullet.rectangle"
+              name="bubble.left.and.bubble.right.fill"
               color={color as string}
               focused={focused}
             />
@@ -65,6 +66,21 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
               name="paperplane.fill"
+              color={color as string}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: "进度",
+          tabBarLabel: "进度",
+          headerTitle: "进度",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name="list.bullet.rectangle"
               color={color as string}
               focused={focused}
             />

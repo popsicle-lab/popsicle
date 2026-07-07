@@ -9,6 +9,10 @@ pub use postgres::PostgresStorage;
 use std::sync::Arc;
 
 use crate::approval::ConfirmTask;
+use crate::chat::{
+    BootstrapTask, ChatSession, ChatSessionView, ChatTurnTask, CompleteBootstrapRequest,
+    CompleteChatTurnRequest, CreateChatSessionRequest,
+};
 use crate::run_log::RunLogEntry;
 use crate::run_mirror::{RunMirror, RunMirrorUpsert};
 use crate::runtime::RuntimeState;
@@ -200,6 +204,123 @@ impl Backend {
         match self {
             Self::Memory(m) => Ok(m.logs.lock().unwrap().list(run_id, limit)),
             Self::Postgres(pg) => Ok(pg.list_run_logs(run_id, limit).await?),
+        }
+    }
+
+    pub async fn create_chat_session(
+        &self,
+        req: CreateChatSessionRequest,
+    ) -> Result<ChatSession, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .create_session(req)),
+            Self::Postgres(pg) => Ok(pg.create_chat_session(req).await?),
+        }
+    }
+
+    pub async fn get_chat_session(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<ChatSessionView>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .get_session_view(session_id)),
+            Self::Postgres(pg) => Ok(pg.get_chat_session(session_id).await?),
+        }
+    }
+
+    pub async fn post_chat_user_message(
+        &self,
+        session_id: Uuid,
+        content: &str,
+    ) -> Result<Option<(crate::ChatMessage, ChatTurnTask)>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .post_user_message(session_id, content)),
+            Self::Postgres(pg) => Ok(pg.post_chat_user_message(session_id, content).await?),
+        }
+    }
+
+    pub async fn claim_chat_turn(
+        &self,
+        runtime_id: &str,
+    ) -> Result<Option<ChatTurnTask>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .claim_chat_turn(runtime_id)),
+            Self::Postgres(pg) => Ok(pg.claim_chat_turn(runtime_id).await?),
+        }
+    }
+
+    pub async fn complete_chat_turn(
+        &self,
+        session_id: Uuid,
+        req: CompleteChatTurnRequest,
+    ) -> Result<Option<ChatSessionView>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .complete_chat_turn(req)
+                .filter(|v| v.session.id == session_id)),
+            Self::Postgres(pg) => Ok(pg.complete_chat_turn(session_id, req).await?),
+        }
+    }
+
+    pub async fn queue_bootstrap(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<BootstrapTask>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .queue_bootstrap(session_id)),
+            Self::Postgres(pg) => Ok(pg.queue_bootstrap(session_id).await?),
+        }
+    }
+
+    pub async fn claim_bootstrap(
+        &self,
+        runtime_id: &str,
+    ) -> Result<Option<BootstrapTask>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .claim_bootstrap(runtime_id)),
+            Self::Postgres(pg) => Ok(pg.claim_bootstrap(runtime_id).await?),
+        }
+    }
+
+    pub async fn complete_bootstrap(
+        &self,
+        session_id: Uuid,
+        req: CompleteBootstrapRequest,
+    ) -> Result<Option<ChatSessionView>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .complete_bootstrap(req)
+                .filter(|v| v.session.id == session_id)),
+            Self::Postgres(pg) => Ok(pg.complete_bootstrap(session_id, req).await?),
         }
     }
 }

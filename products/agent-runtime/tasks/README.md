@@ -10,6 +10,7 @@
 |---|---|---|---|
 | [T-AR-0001 安装并启动 Daemon](onboarding/T-AR-0001-install-daemon.md) | Runtime 怎么 online？ | admin | 2026-07-06 |
 | [T-AR-0002 首次手机派活](onboarding/T-AR-0002-first-mobile-dispatch.md) | 怎么第一次派活？ | new-user | 2026-07-06 |
+| [T-AR-0007 手机需求 Chat](onboarding/T-AR-0007-mobile-intake-chat.md) | 怎么一句话澄清需求？ | new-user | 2026-07-07 |
 
 ## daily-ops/
 
@@ -17,6 +18,7 @@
 |---|---|---|---|
 | [T-AR-0003 查看 pipeline 进度](daily-ops/T-AR-0003-view-run-progress.md) | 进度在哪看？ | end-user | 2026-07-06 |
 | [T-AR-0004 手机批准 stage](daily-ops/T-AR-0004-mobile-stage-approval.md) | 怎么点批准？ | admin | 2026-07-06 |
+| [T-AR-0008 Chat bootstrap 立项](daily-ops/T-AR-0008-bootstrap-issue-from-chat.md) | Chat 后怎么建 Issue？ | end-user | 2026-07-07 |
 
 ## troubleshooting/
 
@@ -34,8 +36,8 @@
 
 | 旅程阶段 | Task 数 | 平均行数 | 上次更新最久的 task | 未引用的 task |
 |---|---|---|---|---|
-| onboarding | 2 | —— | —— | —— |
-| daily-ops | 2 | —— | —— | —— |
+| onboarding | 3 | —— | —— | —— |
+| daily-ops | 3 | —— | —— | —— |
 | troubleshooting | 1 | —— | —— | —— |
 | admin | 1 | —— | —— | —— |
 | lifecycle | 0 | —— | —— | —— |

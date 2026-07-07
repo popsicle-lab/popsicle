@@ -181,14 +181,18 @@ fn run_stage_work(
                  - Run `popsicle doc check {doc_id} --format json` until passed=true.\n\
                  - Do not run `pipeline stage complete` — the daemon completes the stage.\n"
             ));
-            match adapter.invoke_prompt(&prompt) {
-                Ok(result) => log_agent_output(
-                    log,
-                    &result.stdout,
-                    &result.stderr,
-                    result.exit_code,
-                    result.dry_run,
-                ),
+            match adapter.invoke_prompt_with_log(&prompt, |line| log(line)) {
+                Ok(result) => {
+                    if result.exit_code != 0
+                        && result.stderr.trim().is_empty()
+                        && result.stdout.is_empty()
+                    {
+                        log(&format!(
+                            "orchestrator: cursor-agent failed exit={}",
+                            result.exit_code
+                        ));
+                    }
+                }
                 Err(e) => log(&format!("orchestrator: cursor-agent error: {e}")),
             }
         }
@@ -236,28 +240,6 @@ fn extract_next_field(stdout: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(stdout.trim())
         .ok()
         .and_then(|v| v.get("next").and_then(|n| n.as_str()).map(str::to_string))
-}
-
-fn log_agent_output(
-    log: &impl Fn(&str),
-    stdout: &str,
-    stderr: &str,
-    exit_code: i32,
-    dry_run: bool,
-) {
-    log(&format!("cursor-agent: exit={exit_code} dry_run={dry_run}"));
-    for line in stdout.lines().take(120) {
-        let t = line.trim();
-        if !t.is_empty() {
-            log(&format!("› {t}"));
-        }
-    }
-    for line in stderr.lines().take(60) {
-        let t = line.trim();
-        if !t.is_empty() {
-            log(&format!("✗ {t}"));
-        }
-    }
 }
 
 #[cfg(test)]

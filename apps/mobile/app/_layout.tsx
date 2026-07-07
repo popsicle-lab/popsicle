@@ -25,12 +25,19 @@ export default function RootLayout() {
           },
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+            title: "进度",
+          }}
+        />
         <Stack.Screen
           name="run/[id]"
           options={{
             title: "Run 详情",
             presentation: "card",
+            headerBackTitle: "进度",
           }}
         />
       </Stack>

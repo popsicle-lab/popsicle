@@ -24,7 +24,7 @@ import { useRuntimeStatus } from "@/hooks/useRuntimeStatus";
 import { useRuns } from "@/hooks/useRuns";
 import { colors, type Tone } from "@/theme/colors";
 import { spacing } from "@/theme/tokens";
-import { formatRelativeTime, runStatusLabel } from "@/utils/format";
+import { formatRelativeTime, runStatusLabel, displayRunTitle } from "@/utils/format";
 import { hapticLight } from "@/utils/haptics";
 
 function runTone(status: string): Tone {
@@ -134,7 +134,7 @@ export default function RunsScreen() {
                 label="去派活"
                 onPress={() => {
                   hapticLight();
-                  router.push("/dispatch");
+                  router.push("/(tabs)/dispatch");
                 }}
               />
             }
@@ -146,10 +146,13 @@ export default function RunsScreen() {
           footer="点按查看阶段进度、Agent 输出与远程批准。"
         >
           {runs.map((run, index) => {
-            const title = run.issue_key ?? run.run_id;
-            const stageHint = run.current_stage
-              ? `阶段 · ${run.current_stage}`
-              : "等待启动";
+            const title = displayRunTitle(run);
+            const stageHint =
+              run.run_status === "completed"
+                ? "已完成"
+                : run.current_stage
+                  ? `阶段 · ${run.current_stage}`
+                  : "等待启动";
             const canResume = run.run_status === "in_progress";
             const subtitle = `${run.pipeline} · ${stageHint} · ${formatRelativeTime(run.updated_at)}${canResume ? " · 可恢复" : ""}`;
 

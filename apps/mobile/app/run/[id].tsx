@@ -27,7 +27,8 @@ import { useConfig } from "@/hooks/useConfig";
 import { useRunLogs } from "@/hooks/useRunLogs";
 import { colors, type Tone } from "@/theme/colors";
 import { spacing, typography } from "@/theme/tokens";
-import { runStatusLabel } from "@/utils/format";
+import { runStatusLabel, displayRunTitle } from "@/utils/format";
+import { sanitizeRunMirror } from "@/utils/run-mirror";
 import { resumeReasonLabel } from "@/utils/resume";
 import {
   hapticError,
@@ -56,7 +57,7 @@ export default function RunDetailScreen() {
       setError(null);
       try {
         const mirror = await client.getRun(id);
-        setRun(mirror);
+        setRun((prev) => sanitizeRunMirror(mirror, prev ?? undefined));
       } catch (e) {
         setError(String(e));
       } finally {
@@ -80,20 +81,21 @@ export default function RunDetailScreen() {
   useEffect(() => {
     const disconnect = client.connectEvents((event) => {
       if (event.type === "run_updated" && event.mirror?.run_id === id) {
-        setRun(event.mirror);
+        setRun((prev) => sanitizeRunMirror(event.mirror!, prev ?? undefined));
       }
     });
     return disconnect;
   }, [client, id]);
 
   useEffect(() => {
-    if (run?.issue_key) {
-      navigation.setOptions({ title: run.issue_key });
+    if (run) {
+      navigation.setOptions({ title: displayRunTitle(run) });
     }
-  }, [run?.issue_key, navigation]);
+  }, [run, navigation]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      headerBackTitle: "进度",
       headerRight: () => (
         <Pressable
           onPress={refresh}
@@ -218,7 +220,12 @@ export default function RunDetailScreen() {
 
       <GroupedSection title="阶段进度">
         <View style={{ padding: spacing.lg }}>
-          <StageTimeline stages={run.stages} currentStage={run.current_stage} />
+          <StageTimeline
+            stages={run.stages}
+            currentStage={
+              run.run_status === "completed" ? "" : run.current_stage
+            }
+          />
         </View>
       </GroupedSection>
 

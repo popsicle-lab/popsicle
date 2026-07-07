@@ -1,5 +1,8 @@
 import type {
   ApproveResult,
+  BootstrapResult,
+  ChatSession,
+  ChatTurnResult,
   DispatchRequest,
   DispatchResult,
   HealthResponse,
@@ -10,6 +13,7 @@ import type {
   RuntimeEvent,
   RuntimeStatusResponse,
 } from "./types";
+import { sanitizeRunMirror } from "@/utils/run-mirror";
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");
@@ -48,12 +52,13 @@ export class AgentRuntimeClient {
 
   async listRuns(): Promise<RunMirror[]> {
     const resp = await fetch(`${this.base()}/v1/runs`);
-    return parseJson(resp);
+    const list = await parseJson<RunMirror[]>(resp);
+    return list.map((run) => sanitizeRunMirror(run));
   }
 
   async getRun(runId: string): Promise<RunMirror> {
     const resp = await fetch(`${this.base()}/v1/runs/${encodeURIComponent(runId)}`);
-    return parseJson(resp);
+    return sanitizeRunMirror(await parseJson<RunMirror>(resp));
   }
 
   async dispatch(body: Omit<DispatchRequest, "runtime_id" | "workspace_id"> & Partial<Pick<DispatchRequest, "runtime_id" | "workspace_id">>): Promise<DispatchResult> {
@@ -125,5 +130,48 @@ export class AgentRuntimeClient {
       }
     };
     return () => ws.close();
+  }
+
+  async createChatSession(productId?: string): Promise<ChatSession> {
+    const resp = await fetch(`${this.base()}/v1/chat/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspace_id: this.cfg.workspaceId,
+        runtime_id: this.cfg.runtimeId,
+        product_id: productId ?? "agent-runtime",
+      }),
+    });
+    return parseJson(resp);
+  }
+
+  async getChatSession(sessionId: string): Promise<ChatSession> {
+    const resp = await fetch(
+      `${this.base()}/v1/chat/sessions/${encodeURIComponent(sessionId)}`
+    );
+    return parseJson(resp);
+  }
+
+  async postChatMessage(
+    sessionId: string,
+    content: string
+  ): Promise<ChatTurnResult> {
+    const resp = await fetch(
+      `${this.base()}/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "user", content }),
+      }
+    );
+    return parseJson(resp);
+  }
+
+  async bootstrapChatSession(sessionId: string): Promise<BootstrapResult> {
+    const resp = await fetch(
+      `${this.base()}/v1/chat/sessions/${encodeURIComponent(sessionId)}/bootstrap`,
+      { method: "POST", headers: { "Content-Type": "application/json" } }
+    );
+    return parseJson(resp);
   }
 }

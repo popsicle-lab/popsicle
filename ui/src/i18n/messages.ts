@@ -247,6 +247,7 @@ export type Messages = {
     dispatchRejected: string;
     dispatchHint: string;
     localStartHint: string;
+    syncMismatch: string;
   };
 };
 
@@ -498,6 +499,7 @@ const zhCN: Messages = {
     dispatchRejected: "派活被拒绝",
     dispatchHint: "通过 agent-server 派给本机 Daemon；勿与本机「Start pipeline」同时使用",
     localStartHint: "本机直接启动",
+    syncMismatch: "本地与远程状态不一致",
   },
 };
 
@@ -752,6 +754,7 @@ const en: Messages = {
     dispatchRejected: "Dispatch rejected",
     dispatchHint: "Sends to agent-server for local Daemon; do not use with local Start pipeline",
     localStartHint: "Start locally",
+    syncMismatch: "Local and remote status differ",
   },
 };
 

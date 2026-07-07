@@ -2186,6 +2186,9 @@ impl crate::CliDomain for WorkspaceDomain {
             ),
             ("total_stages".into(), snap.total_stages.to_string()),
         ]);
+        if let Some(key) = self.store.issue_key_for_run(run_id) {
+            fields.insert("issue_key".into(), key);
+        }
         for (idx, stage) in snap.stages.iter().enumerate() {
             if let Some(name) = stage.get("name") {
                 fields.insert(format!("stage_{idx}_name"), name.clone());

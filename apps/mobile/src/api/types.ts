@@ -67,9 +67,50 @@ export interface RunLogEntry {
 export interface RuntimeEvent {
   type: string;
   run_id?: string;
+  session_id?: string;
   mirror?: RunMirror;
   stage?: string;
   entry?: RunLogEntry;
+  session?: ChatSession;
+  issue_key?: string;
+}
+
+export type ChatSessionStatus = "active" | "ready" | "bootstrapped" | "abandoned";
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: string;
+  content: string;
+  ts: number;
+}
+
+export interface ChatSession {
+  id: string;
+  workspace_id: string;
+  runtime_id: string;
+  product_id?: string | null;
+  status: ChatSessionStatus;
+  draft_title?: string | null;
+  draft_pipeline?: string | null;
+  draft_description?: string | null;
+  linked_issue_key?: string | null;
+  linked_run_id?: string | null;
+  updated_at: number;
+  messages?: ChatMessage[];
+}
+
+export interface ChatTurnResult {
+  accepted: boolean;
+  state: "queued" | "rejected";
+  reason?: string | null;
+  message?: ChatMessage | null;
+}
+
+export interface BootstrapResult {
+  accepted: boolean;
+  state: "queued" | "rejected";
+  reason?: string | null;
 }
 
 export interface MobileConfig {

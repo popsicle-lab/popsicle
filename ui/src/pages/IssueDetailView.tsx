@@ -5,6 +5,8 @@ import {
   dispatchIssueRemote,
   getIssue,
   getIssueGuidance,
+  getPipelineStatus,
+  getRemoteRunMirror,
   listDocsForRun,
   startIssue,
   useRefresh,
@@ -42,6 +44,7 @@ export function IssueDetailView({
   const [dispatchMsg, setDispatchMsg] = useState<string | null>(null);
   const [runtimeOnline, setRuntimeOnline] = useState(false);
   const [serverConfigured, setServerConfigured] = useState(false);
+  const [syncHint, setSyncHint] = useState<string | null>(null);
 
   const load = useCallback(() => {
     getIssue(issueKey)
@@ -78,6 +81,35 @@ export function IssueDetailView({
         setRuntimeOnline(false);
       });
   }, [issueKey]);
+
+  useEffect(() => {
+    const latestRunId = issue?.run_ids.at(-1);
+    if (!latestRunId || !serverConfigured) {
+      setSyncHint(null);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      getPipelineStatus(latestRunId).catch(() => null),
+      getRemoteRunMirror(latestRunId).catch(() => null),
+    ]).then(([local, remote]) => {
+      if (cancelled || !local || !remote) {
+        if (!cancelled) setSyncHint(null);
+        return;
+      }
+      const mismatch =
+        local.run_status !== remote.run_status ||
+        local.current_stage !== remote.current_stage;
+      setSyncHint(
+        mismatch
+          ? `${ar.syncMismatch}：远程 ${remote.run_status}/${remote.current_stage} · 本地 ${local.run_status}/${local.current_stage}`
+          : null
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [issue?.run_ids, serverConfigured, ar.syncMismatch]);
 
   const handleStart = async () => {
     setStarting(true);
@@ -217,6 +249,15 @@ export function IssueDetailView({
             </div>
           )}
         </div>
+
+        {syncHint && (
+          <div className="rounded-[10px] border border-[var(--accent-orange)]/30 bg-[var(--accent-orange)]/10 px-3.5 py-2.5 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+            {syncHint}
+            <span className="mt-1 block text-[11px] text-[var(--text-muted)]">
+              Daemon 心跳时会自动 reconcile 镜像；若仍不一致，确认 Daemon 在线并重启一次。
+            </span>
+          </div>
+        )}
 
         {issue.description && (
           <div className="card p-3.5 text-[13px] leading-relaxed whitespace-pre-wrap text-[var(--text-secondary)]">

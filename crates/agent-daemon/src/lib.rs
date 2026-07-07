@@ -3,12 +3,14 @@
 //! Daemon subprocess-invokes the workspace `popsicle` binary; it does not embed
 //! skill-runtime pipeline logic.
 
+mod chat_intake;
 mod cursor_agent;
 mod orchestrator;
 mod orchestrator_parse;
 mod pipeline_skill;
 mod prompt;
 mod server_client;
+mod stream_json;
 
 pub use cursor_agent::{
     auto_agent_enabled, cursor_agent_display_label, detect_cursor_agent_binary,

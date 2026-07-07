@@ -8,6 +8,10 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::approval::ConfirmTask;
+use crate::chat::{
+    BootstrapTask, ChatMessage, ChatSession, ChatSessionView, ChatStore, ChatTurnTask,
+    CompleteBootstrapRequest, CompleteChatTurnRequest, CreateChatSessionRequest,
+};
 use crate::run_log::{RunLogEntry, MAX_LINES_PER_RUN};
 use crate::run_mirror::{RunMirror, RunMirrorUpsert, StageMirror};
 use crate::runtime::RuntimeState;
@@ -20,6 +24,8 @@ const DEFAULT_HEARTBEAT_TTL_SECS: u64 = 30;
 pub struct PostgresStorage {
     pool: PgPool,
     heartbeat_ttl: Duration,
+    /// Chat intake (PDR-002): process-local until PG chat tables are wired.
+    chat: std::sync::Arc<std::sync::Mutex<ChatStore>>,
 }
 
 impl PostgresStorage {
@@ -43,6 +49,7 @@ impl PostgresStorage {
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(DEFAULT_HEARTBEAT_TTL_SECS),
             ),
+            chat: std::sync::Arc::new(std::sync::Mutex::new(ChatStore::default())),
         })
     }
 
@@ -275,7 +282,7 @@ impl PostgresStorage {
             INSERT INTO run_mirrors (run_id, issue_key, pipeline, run_status, current_stage, stages, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (run_id) DO UPDATE SET
-                issue_key = EXCLUDED.issue_key,
+                issue_key = COALESCE(EXCLUDED.issue_key, run_mirrors.issue_key),
                 pipeline = EXCLUDED.pipeline,
                 run_status = EXCLUDED.run_status,
                 current_stage = EXCLUDED.current_stage,
@@ -382,6 +389,99 @@ impl PostgresStorage {
         rows.reverse();
         Ok(rows.into_iter().map(Into::into).collect())
     }
+
+    pub async fn create_chat_session(
+        &self,
+        req: CreateChatSessionRequest,
+    ) -> Result<ChatSession, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .create_session(req))
+    }
+
+    pub async fn get_chat_session(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<ChatSessionView>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .get_session_view(session_id))
+    }
+
+    pub async fn post_chat_user_message(
+        &self,
+        session_id: Uuid,
+        content: &str,
+    ) -> Result<Option<(ChatMessage, ChatTurnTask)>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .post_user_message(session_id, content))
+    }
+
+    pub async fn claim_chat_turn(
+        &self,
+        runtime_id: &str,
+    ) -> Result<Option<ChatTurnTask>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .claim_chat_turn(runtime_id))
+    }
+
+    pub async fn complete_chat_turn(
+        &self,
+        session_id: Uuid,
+        req: CompleteChatTurnRequest,
+    ) -> Result<Option<ChatSessionView>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .complete_chat_turn(req)
+            .filter(|v| v.session.id == session_id))
+    }
+
+    pub async fn queue_bootstrap(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<BootstrapTask>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .queue_bootstrap(session_id))
+    }
+
+    pub async fn claim_bootstrap(
+        &self,
+        runtime_id: &str,
+    ) -> Result<Option<BootstrapTask>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .claim_bootstrap(runtime_id))
+    }
+
+    pub async fn complete_bootstrap(
+        &self,
+        session_id: Uuid,
+        req: CompleteBootstrapRequest,
+    ) -> Result<Option<ChatSessionView>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .complete_bootstrap(req)
+            .filter(|v| v.session.id == session_id))
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -466,9 +566,10 @@ impl From<RunLogRow> for RunLogEntry {
 impl From<RunMirrorRow> for RunMirror {
     fn from(row: RunMirrorRow) -> Self {
         let stages: Vec<StageMirror> = serde_json::from_value(row.stages).unwrap_or_default();
+        let issue_key = row.issue_key.filter(|k| !k.is_empty() && k != "UNKNOWN");
         Self {
             run_id: row.run_id,
-            issue_key: row.issue_key,
+            issue_key,
             pipeline: row.pipeline,
             run_status: row.run_status,
             current_stage: row.current_stage,
