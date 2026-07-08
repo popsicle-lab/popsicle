@@ -1,0 +1,15 @@
+{
+  "pipeline_name": "doc-sync-weekly",
+  "run_id": "00000060-0000-4060-8006-60000000000060",
+  "run_status": "completed",
+  "current_stage_index": 0,
+  "total_stages": 1,
+  "stages": [
+    {
+      "name": "health-sync",
+      "status": "completed",
+      "requires_approval": false,
+      "approved_at": 0
+    }
+  ]
+}

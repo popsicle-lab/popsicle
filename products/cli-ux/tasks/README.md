@@ -1,7 +1,7 @@
 # cli-ux — Tasks 索引
 
-> **Status**: 19/19 task 已实现（含 T-CU-0018 feature-arch-spec / ADR-030）；Roadmap P1–P6 + issue_tasks 已交付（PROJ-42/43 / ADR-022/023）
-> **Last-Updated**: 2026-06-26
+> **Status**: 6/6 task 已实现；健康度统计由 living-doc-author 在重跑时刷新
+> **Last-Updated**: 2026-07-08
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
 
@@ -60,3 +60,15 @@ task 文件命名：`<旅程阶段>/<动词-名词-短语>.md`（小写连字符
 - 由 prd-writer 在产出 PRD 五件套时铺；不在 bootstrap 期间手工添加
 - 已存在的 task 进入 in-progress / done / blocked 由 `migration/progress.md` 同步追踪
 - retro 增量（如 PROJ-42）可先记在 README Roadmap + 本表，正式 task 化走 prd-writer
+
+## 健康度统计
+
+> 由 living-doc-author 在重跑时刷新（doc-sync-weekly · PROJ-96 · 2026-07-08）。
+
+| 旅程阶段 | Task 数 | 平均行数 | 上次更新最久的 task | 未引用的 task |
+|---|---|---|---|---|
+| onboarding | 6 | 47 | T-CU-0001（29 天前）| 无 |
+| daily-ops | 7 | 49 | T-CU-0002–0004（29 天前）| 无 |
+| troubleshooting | 1 | 46 | T-CU-0005（29 天前）| 无 |
+| admin | 1 | 46 | T-CU-0006（29 天前）| 无 |
+| lifecycle | 3 | 42 | T-CU-0007（28 天前）| 无 |

@@ -1,7 +1,7 @@
 # skill-runtime — Tasks 索引
 
 > **Status**: prd-writer 首次填（PDR-002）— 健康度统计由 living-doc-author 在重跑时刷新
-> **Last-Generated**: 2026-06-09（living-doc-author · implementation-status）
+> **Last-Generated**: 2026-07-08（living-doc-author · doc-sync-weekly）
 > **Source PDR**: [`../decisions/pdr/PDR-002-skill-runtime-tasks-mvp.md`](../decisions/pdr/PDR-002-skill-runtime-tasks-mvp.md)
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
@@ -47,15 +47,15 @@
 
 ## 健康度统计
 
-> 由 living-doc-author 在重跑时刷新。本统计是「文档腐烂预警」的核心信号。**2026-06-08 living-doc-author 刷新**：行数/日期取自 task 文件实测；未引用列基于反向引用扫描。
+> 由 living-doc-author 在重跑时刷新。本统计是「文档腐烂预警」的核心信号。**2026-07-08 living-doc-author 刷新**（doc-sync-weekly · PROJ-96）：行数/日期取自 task 文件实测；未引用列基于反向引用扫描。
 
 | 旅程阶段 | Task 数 | 平均行数 | 上次更新最久的 task | 未引用的 task |
 |---|---|---|---|---|
-| onboarding | 1 | 124 | T-0001（0 天前）| 无 |
-| daily-ops | 2 | 117 | T-0002 / T-0003（0 天前）| 无 |
-| troubleshooting | 1 | 112 | T-0004（0 天前）| 无 |
-| admin | 1 | 116 | T-0005（0 天前）| 无 |
-| lifecycle | 1 | 109 | T-0006（0 天前）| 无 |
+| onboarding | 1 | 88 | T-0001（30 天前）| 无 |
+| daily-ops | 2 | 81 | T-0002 / T-0003（30 天前）| 无 |
+| troubleshooting | 1 | 78 | T-0004（30 天前）| 无 |
+| admin | 1 | 81 | T-0005（30 天前）| 无 |
+| lifecycle | 1 | 78 | T-0006（30 天前）| 无 |
 
 > **last_verified 回填（intent-check Z3 verified）**：T-0001 / T-0004 / T-0006 已回填 `last_verified: 2026-06-08`。
 > T-0002 暂不回填——其第二条 related_intent `#stage-transitions-forward-only` 为 orphan（未形式化），待人工解决后再认证。

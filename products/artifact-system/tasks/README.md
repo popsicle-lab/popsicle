@@ -1,7 +1,7 @@
 # artifact-system — Tasks 索引
 
 > **Status**: 全 6 task 已实现（ADR-006 cutover-done）；intent 锚点经 living-doc-author 对账，6/6 related_intents Z3 verified
-> **Last-Updated**: 2026-06-09
+> **Last-Updated**: 2026-07-08
 
 5 个固定旅程阶段。**缺一不可，也不允许第 6 个**（intent-coder/skills/prd-writer/references/task-organization.md）。
 
@@ -33,3 +33,15 @@ task 文件命名：`<旅程阶段>/<动词-名词-短语>.md`（小写连字符
 
 - 由 prd-writer 在产出 PRD 五件套时铺；不在 bootstrap 期间手工添加
 - 已存在的 task 进入 in-progress / done / blocked 由 `migration/progress.md` 同步追踪
+
+## 健康度统计
+
+> 由 living-doc-author 在重跑时刷新（doc-sync-weekly · PROJ-96 · 2026-07-08）。
+
+| 旅程阶段 | Task 数 | 平均行数 | 上次更新最久的 task | 未引用的 task |
+|---|---|---|---|---|
+| onboarding | 1 | 58 | T-AS-0001（29 天前）| 无 |
+| daily-ops | 3 | 58 | T-AS-0002–0004（29 天前）| 无 |
+| troubleshooting | 1 | 58 | T-AS-0005（29 天前）| 无 |
+| admin | 0 | — | — | — |
+| lifecycle | 1 | 58 | T-AS-0006（29 天前）| 无 |

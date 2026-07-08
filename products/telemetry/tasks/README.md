@@ -1,6 +1,6 @@
 # Tasks — telemetry
 
-> **Product**: telemetry | **PDR**: PDR-001/002 | **Last-Updated**: 2026-06-26
+> **Product**: telemetry | **PDR**: PDR-001/002 | **Last-Updated**: 2026-07-08
 > **Status**: 4/4 task 已实现（PROJ-67–75 MVP）
 
 | 旅程阶段 | 任务数 | 已实施 | 健康度 |
@@ -27,3 +27,15 @@
 - [Onboarding](onboarding/) — （待补充）
 - [Troubleshooting](troubleshooting/) — （待补充）
 - [Lifecycle](lifecycle/) — （待补充）
+
+## 健康度统计
+
+> 由 living-doc-author 在重跑时刷新（doc-sync-weekly · PROJ-96 · 2026-07-08）。
+
+| 旅程阶段 | Task 数 | 平均行数 | 上次更新最久的 task | 未引用的 task |
+|---|---|---|---|---|
+| admin | 1 | 45 | T-TEL-0001（12 天前）| 无 |
+| daily-ops | 3 | 51 | T-TEL-0003（12 天前）| 无 |
+| onboarding | 0 | — | — | — |
+| troubleshooting | 0 | — | — | — |
+| lifecycle | 0 | — | — | — |
