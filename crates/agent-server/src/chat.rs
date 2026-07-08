@@ -147,6 +147,16 @@ pub struct CompleteBootstrapRequest {
     pub run_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateChatDraftRequest {
+    #[serde(default)]
+    pub draft_title: Option<String>,
+    #[serde(default)]
+    pub draft_pipeline: Option<String>,
+    #[serde(default)]
+    pub draft_description: Option<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct ChatStore {
     sessions: HashMap<Uuid, ChatSession>,
@@ -308,6 +318,45 @@ impl ChatStore {
         Some(task.clone())
     }
 
+    pub fn update_draft(
+        &mut self,
+        session_id: Uuid,
+        req: UpdateChatDraftRequest,
+    ) -> Option<ChatSessionView> {
+        let session = self.sessions.get_mut(&session_id)?;
+        if session.status == ChatSessionStatus::Bootstrapped {
+            return None;
+        }
+        if let Some(t) = req
+            .draft_title
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            session.draft_title = Some(t);
+        }
+        if let Some(p) = req
+            .draft_pipeline
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            session.draft_pipeline = Some(p);
+        }
+        if let Some(d) = req
+            .draft_description
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            session.draft_description = Some(d);
+        }
+        session.status = if session.draft_title.is_some() && session.draft_pipeline.is_some() {
+            ChatSessionStatus::Ready
+        } else {
+            ChatSessionStatus::Active
+        };
+        session.updated_at = now_secs();
+        self.get_session_view(session_id)
+    }
+
     pub fn complete_bootstrap(&mut self, req: CompleteBootstrapRequest) -> Option<ChatSessionView> {
         let session_id = {
             let task = self.bootstraps.get_mut(&req.task_id)?;
@@ -400,6 +449,29 @@ pub async fn post_message(
         reason: None,
         message: Some(message),
     }))
+}
+
+pub async fn update_draft(
+    State(state): State<AppState>,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<UpdateChatDraftRequest>,
+) -> Result<Json<ChatSessionView>, StatusCode> {
+    if req.draft_title.is_none() && req.draft_pipeline.is_none() && req.draft_description.is_none()
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let view = state
+        .backend
+        .update_chat_draft(session_id, req)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::CONFLICT)?;
+    state.publish_event(serde_json::json!({
+        "type": "chat_draft_updated",
+        "session_id": session_id,
+        "session": view.session,
+    }));
+    Ok(Json(view))
 }
 
 pub async fn bootstrap_session(
@@ -523,6 +595,45 @@ pub async fn complete_bootstrap(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_draft_sets_pipeline_and_ready_status() {
+        let mut store = ChatStore::default();
+        let session = store.create_session(CreateChatSessionRequest {
+            workspace_id: "ws".into(),
+            runtime_id: "rt".into(),
+            product_id: Some("agent-runtime".into()),
+        });
+        let (_msg, turn) = store
+            .post_user_message(session.id, "修复 mobile UI")
+            .expect("message");
+        store
+            .complete_chat_turn(CompleteChatTurnRequest {
+                runtime_id: "rt".into(),
+                turn_id: turn.id,
+                assistant_content: "请补充复现步骤。".into(),
+                draft_title: Some("Mobile 修复".into()),
+                draft_pipeline: None,
+                draft_description: None,
+                mark_ready: false,
+            })
+            .expect("complete");
+        let view = store
+            .update_draft(
+                session.id,
+                UpdateChatDraftRequest {
+                    draft_title: None,
+                    draft_pipeline: Some("fix-regression".into()),
+                    draft_description: None,
+                },
+            )
+            .expect("update");
+        assert_eq!(
+            view.session.draft_pipeline.as_deref(),
+            Some("fix-regression")
+        );
+        assert_eq!(view.session.status, ChatSessionStatus::Ready);
+    }
 
     #[test]
     fn chat_turn_flow_memory_store() {

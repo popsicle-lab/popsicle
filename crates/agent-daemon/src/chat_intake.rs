@@ -11,7 +11,8 @@ use crate::server_client::{
     ServerClient,
 };
 use crate::stream_json::{
-    collect_assistant_prose, merge_assistant_log_lines, strip_assistant_log_marker,
+    collect_assistant_prose, collect_result_prose, merge_assistant_log_lines,
+    strip_assistant_log_marker,
 };
 use crate::PopsicleInvoker;
 
@@ -237,7 +238,7 @@ fn parse_agent_reply(
         from_stream
     };
     if looks_like_stream_json_dump(&raw_assistant) && !from_log.is_empty() {
-        raw_assistant = from_log;
+        raw_assistant = from_log.clone();
     }
     let (assistant, inline_draft) = extract_draft_from_assistant(&raw_assistant);
     if draft_title.is_none() {
@@ -247,7 +248,37 @@ fn parse_agent_reply(
             draft_description = Some(description);
         }
     }
-    let assistant = assistant.trim().to_string();
+    let mut assistant = assistant.trim().to_string();
+    if assistant.is_empty() {
+        let from_result = collect_result_prose(stdout);
+        if !from_result.is_empty() {
+            let (body, draft) = extract_draft_from_assistant(&from_result);
+            assistant = body.trim().to_string();
+            if draft_title.is_none() {
+                if let Some((title, pipeline, description)) = draft {
+                    draft_title = Some(title);
+                    draft_pipeline = Some(pipeline);
+                    draft_description = Some(description);
+                }
+            }
+        }
+    }
+    if assistant.is_empty() && !from_log.is_empty() {
+        assistant = from_log.trim().to_string();
+        let (body, draft) = extract_draft_from_assistant(&assistant);
+        assistant = body.trim().to_string();
+        if draft_title.is_none() {
+            if let Some((title, pipeline, description)) = draft {
+                draft_title = Some(title);
+                draft_pipeline = Some(pipeline);
+                draft_description = Some(description);
+            }
+        }
+    }
+    if assistant.is_empty() {
+        assistant =
+            "Agent 已完成处理，但未能从 stream-json 提取可读回复。请查看日志或重试。".into();
+    }
     Ok((assistant, draft_title, draft_pipeline, draft_description))
 }
 
@@ -444,6 +475,18 @@ mod tests {
         assert!(assistant.contains("草案如下"));
         assert_eq!(title.as_deref(), Some("修复 Chat"));
         assert_eq!(pipeline.as_deref(), Some("fix-regression"));
+    }
+
+    #[test]
+    fn parse_agent_reply_falls_back_to_result_payload() {
+        let stdout = r#"{"type":"tool_call","subtype":"started","tool_call":{"readToolCall":{"args":{"path":"README.md"}}}}
+{"type":"result","subtype":"success","duration_ms":1200,"is_error":false,"result":"你好，我是立项助手。"}
+"#;
+        let (assistant, title, pipeline, _) =
+            parse_agent_reply(stdout, &[], "fallback").expect("parse");
+        assert_eq!(assistant, "你好，我是立项助手。");
+        assert!(title.is_none());
+        assert!(pipeline.is_none());
     }
 
     #[test]

@@ -128,7 +128,7 @@ export default function RunsScreen() {
           <EmptyState
             symbol="tray.full"
             title="暂无 Pipeline Run"
-            message="在「派活」页提交 Issue，或等待本机 Daemon 同步已有任务。"
+            message="在「需求」页确认立项，或在「派活」页提交已有 Issue；本机 Daemon 同步后出现在此列表。"
             action={
               <SecondaryButton
                 label="去派活"

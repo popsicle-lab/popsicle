@@ -63,6 +63,7 @@ echo
 echo "agent-runtime is up."
 echo "  API:  http://127.0.0.1:${AGENT_RUNTIME_PORT:-8787}"
 echo "  PG:   postgres://agent:agent@127.0.0.1:${AGENT_RUNTIME_PG_PORT:-5433}/agent_runtime"
+echo "  workspace mount: \${AGENT_RUNTIME_WORKSPACE:-../../} -> /workspace (GET /v1/workflows)"
 if [[ "$configure_mirrors" != 1 ]]; then
   echo "  tip: first pull slow? run ./configure-podman-mirrors.sh once (or ./up.sh --configure-mirrors)"
 fi

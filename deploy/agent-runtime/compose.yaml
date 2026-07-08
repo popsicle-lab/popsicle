@@ -5,6 +5,7 @@
 # Env (host):
 #   AGENT_RUNTIME_PORT=8787       agent-server HTTP
 #   AGENT_RUNTIME_PG_PORT=5433    PostgreSQL（避免与本机 5432 冲突）
+#   AGENT_RUNTIME_WORKSPACE=      挂载到容器 /workspace 的本机仓库路径（默认 ../../ 即 monorepo 根）
 services:
   postgres:
     image: docker.io/library/postgres:16-alpine
@@ -36,6 +37,10 @@ services:
     environment:
       AGENT_RUNTIME_PORT: "8787"
       AGENT_RUNTIME_DATABASE_URL: "postgres://agent:agent@postgres:5432/agent_runtime"
+      # Mobile 传入的本机 workspace 路径在容器内不可见；挂载后由此根目录扫描 pipeline。
+      AGENT_RUNTIME_WORKSPACE_ROOT: /workspace
+    volumes:
+      - "${AGENT_RUNTIME_WORKSPACE:-../../}:/workspace:ro"
     depends_on:
       postgres:
         condition: service_healthy

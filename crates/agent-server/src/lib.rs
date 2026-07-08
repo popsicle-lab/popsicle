@@ -8,6 +8,7 @@ mod run_log;
 mod run_mirror;
 mod runtime;
 mod storage;
+mod workflows;
 mod ws;
 
 pub use approval::{ApproveRequest, ApproveResult, ConfirmTask, ConfirmTaskStore};
@@ -24,7 +25,7 @@ pub use storage::{Backend, StorageKind};
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post, put};
+use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -259,11 +260,16 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/v1/runs/{run_id}/resume", post(resume_run))
         .route("/v1/runs/{run_id}/approve", post(approve_run))
+        .route("/v1/workflows", get(workflows::list_workflows))
         .route("/v1/chat/sessions", post(chat::create_session))
         .route("/v1/chat/sessions/{session_id}", get(chat::get_session))
         .route(
             "/v1/chat/sessions/{session_id}/messages",
             post(chat::post_message),
+        )
+        .route(
+            "/v1/chat/sessions/{session_id}/draft",
+            patch(chat::update_draft),
         )
         .route(
             "/v1/chat/sessions/{session_id}/bootstrap",

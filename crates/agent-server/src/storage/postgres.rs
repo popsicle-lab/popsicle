@@ -11,6 +11,7 @@ use crate::approval::ConfirmTask;
 use crate::chat::{
     BootstrapTask, ChatMessage, ChatSession, ChatSessionView, ChatStore, ChatTurnTask,
     CompleteBootstrapRequest, CompleteChatTurnRequest, CreateChatSessionRequest,
+    UpdateChatDraftRequest,
 };
 use crate::run_log::{RunLogEntry, MAX_LINES_PER_RUN};
 use crate::run_mirror::{RunMirror, RunMirrorUpsert, StageMirror};
@@ -481,6 +482,18 @@ impl PostgresStorage {
             .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
             .complete_bootstrap(req)
             .filter(|v| v.session.id == session_id))
+    }
+
+    pub async fn update_chat_draft(
+        &self,
+        session_id: Uuid,
+        req: UpdateChatDraftRequest,
+    ) -> Result<Option<ChatSessionView>, sqlx::Error> {
+        Ok(self
+            .chat
+            .lock()
+            .map_err(|_| sqlx::Error::Protocol("chat lock poisoned".into()))?
+            .update_draft(session_id, req))
     }
 }
 

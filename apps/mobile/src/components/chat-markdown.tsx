@@ -123,6 +123,25 @@ function textAlignForColumn(align: ("left" | "center" | "right" | null)[] | null
   return "left" as const;
 }
 
+function cellLayoutStyle(colCount: number, colIndex: number, scrollable: boolean): ViewStyle {
+  if (scrollable) {
+    return {
+      width: 112,
+      flexShrink: 0,
+    };
+  }
+  if (colCount === 2) {
+    return {
+      flex: colIndex === 0 ? 2 : 3,
+      minWidth: 0,
+    };
+  }
+  return {
+    flex: 1,
+    minWidth: 0,
+  };
+}
+
 function renderTableCell(
   cell: Tokens.TableCell,
   theme: MarkdownTheme,
@@ -133,26 +152,28 @@ function renderTableCell(
     isHeader: boolean;
     align: ("left" | "center" | "right" | null)[] | null;
     isLastRow: boolean;
+    scrollable: boolean;
   }
 ) {
-  const { colIndex, colCount, isHeader, align, isLastRow } = options;
+  const { colIndex, colCount, isHeader, align, isLastRow, scrollable } = options;
   const textAlign = textAlignForColumn(align, colIndex);
+  const content = renderInlineChildren(cell.tokens, theme) ?? cell.text.trim();
 
   return (
     <View
       key={key}
-      style={{
-        minWidth: 88,
-        maxWidth: 200,
-        flexShrink: 0,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        borderRightWidth: colIndex < colCount - 1 ? StyleSheet.hairlineWidth : 0,
-        borderRightColor: theme.tableBorder,
-        borderBottomWidth: isLastRow ? 0 : StyleSheet.hairlineWidth,
-        borderBottomColor: theme.tableBorder,
-        backgroundColor: isHeader ? theme.tableHeaderBg : undefined,
-      }}
+      style={[
+        cellLayoutStyle(colCount, colIndex, scrollable),
+        {
+          paddingHorizontal: 8,
+          paddingVertical: 6,
+          borderRightWidth: colIndex < colCount - 1 ? StyleSheet.hairlineWidth : 0,
+          borderRightColor: theme.tableBorder,
+          borderBottomWidth: isLastRow ? 0 : StyleSheet.hairlineWidth,
+          borderBottomColor: theme.tableBorder,
+          backgroundColor: isHeader ? theme.tableHeaderBg : undefined,
+        },
+      ]}
     >
       <Text
         style={[
@@ -161,7 +182,7 @@ function renderTableCell(
         ]}
         selectable
       >
-        {renderInlineChildren(cell.tokens, theme) ?? cell.text}
+        {content || " "}
       </Text>
     </View>
   );
@@ -169,44 +190,63 @@ function renderTableCell(
 
 function renderTable(token: Tokens.Table, theme: MarkdownTheme, key: string): ReactNode {
   const colCount = token.header.length;
+  const scrollable = colCount > 3;
+
+  const tableBody = (
+    <View
+      style={{
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.tableBorder,
+        borderRadius: 8,
+        overflow: "hidden",
+        width: scrollable ? undefined : "100%",
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+        {token.header.map((cell, colIndex) =>
+          renderTableCell(cell, theme, `${key}-h-${colIndex}`, {
+            colIndex,
+            colCount,
+            isHeader: true,
+            align: token.align,
+            isLastRow: false,
+            scrollable,
+          })
+        )}
+      </View>
+      {token.rows.map((row, rowIndex) => (
+        <View
+          key={`${key}-r-${rowIndex}`}
+          style={{ flexDirection: "row", alignItems: "flex-start" }}
+        >
+          {row.map((cell, colIndex) =>
+            renderTableCell(cell, theme, `${key}-r-${rowIndex}-c-${colIndex}`, {
+              colIndex,
+              colCount,
+              isHeader: false,
+              align: token.align,
+              isLastRow: rowIndex === token.rows.length - 1,
+              scrollable,
+            })
+          )}
+        </View>
+      ))}
+    </View>
+  );
 
   return (
-    <View key={key} style={{ marginVertical: 8 }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator>
-        <View
-          style={{
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: theme.tableBorder,
-            borderRadius: 8,
-            overflow: "hidden",
-          }}
+    <View key={key} style={{ marginVertical: 6, alignSelf: "stretch" }}>
+      {scrollable ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          contentContainerStyle={{ flexGrow: 0 }}
         >
-          <View style={{ flexDirection: "row" }}>
-            {token.header.map((cell, colIndex) =>
-              renderTableCell(cell, theme, `${key}-h-${colIndex}`, {
-                colIndex,
-                colCount,
-                isHeader: true,
-                align: token.align,
-                isLastRow: false,
-              })
-            )}
-          </View>
-          {token.rows.map((row, rowIndex) => (
-            <View key={`${key}-r-${rowIndex}`} style={{ flexDirection: "row" }}>
-              {row.map((cell, colIndex) =>
-                renderTableCell(cell, theme, `${key}-r-${rowIndex}-c-${colIndex}`, {
-                  colIndex,
-                  colCount,
-                  isHeader: false,
-                  align: token.align,
-                  isLastRow: rowIndex === token.rows.length - 1,
-                })
-              )}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
+          {tableBody}
+        </ScrollView>
+      ) : (
+        tableBody
+      )}
     </View>
   );
 }
@@ -400,5 +440,5 @@ export function ChatMarkdown({
 
   if (!blocks.length) return null;
 
-  return <View>{renderBlocks(blocks, theme)}</View>;
+  return <View style={{ alignSelf: "stretch", width: "100%" }}>{renderBlocks(blocks, theme)}</View>;
 }

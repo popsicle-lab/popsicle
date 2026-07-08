@@ -113,6 +113,22 @@ export interface BootstrapResult {
   reason?: string | null;
 }
 
+export interface UpdateChatDraftRequest {
+  draft_title?: string;
+  draft_pipeline?: string;
+  draft_description?: string;
+}
+
+export interface WorkflowPipeline {
+  name: string;
+  description: string;
+}
+
+export interface WorkflowsResponse {
+  workspace_id: string;
+  pipelines: WorkflowPipeline[];
+}
+
 export interface MobileConfig {
   serverUrl: string;
   runtimeId: string;

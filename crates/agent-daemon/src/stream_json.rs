@@ -93,6 +93,33 @@ pub fn collect_assistant_prose(stdout: &str) -> String {
     merge_assistant_snapshots(&chunks)
 }
 
+/// Final `result` payload from stream-json (fallback when assistant events are empty).
+pub fn collect_result_prose(stdout: &str) -> String {
+    let mut last = String::new();
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(trimmed) else {
+            continue;
+        };
+        if v.get("type").and_then(|t| t.as_str()) != Some("result") {
+            continue;
+        }
+        if v.get("is_error").and_then(|e| e.as_bool()) == Some(true) {
+            continue;
+        }
+        if let Some(text) = v.get("result").and_then(|r| r.as_str()) {
+            let t = text.trim();
+            if !t.is_empty() {
+                last = t.to_string();
+            }
+        }
+    }
+    last
+}
+
 /// Strip the `›` prefix from a formatted run-log line.
 pub fn strip_assistant_log_marker(line: &str) -> Option<&str> {
     let trimmed = line.trim();
@@ -282,6 +309,14 @@ mod tests {
             merge_assistant_log_lines(&lines),
             "你好，欢迎。\n\n这里是澄清阶段。"
         );
+    }
+
+    #[test]
+    fn collect_result_prose_reads_last_success_result() {
+        let stdout = r#"{"type":"result","subtype":"success","duration_ms":10,"is_error":false,"result":"partial"}
+{"type":"result","subtype":"success","duration_ms":20,"is_error":false,"result":"完整回复"}
+"#;
+        assert_eq!(collect_result_prose(stdout), "完整回复");
     }
 
     #[test]

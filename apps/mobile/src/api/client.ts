@@ -12,6 +12,8 @@ import type {
   RunMirror,
   RuntimeEvent,
   RuntimeStatusResponse,
+  UpdateChatDraftRequest,
+  WorkflowsResponse,
 } from "./types";
 import { sanitizeRunMirror } from "@/utils/run-mirror";
 
@@ -172,6 +174,27 @@ export class AgentRuntimeClient {
       `${this.base()}/v1/chat/sessions/${encodeURIComponent(sessionId)}/bootstrap`,
       { method: "POST", headers: { "Content-Type": "application/json" } }
     );
+    return parseJson(resp);
+  }
+
+  async updateChatDraft(
+    sessionId: string,
+    body: UpdateChatDraftRequest
+  ): Promise<ChatSession> {
+    const resp = await fetch(
+      `${this.base()}/v1/chat/sessions/${encodeURIComponent(sessionId)}/draft`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    return parseJson(resp);
+  }
+
+  async listWorkflows(workspaceId: string): Promise<WorkflowsResponse> {
+    const params = new URLSearchParams({ workspace_id: workspaceId });
+    const resp = await fetch(`${this.base()}/v1/workflows?${params.toString()}`);
     return parseJson(resp);
   }
 }

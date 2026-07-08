@@ -213,6 +213,7 @@ ar_podman_up() {
 
   local pg_port="${AGENT_RUNTIME_PG_PORT:-5433}"
   local http_port="${AGENT_RUNTIME_PORT:-8787}"
+  local workspace_mount="${AGENT_RUNTIME_WORKSPACE:-}"
   local network vol pg_c srv_c image repo_root
   network="$(ar_stack_network)"
   vol="$(ar_stack_pg_volume)"
@@ -220,6 +221,13 @@ ar_podman_up() {
   srv_c="$(ar_stack_server_container)"
   image="$(ar_stack_image)"
   repo_root="$(cd "${AR_ROOT}/../.." && pwd)"
+  if [[ -z "$workspace_mount" ]]; then
+    workspace_mount="$repo_root"
+  fi
+  if [[ ! -d "$workspace_mount" ]]; then
+    echo "error: AGENT_RUNTIME_WORKSPACE is not a directory: ${workspace_mount}" >&2
+    exit 1
+  fi
 
   if ! podman network exists "$network" 2>/dev/null; then
     ar_podman network create "$network"
@@ -273,6 +281,8 @@ ar_podman_up() {
     -p "${http_port}:8787" \
     -e AGENT_RUNTIME_PORT=8787 \
     -e AGENT_RUNTIME_DATABASE_URL=postgres://agent:agent@postgres:5432/agent_runtime \
+    -e AGENT_RUNTIME_WORKSPACE_ROOT=/workspace \
+    -v "${workspace_mount}:/workspace:ro" \
     "$image"
 }
 

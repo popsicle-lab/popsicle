@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::approval::ConfirmTask;
 use crate::chat::{
     BootstrapTask, ChatSession, ChatSessionView, ChatTurnTask, CompleteBootstrapRequest,
-    CompleteChatTurnRequest, CreateChatSessionRequest,
+    CompleteChatTurnRequest, CreateChatSessionRequest, UpdateChatDraftRequest,
 };
 use crate::run_log::RunLogEntry;
 use crate::run_mirror::{RunMirror, RunMirrorUpsert};
@@ -321,6 +321,21 @@ impl Backend {
                 .complete_bootstrap(req)
                 .filter(|v| v.session.id == session_id)),
             Self::Postgres(pg) => Ok(pg.complete_bootstrap(session_id, req).await?),
+        }
+    }
+
+    pub async fn update_chat_draft(
+        &self,
+        session_id: Uuid,
+        req: UpdateChatDraftRequest,
+    ) -> Result<Option<ChatSessionView>, StorageError> {
+        match self {
+            Self::Memory(m) => Ok(m
+                .chat
+                .lock()
+                .map_err(|_| StorageError::Poison)?
+                .update_draft(session_id, req)),
+            Self::Postgres(pg) => Ok(pg.update_chat_draft(session_id, req).await?),
         }
     }
 }

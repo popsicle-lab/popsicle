@@ -451,6 +451,17 @@ pub fn execute_issue_start(
     invoker.run(["issue", "start", issue_key, "--format", "json"])
 }
 
+pub fn execute_issue_list(invoker: &PopsicleInvoker) -> io::Result<PopsicleInvokeResult> {
+    invoker.run(["issue", "list", "--format", "json"])
+}
+
+pub fn execute_issue_show(
+    invoker: &PopsicleInvoker,
+    issue_key: &str,
+) -> io::Result<PopsicleInvokeResult> {
+    invoker.run(["issue", "show", issue_key, "--format", "json"])
+}
+
 pub fn execute_pipeline_next(
     invoker: &PopsicleInvoker,
     run_id: &str,
@@ -675,6 +686,7 @@ fn reconcile_run_mirrors(
     client: &ServerClient,
     log_path: Option<&Path>,
 ) {
+    discover_active_run_mirrors(invoker, client, log_path);
     let Ok(runs) = client.list_run_mirrors() else {
         return;
     };
@@ -683,6 +695,92 @@ fn reconcile_run_mirrors(
             append_log(log_path, &format!("mirror reconcile {}: {e}", run.run_id));
         }
     }
+}
+
+/// Push mirrors for in-progress issues that have an active run but are not yet on the server.
+fn discover_active_run_mirrors(
+    invoker: &PopsicleInvoker,
+    client: &ServerClient,
+    log_path: Option<&Path>,
+) {
+    let Ok(list) = execute_issue_list(invoker) else {
+        return;
+    };
+    if list.exit_code != 0 {
+        return;
+    }
+    let known: std::collections::HashSet<String> = client
+        .list_run_mirrors()
+        .ok()
+        .into_iter()
+        .flatten()
+        .map(|r| r.run_id)
+        .collect();
+    for key in parse_in_progress_issue_keys(&list.stdout) {
+        let Ok(show) = execute_issue_show(invoker, &key) else {
+            continue;
+        };
+        if show.exit_code != 0 {
+            continue;
+        }
+        let Some(run_id) = parse_active_run_id(&show.stdout) else {
+            continue;
+        };
+        if known.contains(&run_id) {
+            continue;
+        }
+        if let Err(e) = sync_run_mirror(client, invoker, &run_id, Some(key.as_str())) {
+            append_log(
+                log_path,
+                &format!("mirror discover {key} run={run_id}: {e}"),
+            );
+        } else {
+            append_log(log_path, &format!("mirror discovered {key} run={run_id}"));
+        }
+    }
+}
+
+pub fn parse_in_progress_issue_keys(stdout: &str) -> Vec<String> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(stdout.trim()) else {
+        return Vec::new();
+    };
+    let count = v
+        .get("count")
+        .and_then(|c| {
+            c.as_str()
+                .and_then(|s| s.parse::<usize>().ok())
+                .or_else(|| c.as_u64().map(|n| n as usize))
+        })
+        .unwrap_or(0);
+    let mut keys = Vec::new();
+    for i in 0..count {
+        let status = v
+            .get(format!("issue_{i}_status"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("");
+        if status != "in_progress" {
+            continue;
+        }
+        if let Some(key) = v
+            .get(format!("issue_{i}_key"))
+            .and_then(|k| k.as_str())
+            .filter(|k| !k.is_empty())
+        {
+            keys.push(key.to_string());
+        }
+    }
+    keys
+}
+
+pub fn parse_active_run_id(stdout: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(stdout.trim())
+        .ok()
+        .and_then(|v| {
+            v.get("active_run_id")
+                .and_then(|x| x.as_str())
+                .map(str::to_string)
+        })
+        .filter(|s| !s.is_empty())
 }
 
 /// Blocking poll loop: heartbeat, claim tasks, subprocess issue start + pipeline next.
@@ -1017,6 +1115,25 @@ mod tests {
         assert_eq!(
             issue_key_from_status_json(stdout).as_deref(),
             Some("PROJ-93")
+        );
+    }
+
+    #[test]
+    fn parse_in_progress_issue_keys_reads_flat_json() {
+        let stdout = r#"{"count":"3","issue_0_key":"PROJ-1","issue_0_status":"done","issue_1_key":"PROJ-80","issue_1_status":"in_progress","issue_2_key":"PROJ-96","issue_2_status":"in_progress"}"#;
+        assert_eq!(
+            parse_in_progress_issue_keys(stdout),
+            vec!["PROJ-80".to_string(), "PROJ-96".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_active_run_id_reads_issue_show_json() {
+        let stdout =
+            r#"{"key":"PROJ-80","active_run_id":"0000005b-0000-405b-8005-5b00000000005b"}"#;
+        assert_eq!(
+            parse_active_run_id(stdout).as_deref(),
+            Some("0000005b-0000-405b-8005-5b00000000005b")
         );
     }
 }

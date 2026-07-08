@@ -82,7 +82,8 @@ export function useChatSession(client: AgentRuntimeClient, loaded: boolean) {
       if (
         event.type === "chat_message" ||
         event.type === "chat_draft_updated" ||
-        event.type === "session_bootstrapped"
+        event.type === "session_bootstrapped" ||
+        event.type === "chat_turn_queued"
       ) {
         refresh().catch(() => {});
       }
@@ -95,14 +96,18 @@ export function useChatSession(client: AgentRuntimeClient, loaded: boolean) {
       for (let i = 0; i < 30; i += 1) {
         await sleep(2000);
         const id = sessionIdRef.current;
-        if (!id) return;
+        if (!id) return false;
         const next = await client.getChatSession(id);
         applySession(next);
         const hasReply = (next.messages ?? []).some(
-          (m) => m.role === "assistant" && m.ts >= sinceTs
+          (m) =>
+            m.role === "assistant" &&
+            m.ts >= sinceTs &&
+            m.content.trim().length > 0
         );
-        if (hasReply) return;
+        if (hasReply) return true;
       }
+      return false;
     },
     [applySession, client]
   );
@@ -137,7 +142,12 @@ export function useChatSession(client: AgentRuntimeClient, loaded: boolean) {
             result.message!,
           ]);
         }
-        await waitForAssistant(sinceTs);
+        const gotReply = await waitForAssistant(sinceTs);
+        if (!gotReply) {
+          setError(
+            "Agent 未返回可读回复。若日志已有输出，请下拉刷新；否则确认 Daemon 已重启。"
+          );
+        }
       } catch (e) {
         setError(String(e));
       } finally {
@@ -166,7 +176,10 @@ export function useChatSession(client: AgentRuntimeClient, loaded: boolean) {
         const next = await client.getChatSession(id);
         applySession(next);
         if (next.linked_run_id) {
-          return next.linked_run_id;
+          return {
+            runId: next.linked_run_id,
+            issueKey: next.linked_issue_key ?? undefined,
+          };
         }
       }
       setError("立项超时，请稍后在进度 Tab 查看");
@@ -195,6 +208,24 @@ export function useChatSession(client: AgentRuntimeClient, loaded: boolean) {
     }
   }, []);
 
+  const updateDraftPipeline = useCallback(
+    async (pipeline: string) => {
+      const id = sessionIdRef.current;
+      const value = pipeline.trim();
+      if (!id || !value) return false;
+      setError(null);
+      try {
+        const next = await client.updateChatDraft(id, { draft_pipeline: value });
+        applySession(next);
+        return true;
+      } catch (e) {
+        setError(String(e));
+        return false;
+      }
+    },
+    [applySession, client]
+  );
+
   return {
     sessionId,
     session,
@@ -205,5 +236,6 @@ export function useChatSession(client: AgentRuntimeClient, loaded: boolean) {
     bootstrap,
     resetSession,
     refresh,
+    updateDraftPipeline,
   };
 }
