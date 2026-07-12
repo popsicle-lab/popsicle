@@ -1,0 +1,20 @@
+# ============================================================
+# Golden 录制清单 — {slug}   (feedback #18/S5)
+# ============================================================
+# 机器可复算的 legacy fixture 索引。equivalence-baseline 用它回放 legacy↔new 差分。
+# 仅 rewrite 型迁移需要；verbatim 平移不产本文件（golden=characterization）。
+meta:
+  slice: "{slice-name}"
+  migration_mode: rewrite            # 只有 rewrite 才录 legacy；verbatim 删除本文件
+  legacy_pin: "REPLACE_WITH_REAL_LEGACY_PIN"   # = git -C legacy/<name> rev-parse HEAD（须真实）
+  captured_at: "{date}"
+  capture_host: "{uname -a 摘要，便于复现}"
+
+fixtures:
+  - golden_id: G-ST-API-001          # 与 facts.yaml behavior 事实的 golden_candidate、task.equivalence.golden_id 对齐
+    from_fact: F-ST-BEH-001          # 来源 behavior 事实 fact_id（可复验溯源）
+    legacy_cmd: "cargo test -p store-engine roundtrip -- --nocapture"   # 原样命令（在 legacy/<name>/ 里跑）
+    fixture: "docs/baseline/{date}/{slice-name}/fixtures/G-ST-API-001.out"
+    recorded_exit: 0                 # legacy 真实退出码
+    stdout_sha256: "<fixture 内容 sha256，防篡改，equivalence 回放时复算比对>"
+    replay: "new 侧调 CreateTable+GetTable，stdout 归一化后与 fixture diff"

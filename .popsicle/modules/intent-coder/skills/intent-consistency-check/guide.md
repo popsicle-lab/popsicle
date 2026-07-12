@@ -68,9 +68,26 @@ popsicle tool run intent-validate path=products/auth/intents/invariants.intent f
 | `verified` | Z3 证明该 VC 成立 | 否（这是目标）|
 | `failed` | Z3 找到反例，`detail` 含反例原文 | **是** |
 | `unknown` | Z3 无法判定（超时/不可判定理论）| **是**（需人看）|
-| `skipped` | 工具暂不支持（struct-typed theorem）或 `@asis` 默认跳过 | 否 |
+| `skipped` | 工具暂不支持（struct-typed theorem）或 `@asis` 默认跳过（迁移时用 `include_asis=true` 让其参与，见下）| 否 |
 
 报告里 failed 的反例必须**逐字粘贴**，那就是给人/LLM 修 spec 的最短线索。
+
+## @asis 意图的处置（迁移，#20）
+
+`@asis`（legacy 实然）默认 `asis-skipped`——连 Z3 都不进，等于带语法的注释。迁移切片里
+「legacy 到底做了什么」恰是最该锁定的，别让它形式化真空。做法：
+
+1. **让 @asis 也进 Z3（自洽性）**：
+   ```bash
+   popsicle tool run intent-validate path=products/<p>/intents include_asis=true format=text
+   ```
+   `include_asis=true`（popsicle CLI 归一为 intent-lang 的 `--include-asis`）使 `@asis` 参与验证
+   （不再 `asis-skipped`）；失败同样记进报告。此前 CLI 会吞掉该参数，现已修复贯通。
+2. **产出 @asis↔@tobe 分叉报告**：逐条对照同名/对应能力的 `@asis` 与 `@tobe`，显式列
+   「保留（等价）/ 有意分叉（+理由+ADR）」。**有意分叉必须对应一条 divergence + ADR**，
+   不要在 `@tobe` 里悄悄改。写进报告模板的「@asis ↔ @tobe 分叉」段。
+3. **边界**：让 `@asis` **默认**进 Z3、或**自动**生成分叉报告，属**上游 intent-lang** 能力
+   （记 ROADMAP）；当前靠 `include_asis` + 本段人工对照。
 
 ## 能力边界（决策 D2）
 

@@ -1,6 +1,6 @@
 name: intent-coder
-version: "0.5.0"
-description: "IDD（意图驱动开发）工作流工具箱——既支持遗留代码库迁移（骨架铺设、事实抽取、slice spec、in-shadow 实现、golden 对账、切流），也支持 greenfield 新产品/模块从 product brief 到 PRD 任务图、intent 闸门、活文档的规格链。v0.4 新增 slice-delivery 后半段与 greenfield-product-spec。"
+version: "0.7.0"
+description: "IDD（意图驱动开发）工作流工具箱——既支持遗留代码库迁移（骨架铺设、事实抽取、slice spec、in-shadow 实现、golden 对账、切流），也支持 greenfield 新产品/模块从 product brief 到 PRD 任务图、intent 闸门、活文档的规格链。v0.6 迁移门禁可信化：cutover/equivalence 挂机验 gate（cargo test 退出码 / baseline 数字重算 / realized_by 可解析 / 真实 legacy_pin），gate 与 approval 正交。v0.7 迁移方法论补全（feedback S1–S5/P1–P2/#20）：新增 port（verbatim 平移）、golden-capture（rewrite 录 legacy fixture）、traceability-gen（覆盖矩阵机器派生）、verifier（独立验收 H6）、drift-detector（pin 漂移检测）五个 skill；inputs 下沉字段级 consumes；统一 skill 生命周期；adr-writer RFC-inline-ADR 模式；issue-author 决策树增 spec 就绪分叉 + delivery→spec 回流；intent-validate include_asis=true 让 @asis 进 Z3。"
 author: "popsicle-lab"
 license: "MIT"
 repository: "https://github.com/popsicle-lab/intent-coder"

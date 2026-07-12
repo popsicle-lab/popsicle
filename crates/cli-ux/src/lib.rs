@@ -3,6 +3,7 @@
 pub mod agent_runtime_config;
 pub mod cli_install;
 mod daemon;
+pub mod gate;
 pub mod global_config;
 pub mod i18n;
 mod intent_coder_bundle;
@@ -1446,6 +1447,7 @@ fn one_stage_pipeline(name: &str) -> PipelineDef {
             description: "start run".into(),
             depends_on: vec![],
             requires_approval: false,
+            gate: vec![],
         }],
         keywords: vec![],
         scale: None,
@@ -1464,6 +1466,7 @@ fn two_stage_pipeline() -> PipelineDef {
                 description: "current".into(),
                 depends_on: vec![],
                 requires_approval: true,
+                gate: vec![],
             },
             PipelineStageDef {
                 name: "next".into(),
@@ -1472,6 +1475,7 @@ fn two_stage_pipeline() -> PipelineDef {
                 description: "next".into(),
                 depends_on: vec!["current".into()],
                 requires_approval: false,
+                gate: vec![],
             },
         ],
         keywords: vec![],

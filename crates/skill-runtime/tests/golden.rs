@@ -149,6 +149,7 @@ fn golden_006_pipeline_session_stage_advance() {
                 description: "first".into(),
                 depends_on: vec![],
                 requires_approval: true,
+                gate: vec![],
             },
             skill_runtime::PipelineStageDef {
                 name: "b".into(),
@@ -157,6 +158,7 @@ fn golden_006_pipeline_session_stage_advance() {
                 description: "second".into(),
                 depends_on: vec!["a".into()],
                 requires_approval: false,
+                gate: vec![],
             },
         ],
         keywords: vec![],

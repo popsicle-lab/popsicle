@@ -209,7 +209,7 @@ removed (see below).
 
 - `popsicle pipeline status --run <run_id>` — stage list with statuses
 - `popsicle pipeline next --run <run_id>` — what to do next
-- `popsicle pipeline stage complete <stage> --run <run_id> [--confirm]` — complete a stage; `--confirm` required for stages with `requires_approval`
+- `popsicle pipeline stage complete <stage> --run <run_id> [--confirm]` — complete a stage; `--confirm` required for stages with `requires_approval`. **Two independent axes gate completion**: (1) the **machine gate axis** — if the stage declares `gate:` in its pipeline yaml, the engine actually runs those checks (e.g. `cargo test` exit code, `baseline.yaml` number recompute, `realized_by` resolvable) BEFORE anything else and **`approval_mode: auto` cannot bypass them**; a failure returns `gate:<stage>:<name> — <evidence>`. (2) the **human approval axis** — `requires_approval` + `approval_mode`. Fix the gate condition, don't try to skip it.
 
 ### Document
 
@@ -261,6 +261,7 @@ Replacement practices until these are re-adjudicated:
 4. Fill document sections with real content — template placeholders are rejected
 5. **Stage completion** — follow `workflow.approval_mode` in `.popsicle/project.yaml` (also in the project-config marker below): `manual` (default) — STOP after each stage and wait for the user before `pipeline stage complete`; `auto` — after `doc check` passes you may complete stages without waiting (`--confirm` implied for `requires_approval`); `delegate-dangerous` — auto-complete non-dangerous `requires_approval` stages, but dangerous stages (`cutover`, `living-docs`) still need explicit human `--confirm`.
 6. Stages marked `requires_approval` — apply the approval mode above; in `manual` mode the user MUST run `--confirm` themselves after review.
+6b. **Machine gates run in every approval mode** — a stage's `gate:` predicates are evaluated by the engine at `stage complete` before the approval axis; `auto` does NOT skip them. If completion fails with `gate:…`, fix the underlying condition (make `cargo test` pass, fill real `legacy_pin`, make the golden numbers recompute, resolve `realized_by`) and rerun. `migration-slice-delivery` / `migration-preserve` ship gates on `cutover` and `equivalence`.
 7. **Spec lock**: one active run per issue; do not operate on a spec locked by another run
 8. Documents live under `.popsicle/artifacts/<run_id>/`; decision records are promoted into `products/<product>/decisions/` at their stage's completion
 9. **NEVER report a task as "complete" unless `pipeline status` shows all stages completed.** If stages remain, say which stages are remaining and what the next step is. Reporting completion prematurely is a critical error.
@@ -292,7 +293,17 @@ names with `popsicle doc create <skill>`.
 | `product-debate` | product-debate-record | fact-extractor, project-init | setup → debating → completed → concluding |
 | `project-init` | project-init-plan | fact-extractor | planning → surveying → scaffolding → completed |
 | `rfc-writer` | rfc | arch-debate, prd-writer, fact-extractor | review → completed → ingesting → scoring → drafting |
-| `shadow-implementer` | implementation-coverage | adr-writer, rfc-writer, intent-consistency-check | review → completed → verifying → implementing → scoping |
+| `shadow-implementer` | implementation-coverage | adr-writer, rfc-writer, intent-consistency-check, fact-extractor | review → completed → verifying → implementing → scoping |
+| `port` | port-coverage | intent-consistency-check, fact-extractor | scope → produce → review → completed |
+| `golden-capture` | golden-capture-manifest / golden-capture-plan | fact-extractor | scope → capture → review → completed |
+| `traceability-gen` | traceability-matrix | prd-writer, equivalence-baseline | scope → produce → review → completed |
+| `verifier` | verification-report | equivalence-baseline, shadow-implementer | scope → verify → review → completed |
+| `drift-detector` | drift-report | fact-extractor | scope → produce → review → completed |
+
+> **迁移新增 skill（feedback S3/S5）**：`port`（verbatim 平移，对偶于 shadow-implementer 的重写）、
+> `golden-capture`（rewrite 切片起 pinned legacy 录 fixture）、`traceability-gen`（从 task+baseline 机器派生覆盖矩阵）、
+> `verifier`（独立验收，执行/验收分离，H6）、`drift-detector`（换 legacy pin 重跑 facts diff）。
+> 统一生命周期见 `intent-coder/skills/LIFECYCLE.md`。
 <!-- popsicle:project-config:start -->
 ## 本项目偏好
 

@@ -53,6 +53,8 @@ stages:
       产出 docs/baseline/<date>/ 与 migration/traceability.md 行；task.equivalence.golden_id 对齐
       facts 的 golden_candidate。登记已知 divergence。是行为等价闸。
     depends_on: [implement]
+    gate:
+      - ref_resolvable: {product_intents: true, fields: [realized_by]}
 
   - name: cutover
     skill: cutover-author
@@ -60,7 +62,14 @@ stages:
       门禁：intent gate_ready、golden pass（或 ADR 登记 divergence）、cargo test 全绿。
       产出「冻结/切流」ADR(Accepted)（保留态决策：new 与 legacy 等价即切流），更新 migration/progress.md。
     depends_on: [equivalence]
-    requires_approval: true
+    requires_approval: true          # 人验轴：approval_mode 控制是否需 --confirm
+    gate:                            # 机验轴（#18/#19/P3）：引擎实跑，auto 不可绕
+      - command_exit_zero: "cargo test"
+      - assert: {file: "docs/baseline/**/baseline.yaml", field: summary.golden_pass, op: ">=", value: 5}
+      - manifest_recomputes: {file: "docs/baseline/**/baseline.yaml", field: summary.golden_pass, equals_count_of: goldens, where: "status=pass"}
+      - assert: {file: "docs/baseline/**/baseline.yaml", field: summary.equivalence_gate_pass, op: "==", value: true}
+      - assert: {file: "docs/baseline/**/baseline.yaml", field: legacy_pin, op: "!=", value: "REPLACE_WITH_REAL_LEGACY_PIN"}
+      - ref_resolvable: {product_intents: true, fields: [realized_by]}
 
   - name: living-docs
     skill: living-doc-author

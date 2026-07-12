@@ -580,6 +580,102 @@ stages:
 }
 
 #[test]
+fn auto_mode_cannot_bypass_a_failing_machine_gate() {
+    // feedback #19/P4/H6: the machine gate axis runs in EVERY approval_mode.
+    let root = temp_workspace();
+    write_approval_mode(&root, "auto");
+    write_pipeline(
+        &root,
+        "test-gate-fail",
+        r#"name: test-gate-fail
+description: stage with a failing machine gate
+stages:
+  - name: implement
+    skill: shadow-implementer
+    description: gated by a command that fails
+    requires_approval: false
+    gate:
+      - command_exit_zero: "exit 7"
+"#,
+    );
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+    let issue = store
+        .create_issue(
+            "technical",
+            "gate fail",
+            "cli-ux",
+            Some("test-gate-fail"),
+            "medium",
+            "",
+            None,
+            &[],
+            &[],
+        )
+        .expect("create issue");
+    let run = store
+        .start_issue(&issue.key, "", "test-gate-fail")
+        .expect("start run");
+    let stage = store
+        .pipeline_status(&run.run_id)
+        .expect("status")
+        .current_stage;
+    let err = store
+        .complete_stage(&stage, &run.run_id, false)
+        .expect_err("auto mode must NOT bypass a failing gate");
+    let msg = err.to_string();
+    assert!(msg.contains("gate:"), "expected gate error, got: {msg}");
+    assert!(msg.contains("command_exit_zero"), "detail missing: {msg}");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn passing_machine_gate_allows_completion() {
+    let root = temp_workspace();
+    write_approval_mode(&root, "auto");
+    write_pipeline(
+        &root,
+        "test-gate-pass",
+        r#"name: test-gate-pass
+description: stage with a passing machine gate
+stages:
+  - name: implement
+    skill: shadow-implementer
+    description: gated by a command that passes
+    requires_approval: false
+    gate:
+      - command_exit_zero: "true"
+"#,
+    );
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+    let issue = store
+        .create_issue(
+            "technical",
+            "gate pass",
+            "cli-ux",
+            Some("test-gate-pass"),
+            "medium",
+            "",
+            None,
+            &[],
+            &[],
+        )
+        .expect("create issue");
+    let run = store
+        .start_issue(&issue.key, "", "test-gate-pass")
+        .expect("start run");
+    let stage = store
+        .pipeline_status(&run.run_id)
+        .expect("status")
+        .current_stage;
+    store
+        .complete_stage(&stage, &run.run_id, false)
+        .expect("passing gate completes the stage");
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn fresh_workspace_bootstrap_installs_pipelines_and_numbers_from_one() {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

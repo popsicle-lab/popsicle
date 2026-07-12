@@ -1,6 +1,10 @@
 slice: "{slice-name}"
 date: "{date}"
-legacy_pin: "c76d729db91c59009f0fa8f7c6f1e499eb0c7eb1"
+# feedback #21：从真实 pin 注入，别用假 commit。取值：
+#   git -C legacy/<name> rev-parse HEAD    或    git submodule status legacy/<name>
+# cutover gate 会校验 legacy_pin != 下面这个占位符（REPLACE_WITH_REAL_LEGACY_PIN），
+# 未替换即拦切流——见 migration-slice-delivery / migration-preserve 的 gate。
+legacy_pin: "REPLACE_WITH_REAL_LEGACY_PIN"
 baseline_dir: "docs/baseline/{date}/{slice-name}/"
 summary:
   golden_total: 0

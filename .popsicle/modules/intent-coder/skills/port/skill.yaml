@@ -1,0 +1,76 @@
+name: port
+description: "「逐字节/逐行平移（verbatim）」型迁移的实现 skill（feedback S3）——把 legacy 代码原样搬到 new 位置并登记「legacy 段 ↔ new 段」平移覆盖，显式声明 migration_mode=verbatim（golden=characterization）。与 shadow-implementer 分工：port 平移不改逻辑；shadow-implementer 真写新逻辑（rewrite/greenfield）。"
+version: "0.1.0"
+
+# 上游同 shadow-implementer；额外强依赖 fact-extractor 的结构化事实定位要平移的 legacy 段。
+inputs:
+  - from_skill: intent-consistency-check
+    artifact_type: intent-consistency-report
+    required: false
+    relevance: high
+    consumes: "intents.asis[]"                 # @asis 刻画的 legacy 实然行为，平移后须保持
+  - from_skill: fact-extractor
+    artifact_type: facts-index
+    required: true
+    relevance: high
+    consumes: "facts[kind=api].source, facts[kind=behavior].source"   # 要平移的 legacy 段的 file:line
+
+artifacts:
+  - type: port-coverage
+    template: templates/port-coverage.md
+    file_pattern: "{slug}.port-coverage.md"
+    description: "平移覆盖表：每段 legacy 源（legacy@sha:path#L）↔ new 位置，标记 verbatim/adapted，登记为什么平移是等价的（golden=characterization）。不发明 scope 外 API。"
+
+workflow:
+  initial: scope
+  states:
+    scope:
+      # 确认本切片是 verbatim（否则应走 shadow-implementer），从 facts 列要平移的 legacy 段。
+      transitions:
+        - to: produce
+          action: segments-listed
+    produce:
+      # 平移代码 + 登记覆盖 + 每段声明等价理由。
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Port Coverage,Verbatim Justification;checklist_complete:Port Checklist;command_exit_zero:cargo build"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+        - to: produce
+          action: revise
+    completed:
+      final: true
+
+prompts:
+  scope: |
+    你在做 **verbatim 平移**（逐字节/逐行搬运 legacy 代码到 new 位置），**不改逻辑**。先确认模式：
+    若本切片需要**真写新逻辑 / 重设计**（rewrite）——**停下**，改用 `shadow-implementer`。
+    port 只服务 `migration_mode: verbatim`。
+
+    1. 读 `facts.yaml` 的 `api`/`behavior` 事实，用 `source: legacy@<sha>:<path>#L` 列出要平移的 legacy 段。
+    2. 读 `@asis` intent（如有）确认这些段的实然行为——平移后必须保持。
+    3. 规划 new 位置（crate/module）。**不发明 scope 外 API**。
+
+    列完用 `segments-listed` 切到 produce。
+
+  produce: |
+    逐段平移并登记覆盖。核心诚实原则（#18/#22）：verbatim 的 golden 是 **characterization**
+    （快照自证），等价平凡——**如实声明，别假装做了 legacy↔new 差分**，也别套「shadow/strangler-fig」叙事
+    （无影子并行，new 直接是主路径）。
+
+    对每段：
+    - 记 `legacy@<sha>:<path>#L` → `new: crates/<slice>/<path>#L`。
+    - 标 `verbatim`（逐字节等价）或 `adapted`（因语言/API 差异做了机械适配，说明适配点）。
+    - `adapted` 段若改变了可观测行为 → 这已不是 verbatim，登记为 divergence 交 cutover，或改走 shadow-implementer。
+    - 跑 `cargo build`（guard 要求退出码 0）；平移后编译不过说明平移不完整。
+
+    产出 `port-coverage.md`：平移覆盖表 + 每段等价理由 + `migration_mode: verbatim` 声明。
+    下游 equivalence-baseline 据此建 characterization golden（不需 golden-capture 录 legacy）。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

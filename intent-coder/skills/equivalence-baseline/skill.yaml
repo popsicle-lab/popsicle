@@ -5,16 +5,26 @@ description: >-
   ≥5 条 golden diff 为空，或 divergence 有 Accepted ADR。slice-delivery 第二棒。
 version: "0.1.0"
 
+# feedback S1：`consumes` 下沉到字段/ID 级（当前为契约级声明，Rust 侧忽略未知字段）。
 inputs:
   - from_skill: shadow-implementer
     artifact_type: implementation-coverage
     required: true
     relevance: high
+    consumes: "coverage.intent_to_fn[]"
 
   - from_skill: fact-extractor
-    artifact_type: fact-extraction-report
+    artifact_type: facts-index
     required: false
     relevance: medium
+    consumes: "facts[kind=api].signature, facts[kind=behavior].golden_candidate"
+
+  # rewrite 切片：消费 golden-capture 录好的 legacy fixture 做真实差分（verbatim 不需要）。
+  - from_skill: golden-capture
+    artifact_type: golden-capture-manifest
+    required: false
+    relevance: high
+    consumes: "fixtures[].fixture, fixtures[].stdout_sha256, fixtures[].recorded_exit"
 
 artifacts:
   - type: equivalence-report

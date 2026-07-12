@@ -1,0 +1,85 @@
+name: traceability-gen
+description: 从 task frontmatter（migrates_from / equivalence）+ baseline.yaml + intents 机器派生迁移覆盖矩阵与 migration/traceability.md，取代手工维护的表格（feedback #12/#21/S5）。让「哪些 task 覆盖了哪个 legacy crate/rpc」「哪个 rpc 没有 acceptance intent / golden」自动暴露。
+version: "0.1.0"
+
+# 上游：task 的迁移第三轴（#12）、equivalence 的 baseline.yaml（#21）、intents。
+inputs:
+  - from_skill: prd-writer
+    artifact_type: task
+    required: true
+    relevance: "task frontmatter 的 migrates_from + equivalence{golden_id,status} 是矩阵的行来源"
+    consumes: "task.migrates_from, task.equivalence.golden_id"
+  - from_skill: equivalence-baseline
+    artifact_type: equivalence-report
+    required: false
+    relevance: "baseline.yaml 的 goldens[].status 提供每条 golden 的 pass/fail"
+    consumes: "baseline.goldens[].status"
+
+artifacts:
+  - type: traceability-matrix
+    template: templates/traceability-matrix.md
+    file_pattern: "{slug}.traceability-matrix.md"
+    description: "机器派生的覆盖矩阵：task ↔ legacy 源 ↔ golden ↔ intent，缺口列（无 golden / 无 intent / status 未对齐）自动标红。拟写入/更新 migration/traceability.md。"
+
+workflow:
+  initial: scope
+  states:
+    scope:
+      # 枚举 products/<p>/tasks/**/*.md，读 migrates_from/equivalence 的 task。
+      transitions:
+        - to: produce
+          action: tasks-enumerated
+    produce:
+      # 交叉 task × baseline × intents 派生矩阵，标缺口。
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Coverage Matrix,Gaps,Sources;checklist_complete:Traceability Checklist"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+        - to: produce
+          action: revise
+    completed:
+      final: true
+
+prompts:
+  scope: |
+    你在**从结构化字段机器派生**迁移覆盖矩阵，取代手工维护 traceability 表。**不要手写行**——
+    每一行都必须能追回一个 task frontmatter 字段（否则就是编造）。
+
+    1. 枚举本 product 的所有 task：`products/<p>/tasks/**/*.md`。
+    2. 对每个 task 读 frontmatter：`task_id`、`migrates_from`（legacy 路径/rpc）、
+       `equivalence.golden_id`、`equivalence.status`、`migration_mode`、`related_intents`。
+    3. 只保留迁移 task（`migrates_from` 非空）。greenfield task（无 migrates_from）不进矩阵。
+
+    枚举完用 `tasks-enumerated` 切到 produce。
+
+  produce: |
+    交叉派生矩阵（task × legacy × golden × intent），每列都有来源：
+
+    | 列 | 来源字段 |
+    |---|---|
+    | task_id | task.task_id |
+    | legacy 源 | task.migrates_from[] |
+    | golden | task.equivalence.golden_id |
+    | golden 状态 | baseline.yaml goldens[id==golden_id].status（读不到写 `?`）|
+    | intent | task.related_intents[] |
+    | 模式 | task.migration_mode |
+
+    **缺口检测（自动标）**：
+    - `migrates_from` 非空但 `equivalence.golden_id` 为空 → **缺 golden**。
+    - `equivalence.golden_id` 有值但 baseline.yaml 无此 id 或 status!=pass → **golden 未过/未对齐**。
+    - `migrates_from` 非空但 `related_intents` 为空 → **缺 intent（无 acceptance 断言）**。
+    - baseline.yaml 有 golden 但无任何 task 的 equivalence 指向它 → **孤儿 golden**。
+
+    硬规则：
+    - **数字/状态一律读 baseline.yaml**，不臆造 pass。读不到写 `?` 并列进 Gaps。
+    - 矩阵拟覆盖/更新 `migration/traceability.md`——写清哪些行新增/变更。
+    - 缺口段 (`Gaps`) 是本 skill 的价值所在：把结构化缺口显式列出交人跟进，别掩盖。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

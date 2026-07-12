@@ -6,21 +6,33 @@ description: >-
   是 slice-delivery pipeline 的第一棒。
 version: "0.1.0"
 
+# feedback S1：inputs 不止「拿到一份报告」，用 `consumes` 下沉到字段/ID 级——声明本 skill
+# 实际吃 artifact 的哪些结构化字段，让上下游衔接机器可校验（当前为文档/契约级声明，
+# Rust 侧忽略未知字段；未来可据此做 inputs 满足性检查）。
 inputs:
   - from_skill: adr-writer
     artifact_type: adr-finalization-report
     required: false
     relevance: high
+    consumes: "adr.file_manifest[]"        # 按 ADR File Manifest 决定改哪些路径
 
   - from_skill: rfc-writer
     artifact_type: rfc
     required: false
     relevance: medium
+    consumes: "rfc.decision, rfc.file_manifest[]"
 
   - from_skill: intent-consistency-check
     artifact_type: intent-consistency-report
     required: false
     relevance: high
+    consumes: "intents.acceptance[].goal"   # 每个 acceptance goal → 一条 property test
+
+  - from_skill: fact-extractor
+    artifact_type: facts-index
+    required: false
+    relevance: medium
+    consumes: "facts[kind=behavior].golden_candidate"   # 行为事实指明要覆盖/对账的 legacy 行为
 
 artifacts:
   - type: implementation-coverage

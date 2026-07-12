@@ -31,6 +31,8 @@ fact_cite:
   - "fact-extraction-report § Bounded Contexts row 2 / Product Brief"
 # ---- 迁移第三轴（迁移 task 必填；greenfield task 删除整段）feedback #12 ----
 # 让 task ↔ legacy 源 ↔ golden 对账 成一等关系，traceability 从 task 自动派生。
+migration_mode: verbatim              # verbatim（逐字节平移，golden=characterization）
+                                      #   / rewrite（真重写，需 legacy 录制+new 回放差分）feedback #18
 migrates_from:                        # 本 task 迁移了 legacy 的哪个 crate / rpc / 路径
   - "legacy@<pinned-sha>:crates/store-engine/src/lib.rs#L1-L120"
   - "rpc: SchemaApi.CreateTable"

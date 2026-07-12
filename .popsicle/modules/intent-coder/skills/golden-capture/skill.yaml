@@ -1,0 +1,85 @@
+name: golden-capture
+description: 为「重写型（rewrite）」迁移切片，从 pinned 的 legacy submodule 起进程/录 I/O，产出可回放的 golden fixture（legacy 真实输出快照）——补上 equivalence-baseline 缺失的「跑 legacy」环节（feedback #18/S5）。verbatim 平移切片不需要它（golden=characterization，见 equivalence-baseline）。
+version: "0.1.0"
+
+# 上游：fact-extractor 的 behavior 事实（golden_candidate）指明该录哪些用例；
+# equivalence-baseline 是下游消费方（用录好的 fixture 做 legacy↔new 差分）。
+inputs:
+  - from_skill: fact-extractor
+    artifact_type: facts-index
+    required: true
+    relevance: "facts.yaml 的 behavior 事实 + golden_candidate 指明要录哪些 legacy 行为"
+    # S1 字段级消费：明确本 skill 只吃 behavior 事实里带 golden_candidate 的条目。
+    consumes: "facts[kind=behavior].golden_candidate"
+
+artifacts:
+  - type: golden-capture-manifest
+    template: templates/golden-capture-manifest.yaml
+    file_pattern: "{slug}.golden-capture-manifest.yaml"
+    description: "录制清单：每条 golden 的 legacy 命令、pinned pin、fixture 路径、录制 exit code 与 stdout 摘要（机器可复算，供 equivalence-baseline 回放）"
+
+  - type: golden-capture-plan
+    template: templates/golden-capture-plan.md
+    file_pattern: "{slug}.golden-capture-plan.md"
+    description: "人类可读的录制方案 + 实跑证据（起 legacy 的命令、隔离方式、每条 fixture 的来源事实）"
+
+workflow:
+  initial: scope
+  states:
+    scope:
+      # 从 facts.yaml 选出需要录的 behavior 事实（golden_candidate 非空）。
+      transitions:
+        - to: capture
+          action: fixtures-selected
+    capture:
+      # 起 pinned legacy submodule、跑命令、把真实输出落成 fixture 文件。
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Capture Environment,Fixtures,Replay Contract;checklist_complete:Capture Checklist"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: capture
+          action: revise
+    completed:
+      final: true
+
+prompts:
+  scope: |
+    你在为一个**重写型（rewrite）**迁移切片准备 golden fixture。先确认迁移模式：
+    若 equivalence-report/task 的 `migration_mode: verbatim`（逐字节平移）——**停下**，
+    verbatim 的 golden 是 characterization（快照自证），不需要录 legacy，直接回 equivalence-baseline。
+
+    只有 `migration_mode: rewrite` 才继续：
+    1. 打开 `<slug>.facts.yaml`，筛出 `kind: behavior` 且 `golden_candidate` 非空的事实。
+       每条就是一个待录 golden（`golden_candidate` 即目标 golden id，与 task.equivalence.golden_id 呼应）。
+    2. 对每条事实，定位它在 legacy 里的可执行入口：测试名 / rpc / CLI 命令 / 函数（读 `source: legacy@<sha>:<path>#L`）。
+    3. 确认 legacy pin：`git -C legacy/<name> rev-parse HEAD`（写进 manifest 的 `legacy_pin`，须与 LEGACY_PIN.md 一致）。
+
+    选完用 `fixtures-selected` 切到 capture。
+
+  capture: |
+    起 **pinned 的 legacy** 录真实输出。关键：录的是 legacy 在 pin 上的**实然行为**，不是你以为的行为。
+
+    1. **隔离构建**：在 `legacy/<name>/`（submodule，已 pin）里构建/起服务，别用 new 代码。
+       例：`cargo build -p <legacy-crate>` / 起 legacy 二进制 / `cargo test -p <crate> <test> -- --nocapture` 录输出。
+    2. **逐条录 fixture**：对每个 golden_candidate 跑 legacy 入口，把 **stdout / 返回体 / 落盘文件** 存到
+       `docs/baseline/{date}/{slice}/fixtures/<golden_id>.{out,json,bin}`。记录真实 **exit code**。
+    3. **写 manifest**（机器可复算）：`golden-capture-manifest.yaml` 每条含 `golden_id`、`legacy_cmd`（原样命令）、
+       `legacy_pin`、`fixture`（相对路径）、`recorded_exit`、`stdout_sha256`（fixture 内容哈希，供防篡改复算）。
+    4. **回放契约**：写清 new 侧如何回放同一输入并与 fixture 差分（equivalence-baseline 据此建 golden-NNN.sh）。
+
+    硬规则：
+    - **不臆造**：录不到就在 plan 里如实写「legacy 无法起（原因）」，不要编 fixture。
+    - **pin 必须真实**：`legacy_pin != REPLACE_WITH_REAL_LEGACY_PIN`，且等于 submodule HEAD。
+    - fixture 是**二进制/文本快照**，进 git（小）或 LFS（大），plan 里注明。
+
+    每个 artifact 底部 Checklist 勾完再 submit。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

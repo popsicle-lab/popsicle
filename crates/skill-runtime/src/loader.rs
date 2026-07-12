@@ -50,6 +50,93 @@ struct WorkflowYaml {
     _states: HashMap<String, serde_yaml::Value>,
 }
 
+/// Machine-enforced gate predicate on a pipeline stage (feedback #18/#19/P3).
+///
+/// Gates are the "machine" axis: evaluated by the engine at `stage complete`
+/// *before* the human `requires_approval` axis, and **`approval_mode: auto`
+/// cannot bypass them** (P4/H6). Authored in YAML as a list of single-key maps,
+/// e.g. `- command_exit_zero: "cargo test"` (see the custom `Deserialize`).
+#[derive(Debug, Clone)]
+pub enum GateSpec {
+    /// Run a shell command in the workspace root; pass iff exit code == 0.
+    CommandExitZero(String),
+    /// A numeric/string field in a manifest satisfies `op value`.
+    Assert(AssertGate),
+    /// A summary field equals a count re-derived from an itemized list
+    /// (catches hand-edited/fabricated gate numbers).
+    ManifestRecomputes(ManifestRecomputesGate),
+    /// References in artifacts/intents resolve (reuses goal-trace).
+    RefResolvable(RefResolvableGate),
+}
+
+// serde_yaml 0.9 encodes externally-tagged enums as YAML `!tags`, but pipeline
+// authors want plain single-key maps (`- assert: {...}`). Deserialize via a
+// flattened raw struct and require exactly one variant key.
+impl<'de> Deserialize<'de> for GateSpec {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Raw {
+            #[serde(default)]
+            command_exit_zero: Option<String>,
+            #[serde(default)]
+            assert: Option<AssertGate>,
+            #[serde(default)]
+            manifest_recomputes: Option<ManifestRecomputesGate>,
+            #[serde(default)]
+            ref_resolvable: Option<RefResolvableGate>,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        match (
+            raw.command_exit_zero,
+            raw.assert,
+            raw.manifest_recomputes,
+            raw.ref_resolvable,
+        ) {
+            (Some(c), None, None, None) => Ok(GateSpec::CommandExitZero(c)),
+            (None, Some(a), None, None) => Ok(GateSpec::Assert(a)),
+            (None, None, Some(m), None) => Ok(GateSpec::ManifestRecomputes(m)),
+            (None, None, None, Some(r)) => Ok(GateSpec::RefResolvable(r)),
+            _ => Err(serde::de::Error::custom(
+                "gate must have exactly one of: command_exit_zero | assert | manifest_recomputes | ref_resolvable",
+            )),
+        }
+    }
+}
+
+/// `assert: {file, field, op, value}` — `file` may glob (newest match wins),
+/// `field` is a dotted path into a YAML/JSON manifest.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AssertGate {
+    pub file: String,
+    pub field: String,
+    pub op: String,
+    pub value: serde_yaml::Value,
+}
+
+/// `manifest_recomputes: {file, field, equals_count_of, where}` — `field` must
+/// equal the number of items in list `equals_count_of` matching `where` (`k=v`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ManifestRecomputesGate {
+    pub file: String,
+    pub field: String,
+    pub equals_count_of: String,
+    #[serde(default, rename = "where")]
+    pub where_clause: Option<String>,
+}
+
+/// `ref_resolvable: {product_intents, fields}` — validate cross-references.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RefResolvableGate {
+    #[serde(default)]
+    pub product_intents: bool,
+    #[serde(default)]
+    pub fields: Vec<String>,
+}
+
 /// A pipeline stage from `.pipeline.yaml`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PipelineStageDef {
@@ -63,6 +150,9 @@ pub struct PipelineStageDef {
     pub depends_on: Vec<String>,
     #[serde(default)]
     pub requires_approval: bool,
+    /// Machine-enforced gates (feedback #18/#19/P3). Empty = no gate.
+    #[serde(default)]
+    pub gate: Vec<GateSpec>,
 }
 
 impl PipelineStageDef {

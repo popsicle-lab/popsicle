@@ -15,7 +15,7 @@ popsicle tool，供 `intent-consistency-check` skill 和 CI 闸门调用。
 |---|---|---|---|
 | `path` | 是 | — | `.intent` 文件或目录路径（相对仓库根或绝对路径；目录会递归枚举 `*.intent`） |
 | `format` | 否 | `json` | `json` 给 skill/CI 解析；`text` 给人读 |
-| `include_asis` | 否 | 空 | 传 `--include-asis` 时一并验证 `@asis` 遗留意图 |
+| `include_asis` | 否 | 空 | `include_asis=true`（#20）：把 `@asis`（legacy 实然）意图也送进 Z3，而非 `asis-skipped`。popsicle CLI 归一处理（接受 `true`/`1`/`yes` 或原始 `--include-asis`）。 |
 | `merge` | 否 | 空 | `merge=true`：**整目录一个 program**（#14）——把每个产品 `intents/*.intent` 合并成一份跑单次 `intent check`，消除跨文件 `realized_by` 的 W0010、获得整程序作用域验证。默认 per-file（行为不变）。 |
 
 ## 退出码

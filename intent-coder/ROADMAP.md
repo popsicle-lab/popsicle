@@ -309,3 +309,70 @@ git 集成——泛化成本低且已在用，拆它才是过早优化。`markdo
   **无 W0010**。⚠️ 这是**更严格**的整程序语义（合并后 `safety` 无条件应用到所有 intent，未约束后态的
   操作 intent 会因自由变量 FAIL），是「有意识检查跨文件交互」的诊断模式，**非盲目消噪**。默认 per-file
   行为不变；W0010 本身无害（合并 goal 追溯闸已权威校验 realized_by）。popsicle 侧实现，无需上游改动。
+
+## 10. 迁移门禁可信化（已落地，来自使用反馈 #18–#22 / H1–H6 / P3–P5）
+
+**核心**：给引擎加「机验 gate 轴」，`stage complete` 时**先实跑 gate 再推进**，任何
+`approval_mode`（含 `auto`）都不能绕过；gate（机器验）与 approval（人验）**正交两轴**。
+
+**已落地（引擎 / bundled pipeline / 模板）：**
+- **可执行 gate 引擎（#18/#19/P3）**：pipeline stage 声明白名单结构化 gate，引擎在
+  `stage complete` 内、approval 之前**实跑**（`crates/cli-ux/src/gate.rs`）：
+  - `command_exit_zero` —— 在工作区根跑命令读退出码（如 `cargo test`）；
+  - `assert` —— manifest 字段满足 `op value`（数字/字符串，支持 dotted path + glob 取最新）；
+  - `manifest_recomputes` —— 汇总字段 == 从明细列表按 `where` 重算的计数（**抓手工编造的 golden 数字**）；
+  - `ref_resolvable` —— `realized_by` 目标追溯可解析（复用 `intent_goal_trace`）。
+  失败即 `gate:<stage>:<name> — <可复算证据>`，fail-closed。
+- **gate/approval 正交（P4/H6）**：gate 永远执行、`auto` 不可绕；`requires_approval` +
+  `approval_mode`(manual/auto/delegate-dangerous) 仍是独立的**人验**轴。`pipeline next` 输出 gate 提示。
+- **gate-only stage（P5）**：`skill` 为空且有 `gate` 的 stage —— `pipeline next` 提示「run gate」，
+  `stage complete` 只评估 gate、不产 artifact。
+- **bundled pipeline 挂 gate**：`migration-slice-delivery` / `migration-preserve` 的 `cutover` 挂
+  `cargo test` + `summary.golden_pass>=5` + `manifest_recomputes` + `equivalence_gate_pass==true` +
+  `legacy_pin!=占位符` + `ref_resolvable`；`equivalence` 挂 `ref_resolvable`。
+- **#21 真实 legacy_pin**：`baseline.yaml` 模板改用占位符 `REPLACE_WITH_REAL_LEGACY_PIN`（附注入指令），
+  cutover gate 校验 `legacy_pin != 占位符` —— 未填真实 pin 即拦切流。
+- **#18/#22 verbatim vs rewrite**：`equivalence-report` / `task` 加 `migration_mode: verbatim|rewrite`；
+  verbatim 显式声明 golden=characterization（快照自证，别假装差分），rewrite 才需 legacy 录制+回放差分；
+  `shadow`/`strangler-fig` 措辞加 verbatim 例外说明（`shadow-implementer` guide）。
+- **#20 @asis 暴露**：`intent-consistency-check` 指导用 `intent-validate include_asis=true`
+  让 `@asis` 进 Z3，并产「@asis ↔ @tobe 分叉」报告段（有意分叉须对应 divergence+ADR）。
+
+## 10b. 迁移方法论补全（已落地，来自 S1–S5 / P1–P2 / #20 upstream）
+
+**已落地（skill / schema / 引导 / CLI）：**
+- **S5 五个新 skill**（`intent-coder/skills/`）：
+  - `port` —— verbatim 平移的实现 skill（对偶 shadow-implementer 的 rewrite），产 `port-coverage`，
+    登记 legacy 段↔new 段，`cargo build` guard，诚实声明 golden=characterization（不套 shadow 叙事）。
+  - `golden-capture` —— rewrite 切片起 pinned legacy 录真实输出为可回放 fixture，产机器可复算
+    `golden-capture-manifest`（每条带 `recorded_exit` + `stdout_sha256`）。
+  - `traceability-gen` —— 从 task `migrates_from`/`equivalence` + `baseline.yaml` 机器派生覆盖矩阵，
+    自动检出「缺 golden / 未对齐 / 缺 intent / 孤儿 golden」四类缺口。
+  - `verifier` —— 独立验收（H6：执行/验收分离），复算门禁并出 verdict，破「运动员=裁判」。
+  - `drift-detector` —— 换 legacy pin 重跑 fact-extractor，按 `fact_id`+`source` diff，反查受影响下游。
+- **S1 字段级 inputs**：`inputs` 加 `consumes:`（如 `facts[kind=behavior].golden_candidate`），
+  声明消费的具体字段/ID，机器可校验衔接（当前契约级；Rust 侧忽略未知字段）。
+- **S2 统一生命周期**：`intent-coder/skills/LIFECYCLE.md` 定义 `scope→produce→gate→review→done`，
+  bespoke state 映射到规范骨架（不破坏性重命名既有 skill）。
+- **S4 RFC-inline-ADR**：`adr-writer` guide 增「冻结/等价保留」类决策直接写自包含 ADR（`rfc_inline: true`），
+  免 RFC↔ADR 双文档复述（#17）。
+- **P1 决策树 spec 就绪分叉**：`issue-author` guide 决策树顶部加「spec 是否已具备」显式分叉，
+  spec 已具备 + 行为保留 → `migration-preserve`（不再误选 delivery）；文档化「共享交付尾」。
+- **P2 delivery→spec 回流**：`issue-author` guide 增「交付中发现 spec 缺口」回流闭环
+  （另开 spec issue / ADR 登记 / doc-retro-spec，禁止 implement 里偷改 `.intent`）。
+- **#20 CLI 贯通**：`popsicle tool run intent-validate include_asis=true`（接受 `true/1/yes` 或原始
+  `--include-asis`）现真正把 `@asis` 送进 Z3——此前 CLI 的 goal-trace 包装层会吞掉该参数，已修复
+  （`run_intent_validate_opts` 增 `include_asis` 形参贯通到 merged 与 per-file 两路）。
+
+**仍然另行立项（属上游 / 大重构，本次不做）：**
+- 让 `@asis` **默认**进 Z3、或**自动**生成 @asis↔@tobe 分叉报告 → 属**上游 intent-lang** 语义
+  （popsicle 侧已把 `include_asis` 贯通到位；默认策略与自动分叉需改 vendored intent-lang）。
+- **S3 破坏性拆分 / S4 破坏性合并**：把 `implement` stage 真正拆成 port/implement 两 stage、
+  删 `product-debate`+`arch-debate` 合并为 `design-debate --scope` —— 会打断引用旧 skill 的 bundled
+  pipeline 与在途 run，需迁移脚本；当前以**加性 skill + 文档统一心智**过渡。
+- **P1 引擎级共享 stage 组**（pipeline yaml `include`）、**P2 引擎级阶段回退边 / spec↔impl 双向绑定**
+  —— 状态机层改动，2 个内置 pipeline 尚不值当；当前内联同步 + 可操作回流闭环。
+- gate 谓词扩展（正则 `matches`、跨 manifest 交叉校验、网络类断言）——白名单四类已覆盖迁移主诉求。
+
+> 安全说明：`command_exit_zero` 会在 `stage complete` 时于工作区根执行 pipeline yaml 里的命令字符串。
+> bundled pipeline 可信；**自定义 pipeline 的 gate 命令同样会被执行**，审阅第三方 pipeline 时须留意。

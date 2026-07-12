@@ -20,6 +20,10 @@
 
 ```text
 新工作项
+├─ 【先问一句】spec 是否已具备？（acceptance.intent 有对应 block 且 intent check 通过）  ← P1 显式分叉
+│   否 → 走「spec 未具备」分支（下面前半段），先补 spec，别直接 delivery
+│   是 → 跳到最底「spec 已定」分支选交付快车道
+│
 ├─ 全新 product 模块（无 legacy、无已定 spec）？
 │  └─ yes → product-greenfield-spec
 ├─ 所属 slice 的 PRD / intent 尚未覆盖本能力（迁移域）？
@@ -34,9 +38,17 @@
 ├─ 代码已合并，只补 PDR/task/intent？
 │  └─ yes → doc-retro-spec
 └─ spec 已定（acceptance.intent 有对应 block 且 intent check 通过）？
-   ├─ 迁移 slice + golden/cutover → migration-slice-delivery
+   ├─ 迁移 slice：以**保留 legacy 行为**为主、bootstrap 已跑过 spec 链、无重设计？
+   │      → migration-preserve（快车道：facts→@asis→intent-check→implement→equivalence→cutover→living-docs）
+   ├─ 迁移 slice：有重设计（新 ADR）+ golden/cutover → migration-slice-delivery
    └─ 日常能力 → feature-delivery
 ```
+
+> **P1 教训（为什么加「spec 是否已具备」这句）**：bootstrap 已把 store 切片的 spec 链跑完后，
+> 本该走 `migration-preserve` 快车道，却因决策树无此显式分叉误选了 `migration-slice-delivery`
+> （又重走一遍重设计前半段）。`migration-preserve` 与 `migration-slice-delivery` **共享同一条交付尾**
+> （`implement → equivalence → cutover → living-docs`，见下「共享交付尾」），区别只在前半段：
+> preserve 是 facts-first 的行为保留，delivery 含重设计。**没有重设计需求就选 preserve。**
 
 ### Issue 类型与默认 pipeline
 
@@ -63,6 +75,38 @@ popsicle issue create --type technical --title "..." --product cli-ux \
   --pipeline feature-delivery --tasks T-CU-0002 \
   --description "实现 T-CU-0002 …（description 须含每个 --tasks id）"
 ```
+
+## 共享交付尾（P1）
+
+`migration-preserve` 与 `migration-slice-delivery` 的后四阶段**一字不差相同**：
+
+```text
+implement → equivalence → cutover → living-docs      ← 共享交付尾（含 cutover/equivalence 机验 gate）
+```
+
+差异只在**前半段**：`migration-slice-delivery` 前面是重设计链（含新 ADR），
+`migration-preserve` 前面是 facts-first 的 `facts → @asis intent → intent-check`。选 pipeline 时只需判断
+**前半段要不要重设计**；交付尾（及其 gate、审批轴）两者一致，无需重新学。
+
+> 注：pipeline yaml 目前无 include 机制，两条 bundled pipeline 的交付尾各自内联但保持同步；
+> 维护时改一处须同步另一处（golden-capture/verifier 等新 gate 也应同时挂到两者的 cutover/equivalence）。
+> 真正的「共享 stage 组」引擎机制留待 ROADMAP（避免为 2 个内置 pipeline 过度设计）。
+
+## 交付中发现 spec 缺口：回流到 spec（P2）
+
+pipeline 是单向阶段链，但迁移/探索中常在 **delivery 才发现 spec 偏差**（例：implement/equivalence 阶段
+比对 legacy 发现 `@asis` 实然行为与当初 `@tobe` spec 不符，如 store 切片的 ADR-0003）。**不要在 implement
+里偷偷改 `.intent` 打补丁**——那会让「spec 完成」名不副实。正确回流：
+
+1. **停下**，在当前 run 的 coverage / equivalence-report 里如实记录「发现的 spec 缺口」。
+2. 选其一回流：
+   - 缺口是**新能力/新旅程** → 另开 `feature-spec` / `migration-slice-spec` Issue（`--proposed-task`），补 spec 后再回来交付。
+   - 缺口是**有意分叉**（保留 legacy 怪癖 vs 改进）→ 在 cutover ADR 的 Divergence 表登记 + Accepted ADR，intent 用 `@asis`/`@tobe` 显式化（见 intent-consistency-check 的「@asis↔@tobe 分叉」）。
+   - 缺口是**spec 本身写错** → `doc-retro-spec` 或直接修 `.intent` + 记 PDR，并重跑 `intent-validate`。
+3. 回流产生的 spec 变更须让下游门禁重算（equivalence/cutover gate 会拦不一致）。
+
+> 引擎层的「阶段回退边 / spec↔impl 双向绑定」是更大的状态机改动，留待 ROADMAP；当前用「另开 spec issue + ADR 登记」
+> 这一可操作回流闭环，配合机验 gate 保证偏差不被静默吞掉。
 
 ## 流程
 

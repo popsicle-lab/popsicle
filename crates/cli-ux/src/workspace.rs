@@ -937,11 +937,28 @@ impl WorkspaceStore for LocalWorkspace {
             return Ok("all stages completed".into());
         }
         let stage = snap.current_stage_name().unwrap_or("unknown");
+        let idx = snap.current_stage_index as usize;
         let current = snap
             .stages
-            .get(snap.current_stage_index as usize)
+            .get(idx)
             .ok_or_else(|| WorkspaceError::InvalidState("stage index out of range".into()))?;
+        let stage_def = session.pipeline.stages.get(idx);
+        let gate_count = stage_def.map(|s| s.gate.len()).unwrap_or(0);
+        let is_gate_only = stage_def
+            .map(|s| s.skill_names().is_empty() && !s.gate.is_empty())
+            .unwrap_or(false);
+        // Gates run in every approval_mode (auto cannot bypass) — surface them.
+        let gate_hint = if gate_count > 0 {
+            format!("（完成前引擎将执行 {gate_count} 项机验 gate，任何 approval_mode 都不可绕过）")
+        } else {
+            String::new()
+        };
         if current.status == StageStatus::StageInProgress {
+            if is_gate_only {
+                return Ok(format!(
+                    "run gate: `popsicle pipeline stage complete {stage} --run {run_id}`（本 stage 仅机验 gate，无 artifact）{gate_hint}"
+                ));
+            }
             let approval_mode = load_project_config(&self.workspace.root)
                 .map(|c| c.workflow.approval_mode)
                 .unwrap_or_default();
@@ -950,11 +967,11 @@ impl WorkspaceStore for LocalWorkspace {
                 && stage_needs_explicit_confirm(approval_mode, stage, true)
             {
                 return Ok(format!(
-                    "approve then `popsicle pipeline stage complete {stage} --run {run_id} --confirm`"
+                    "approve then `popsicle pipeline stage complete {stage} --run {run_id} --confirm`{gate_hint}"
                 ));
             }
             return Ok(format!(
-                "popsicle pipeline stage complete {stage} --run {run_id}"
+                "popsicle pipeline stage complete {stage} --run {run_id}{gate_hint}"
             ));
         }
         Ok(format!("popsicle pipeline status --run {run_id}"))
@@ -975,6 +992,32 @@ impl WorkspaceStore for LocalWorkspace {
             )));
         }
         let idx = session.run.current_stage_index as usize;
+        // Machine gate axis (feedback #18/#19/P3, P4/H6): evaluated for EVERY
+        // approval_mode BEFORE the human approval axis. `auto` cannot bypass it.
+        // Fail-closed: the run cannot advance unless the gates actually pass.
+        let gates = session
+            .pipeline
+            .stages
+            .get(idx)
+            .map(|s| s.gate.clone())
+            .unwrap_or_default();
+        if !gates.is_empty() {
+            let product = self
+                .state
+                .runs
+                .get(run_id)
+                .map(|r| r.issue_key.clone())
+                .and_then(|key| self.state.issues.get(&key).map(|i| i.product_id.clone()))
+                .unwrap_or_default();
+            let reports =
+                crate::gate::evaluate_stage_gates(&self.workspace.root, &product, run_id, &gates);
+            if let Some(failed) = reports.iter().find(|r| !r.passed) {
+                return Err(WorkspaceError::InvalidState(format!(
+                    "gate:{stage}:{} — {}",
+                    failed.name, failed.detail
+                )));
+            }
+        }
         let requires_approval = session
             .stages
             .get(idx)
@@ -1206,7 +1249,16 @@ pub fn run_intent_validate(
     path: &str,
     format: &str,
 ) -> Result<i32, WorkspaceError> {
-    run_intent_validate_opts(workspace, path, format, false)
+    run_intent_validate_opts(workspace, path, format, false, false)
+}
+
+/// The intent-lang CLI flag that pulls `@asis` intents into Z3 (feedback #20).
+fn asis_flag(include_asis: bool) -> String {
+    if include_asis {
+        "--include-asis".to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// `merge=true` (feedback #14): instead of per-file `intent check` (which emits
@@ -1214,19 +1266,24 @@ pub fn run_intent_validate(
 /// concatenate each product's `intents/*.intent` into one temp program and check
 /// it once — whole-program scope, no cross-file noise. Falls back to the normal
 /// per-file/dir behavior when the path implies no product `intents/` dir.
+///
+/// `include_asis=true` (feedback #20): pass `--include-asis` so `@asis` (legacy
+/// as-is) intents participate in Z3 instead of being `asis-skipped` — the
+/// migration case where "what legacy actually does" is exactly what to lock down.
 pub fn run_intent_validate_opts(
     workspace: &Workspace,
     path: &str,
     format: &str,
     merge: bool,
+    include_asis: bool,
 ) -> Result<i32, WorkspaceError> {
     let code = if merge {
-        run_intent_validate_merged(workspace, path, format)?
+        run_intent_validate_merged(workspace, path, format, include_asis)?
     } else {
         let mut args = BTreeMap::new();
         args.insert("path".into(), path.to_string());
         args.insert("format".into(), format.to_string());
-        args.insert("include_asis".into(), String::new());
+        args.insert("include_asis".into(), asis_flag(include_asis));
         run_tool(workspace, "intent-validate", &args)?
     };
     if code != 0 {
@@ -1252,6 +1309,7 @@ fn run_intent_validate_merged(
     workspace: &Workspace,
     path: &str,
     format: &str,
+    include_asis: bool,
 ) -> Result<i32, WorkspaceError> {
     let products = crate::intent_goal_trace::product_intent_dirs(&workspace.root, path)
         .map_err(WorkspaceError::InvalidState)?;
@@ -1259,7 +1317,7 @@ fn run_intent_validate_merged(
         let mut args = BTreeMap::new();
         args.insert("path".into(), path.to_string());
         args.insert("format".into(), format.to_string());
-        args.insert("include_asis".into(), String::new());
+        args.insert("include_asis".into(), asis_flag(include_asis));
         return run_tool(workspace, "intent-validate", &args);
     }
     let mut worst = 0;
@@ -1282,7 +1340,7 @@ fn run_intent_validate_merged(
         let mut args = BTreeMap::new();
         args.insert("path".into(), tmp.to_string_lossy().into_owned());
         args.insert("format".into(), format.to_string());
-        args.insert("include_asis".into(), String::new());
+        args.insert("include_asis".into(), asis_flag(include_asis));
         let code = run_tool(workspace, "intent-validate", &args);
         let _ = fs::remove_file(&tmp);
         if code? != 0 {
@@ -1791,6 +1849,17 @@ fn ws_err(e: storage::WorkspaceError) -> crate::CliError {
             stage,
             next,
             "stage requires explicit approval",
+        );
+    }
+    if let Some(rest) = msg.strip_prefix("invalid state: gate:") {
+        let mut parts = rest.splitn(2, ':');
+        let stage = parts.next().unwrap_or("stage");
+        let detail = parts.next().unwrap_or("gate failed").trim();
+        return crate::CliError::actionable(
+            "gate",
+            stage,
+            "满足 gate 条件后重跑 `popsicle pipeline stage complete`；gate 在任何 approval_mode 都执行、auto 不可绕过",
+            format!("machine gate failed: {detail}"),
         );
     }
     if let Some(rest) = msg.strip_prefix("invalid state: active-run:") {
@@ -2446,8 +2515,15 @@ impl crate::CliDomain for WorkspaceDomain {
                 args.get("merge").map(String::as_str),
                 Some("true" | "1" | "yes")
             );
-            let code = run_intent_validate_opts(&self.store.workspace, path, format, merge)
-                .map_err(|e| match e {
+            // feedback #20: accept `include_asis=true|1|yes` or the raw flag string
+            // (`--include-asis`); pulls @asis intents into Z3 instead of skipping them.
+            let include_asis = matches!(
+                args.get("include_asis").map(String::as_str),
+                Some("true" | "1" | "yes" | "--include-asis")
+            );
+            let code =
+                run_intent_validate_opts(&self.store.workspace, path, format, merge, include_asis)
+                    .map_err(|e| match e {
                 WorkspaceError::NotFound(name) => crate::CliError::actionable(
                     "not-found",
                     tool,

@@ -32,8 +32,9 @@ pub use domain::{PipelineRun, PipelineRunStatus, Skill, SkillStatus, Stage, Stag
 pub use inspect::{PipelineStatusSnapshot, StageSnapshot};
 pub use issue::{Issue, IssueType};
 pub use loader::{
-    load_pipelines_dir, load_skill, load_skills_dir, LoadError, LoadedSkill, PipelineDef,
-    PipelineStageDef, SKILL_LOAD_SCHEMA_VERSION,
+    load_pipelines_dir, load_skill, load_skills_dir, AssertGate, GateSpec, LoadError, LoadedSkill,
+    ManifestRecomputesGate, PipelineDef, PipelineStageDef, RefResolvableGate,
+    SKILL_LOAD_SCHEMA_VERSION,
 };
 pub use memory_layer::{MemoriesLayer, Memory};
 pub use pipeline_session::{PipelineSession, SessionError};

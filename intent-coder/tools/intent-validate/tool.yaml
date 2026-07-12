@@ -4,7 +4,7 @@ description: >
   是 intent-consistency-check skill 的底层执行器。输出 intent-lang 的原生结果
   （text 或 json）；exit 0 = 全部 verified/skipped，exit 1 = 解析/类型错误或任一 VC 失败。
   intent-lang v0.1.1+ bundles Z3 — no system z3 required.
-version: "0.5.0"
+version: "0.6.0"
 
 args:
   - name: path
@@ -15,7 +15,10 @@ args:
     required: false
     default: json
   - name: include_asis
-    description: 是否一并验证 @asis（遗留）意图；默认只验证 @tobe / 无标注
+    description: >
+      include_asis=true（feedback #20）：把 @asis（legacy 实然）意图也送进 Z3，而非 asis-skipped
+      ——迁移场景「最该锁定 legacy 到底做了什么」正需要它。由 popsicle CLI 归一处理
+      （接受 true/1/yes 或原始 --include-asis）。默认只验证 @tobe / 无标注。
     required: false
     default: ""
   - name: merge

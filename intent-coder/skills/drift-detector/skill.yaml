@@ -1,0 +1,76 @@
+name: drift-detector
+description: 对 pinned 的 legacy 换 commit 后重跑 fact-extractor，按 fact_id / source diff 新旧 facts.yaml，产出漂移报告——指出哪些 intent / task / golden 因 legacy 变更而过期，使事实基从「一次性快照」变「活契约」（feedback #13/S5）。
+version: "0.1.0"
+
+inputs:
+  - from_skill: fact-extractor
+    artifact_type: facts-index
+    required: true
+    relevance: "旧 pin 的 facts.yaml 作为基线；本 skill 在新 pin 上重跑并 diff"
+    consumes: "facts[*].fact_id, facts[*].source"
+
+artifacts:
+  - type: drift-report
+    template: templates/drift-report.md
+    file_pattern: "{slug}.drift-report.md"
+    description: "legacy pin 漂移报告：新增/删除/变更的 fact_id（按 source diff），及受影响的下游 intent/task/golden 清单与建议动作（更新/失效/新增覆盖）。"
+
+workflow:
+  initial: scope
+  states:
+    scope:
+      # 确认旧 pin（facts.yaml.meta.legacy_pin）与新 pin（submodule 目标 commit）。
+      transitions:
+        - to: produce
+          action: pins-identified
+    produce:
+      # 新 pin 上重跑 fact-extractor 的抽取命令，与旧 facts.yaml diff。
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Pin Delta,Fact Diff,Downstream Impact;checklist_complete:Drift Checklist"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+        - to: produce
+          action: revise
+    completed:
+      final: true
+
+prompts:
+  scope: |
+    你在检测 **legacy pin 漂移**。事实基（facts.yaml）是在某个 pinned commit 上抽的快照；legacy 前进后，
+    部分 fact 可能过期，连带 intent/task/golden 也过期。你的任务是把这变化**结构化 diff** 出来。
+
+    1. 读当前 `<slug>.facts.yaml` 的 `meta.legacy_pin`（= 旧 pin）。
+    2. 确定新 pin：`git -C legacy/<name> rev-parse HEAD`（或用户指定的目标 commit）。
+    3. 若新旧相同 → 无漂移，直接产空报告并 completed。
+
+    确认后用 `pins-identified` 切到 produce。
+
+  produce: |
+    在**新 pin** 上重跑 fact-extractor 的抽取（同一组命令：proto/trait/pub fn/测试扫描等），
+    得到新 facts，再与旧 `facts.yaml` **按 `fact_id` + `source` diff**：
+
+    - **新增 fact**（新 pin 有、旧无）：legacy 加了 API/行为 → 可能需新 intent/task/golden 覆盖。
+    - **删除 fact**（旧有、新无）：legacy 删了 → 引用它的 intent/task/golden **失效**，列出。
+    - **变更 fact**（fact_id 同但 `source`/`signature`/`evidence` 变）：行为可能变 →
+      对应 golden 需重录（rewrite）或重新确认 characterization（verbatim）。
+
+    ## Downstream Impact（核心产出）
+    对每条 diff，回链受影响的下游（用 fact_id 反查）：
+    - `related_intents` 引用了该 fact 的 intent；
+    - `migrates_from` / `fact_cite` 指向该 fact 的 task；
+    - `golden_candidate` == 该 fact 的 golden。
+    给每项建议动作：**更新 / 失效并移除 / 新增覆盖 / 重录 golden**。
+
+    硬规则：
+    - **按 fact_id + source 机械 diff**，不凭印象。
+    - 新 pin 的抽取命令与原 fact-extractor 一致（可复现）。
+    - 报告要能直接驱动一轮 `migration-preserve` / `feature-spec` 增量（把「更新/新增覆盖」变成 task）。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

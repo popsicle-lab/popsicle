@@ -49,6 +49,33 @@ intent-spec-writer →（收紧进 acceptance/invariants）→ intent-consistenc
 - `{slug}.contracts-unlocked.intent` — 解锁后的 contracts 种子（能 `intent check`，0 VC），
   交 intent-spec-writer
 
+## RFC-inline-ADR 模式（S4 / #17：避免双文档自我复述）
+
+对**「冻结 / 等价保留」**类迁移决策（例：「new 与 legacy 等价即切流」「保留 legacy 怪癖」），
+先写 RFC 再写 ADR 是**双文档复述**同一件事（#17）——RFC 与 ADR 内容几乎一致，drift 风险高。
+此类决策可用 **RFC-inline-ADR**：写一份**自包含 ADR**，把简短的 Proposal/Design 直接内联进 ADR，
+**跳过独立 RFC 文件**。
+
+| 决策性质 | 走哪条 |
+|---|---|
+| 重设计 / 有真实备选方案需辩论权衡 | 正常 `rfc-writer → adr-writer`（RFC 落 `proposals/`，ADR 回链）|
+| 冻结 / 等价保留 / 单一显而易见方案 | **RFC-inline-ADR**：直接写 ADR，含内联 `## Proposal（inline）` 段，无独立 RFC |
+
+RFC-inline-ADR 的 ADR 需额外满足：
+- frontmatter 标 `rfc_inline: true`，并注明「本决策为冻结/等价保留，RFC 内联，无独立提案文件」；
+- 仍带 `Legacy-Pin` 与 `Source Artifact`（继承 RFC 持久归宿要求 #15）；
+- `## Proposal（inline）` 段用 3–6 行讲清「保留什么 / 为什么等价即可切流」，不必展开备选辩论。
+
+这样既满足 Charter 的 PRFC 生命周期（决策可追溯），又不为平凡决策制造两份会漂移的文档。
+`cutover-author` 的「冻结/切流 ADR」是 RFC-inline-ADR 的典型场景。
+
+## design-debate 统一（S4，说明）
+
+`product-debate` 与 `arch-debate` 是**同一场辩论的不同 scope**（产品价值 vs 技术架构）。
+概念上等价于一个 `design-debate --scope=product|arch`。本轮**不做破坏性合并**（会打断引用这两个
+skill 的 bundled pipeline 与在途 run）；先在文档层统一心智：选 debate skill 时按 scope 选，产物结构一致。
+真正的 skill 合并（删两个、加一个带 scope 参数）留待 ROADMAP，需同时改 pipeline 与迁移在途 run。
+
 ## 为什么单独成一个 skill（不让 rfc-writer 直接产 Accepted ADR）
 
 决策固化是**审批闸**，必须与起草分离：rfc-writer 起草（可能反复改），adr-writer 把关

@@ -1,0 +1,81 @@
+name: verifier
+description: 独立验收 skill（feedback H6/S5）——执行/验收分离。由**不同于实现者**的 agent（或人）复算门禁：重跑 cargo test、从 baseline.yaml/明细复算 golden 数字、核对每处 divergence 有 Accepted ADR、检查 realized_by 可解析。产出独立 verification-report 与 verdict，破解「运动员=裁判」。适合作为 cutover 前的 gate-only 校验闸。
+version: "0.1.0"
+
+# 上游：实现者产出的 equivalence-report / coverage / cutover 材料。verifier 不信任其自证数字，只复算。
+inputs:
+  - from_skill: equivalence-baseline
+    artifact_type: equivalence-report
+    required: true
+    relevance: "被验收的等价断言与 baseline.yaml——verifier 复算而非采信"
+  - from_skill: shadow-implementer
+    artifact_type: implementation-coverage
+    required: false
+    relevance: "intent → fn/test 覆盖表，verifier 抽查其真实性"
+
+artifacts:
+  - type: verification-report
+    template: templates/verification-report.md
+    file_pattern: "{slug}.verification-report.md"
+    description: "独立验收报告：每条门禁的**复算**结果（命令实跑退出码 / 数字重算 / 引用解析 / divergence↔ADR 对齐）+ 最终 verdict（accept / reject + 理由）。与实现者的自证分离。"
+
+workflow:
+  initial: scope
+  states:
+    scope:
+      # 明确要复算哪些门禁（读 pipeline 的 gate 声明 + equivalence-report 的断言）。
+      transitions:
+        - to: verify
+          action: gates-identified
+    verify:
+      # 独立重跑/重算，不采信实现者填的数字。
+      transitions:
+        - to: review
+          action: submit
+          guard: "has_sections:Recomputed Gates,Divergence Audit,Verdict;checklist_complete:Verification Checklist"
+    review:
+      transitions:
+        - to: completed
+          action: approve
+          requires_approval: true
+        - to: verify
+          action: revise
+    completed:
+      final: true
+
+prompts:
+  scope: |
+    你是**独立验收者**（verifier），不是实现者。H6 的核心：当执行者兼验收者，IDD 的「验收」在语义上坍缩。
+    你的唯一职责是**复算**，绝不采信实现者在文档里手填的 pass/数字。
+
+    先圈定要复算的门禁：
+    1. 读切片 pipeline 的 `gate:` 声明（`command_exit_zero` / `assert` / `manifest_recomputes` / `ref_resolvable`）。
+    2. 读 `equivalence-report` 与 `baseline.yaml` 里被断言为 pass 的项。
+    3. 读 cutover ADR 里声明的 divergence。
+
+    列出复算清单后，用 `gates-identified` 切到 verify。
+
+  verify: |
+    逐条**独立复算**（你自己跑，不看实现者结论）：
+
+    1. **命令门禁**：亲自跑 `cargo test`（及 pipeline 声明的命令），记录**你观察到的**真实退出码。
+    2. **数字门禁**：打开 `baseline.yaml`，从 `goldens[].status` **自己数** `status=pass` 的条数，
+       与 `summary.golden_pass` 比对；不一致 → reject（实现者填了假数）。校验 `golden_pass>=5`（或全 fail 已 divergence+ADR）。
+    3. **pin 真实性**：`legacy_pin != REPLACE_WITH_REAL_LEGACY_PIN` 且 == `git -C legacy/<name> rev-parse HEAD`。
+    4. **引用解析**：`popsicle tool run intent-validate path=products/<p>/intents`，realized_by 无悬空。
+    5. **divergence↔ADR 对齐**：equivalence-report 的每条 Divergence 必须有对应 Accepted ADR；ADR 里的有意分叉也必须在 report 出现。
+    6. **rewrite 切片额外**：核对 `golden-capture-manifest.yaml` 的 fixture `stdout_sha256` 与磁盘 fixture 复算一致（防事后篡改）。
+
+    ## Verdict（二选一，附证据）
+    - **accept**：全部复算通过，逐条附「我跑的命令 + 我观察到的结果」。
+    - **reject**：任一不符 → 列出「实现者声称 X，我复算得 Y」的差，指明修复方向。
+
+    硬规则：
+    - **你必须亲自跑**，报告里粘贴你的命令与输出，不是转述实现者的。
+    - verdict=accept 不代表可跳过引擎 gate——引擎 gate（stage complete 时）仍会独立再跑一遍（双保险）。
+    - 你**不改代码、不改门禁数字**；只出 verdict。发现问题回给实现者。
+
+hooks:
+  on_enter: null
+  on_artifact_created: null
+  on_complete: null

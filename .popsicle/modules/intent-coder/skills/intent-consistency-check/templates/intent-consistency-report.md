@@ -102,6 +102,21 @@ query_anchors:
 |---|---|---|
 | — | — | — |
 
+## @asis ↔ @tobe 分叉（迁移，#20）
+
+> 仅迁移切片需要；greenfield 写「（无 @asis，本产品非迁移）」。
+> 先用 `popsicle tool run intent-validate path=products/<p>/intents include_asis=true`
+> 让 `@asis` 参与 Z3，再逐条对照同名/对应能力的 `@asis`（legacy 实然）与 `@tobe`（目标）。
+> **有意分叉必须对应一条 divergence + ADR**，不许在 `@tobe` 里悄悄改 legacy 语义。
+
+| 能力 | @asis 断言 | @tobe 断言 | 关系 | divergence/ADR |
+|---|---|---|---|---|
+| LwwDropsStaleWrite | 后写覆盖先写 | 同（保留）| 等价保留 | —（无分叉）|
+| SubtableImplicitCreate | 首插入隐式建表 | 显式建表 | **有意分叉** | D-002 / ADR-XXX |
+
+- [ ] `@asis` 已用 `include_asis` 跑过 Z3（或声明本产品非迁移）
+- [ ] 每处「有意分叉」都对应 divergence + Accepted ADR，未在 @tobe 里隐藏
+
 ## Disposition
 
 - **observe（本 skill 的行为）**：即使存在 failed，skill **不阻断** pipeline；
