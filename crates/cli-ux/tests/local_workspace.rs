@@ -325,6 +325,66 @@ fn tsv_doc_check_fails_stub_and_passes_filled_doc() {
     let _ = fs::remove_dir_all(root);
 }
 
+/// Regression: `inject_on_run` must not write the multi-line project context
+/// (which may contain `---`) into the artifact frontmatter — it prematurely
+/// closed the line-oriented YAML frontmatter and made `doc check` report
+/// `frontmatter_complete:false`. The context is now returned in the CLI
+/// response instead, and the artifact frontmatter stays parseable.
+#[test]
+fn inject_on_run_keeps_artifact_frontmatter_parseable() {
+    use cli_ux::project_config::ensure_project_config;
+    use cli_ux::project_context::save_project_context;
+
+    let root = temp_workspace();
+    ensure_project_config(&root).expect("project config (inject_on_run default true)");
+    // PROJECT_CONTEXT.md with a `---` horizontal rule inside the engineering profile.
+    save_project_context(
+        &root,
+        "# Project Context\n\n## 工程画像\n\nRust workspace.\n\n---\n\nMore facts.\n",
+    )
+    .expect("save project context");
+
+    let mut store = LocalWorkspace::open_at(root.clone()).expect("open workspace");
+    let issue = store
+        .create_issue(
+            "bug",
+            "inject frontmatter",
+            "cli-ux",
+            Some("test-open"),
+            "medium",
+            "",
+            None,
+            &[],
+            &[],
+        )
+        .expect("create issue");
+    let run = store
+        .start_issue(&issue.key, "", "test-open")
+        .expect("start issue");
+    let doc = store
+        .create_doc("shadow-implementer", "artifact", &run.run_id)
+        .expect("create doc");
+
+    // The multi-line preferences are surfaced in the CLI response, not the file.
+    assert!(doc.agent_context.contains("[Project context]"));
+    assert!(doc.agent_context.contains("Rust workspace"));
+
+    let content = fs::read_to_string(root.join(&doc.file_path)).expect("read artifact");
+    assert!(
+        !content.contains("[Project context]"),
+        "injected block must not be written into the artifact: {content}"
+    );
+
+    // Frontmatter stays intact: fresh stub parses cleanly (just needs a body).
+    let stub = store.check_doc(&doc.doc_id).expect("check stub");
+    assert!(
+        stub.frontmatter_complete,
+        "frontmatter should parse even with `---` in PROJECT_CONTEXT.md"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
 #[test]
 fn tsv_pipeline_status_uses_stable_status_strings() {
     let root = temp_workspace();

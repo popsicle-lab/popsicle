@@ -113,6 +113,11 @@ CONTRIBUTING.md                             # IDD 工作流规则（人 + AI age
 ```
 docs/
 ├── CHARTER.md                              # 从 doc-architecture-charter artifact 落地
+├── decisions/                              # 仓库级/跨产品决策位（feedback #16）
+│   ├── README.md                           # 编号规则：ADR-G-/PDR-G-=仓库级、CADR-=charter 修订
+│   ├── adr/.gitkeep                        # ADR-G-NNNN：跨产品技术决策（共享 crate/gRPC 契约/包结构）
+│   ├── pdr/.gitkeep                        # PDR-G-NNNN：跨产品产品决策
+│   └── cadr/.gitkeep                       # CADR-NNNN：Charter 修订（charter 自指）
 ├── invariants/
 │   └── README.md                           # 空索引，[TBD: needs archaeology]
 ├── user-journeys/                          # v0.2 任务图：跨 product 旅程的全局层

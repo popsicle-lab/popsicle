@@ -4,7 +4,7 @@ description: >
   是 intent-consistency-check skill 的底层执行器。输出 intent-lang 的原生结果
   （text 或 json）；exit 0 = 全部 verified/skipped，exit 1 = 解析/类型错误或任一 VC 失败。
   intent-lang v0.1.1+ bundles Z3 — no system z3 required.
-version: "0.4.0"
+version: "0.5.0"
 
 args:
   - name: path
@@ -16,6 +16,13 @@ args:
     default: json
   - name: include_asis
     description: 是否一并验证 @asis（遗留）意图；默认只验证 @tobe / 无标注
+    required: false
+    default: ""
+  - name: merge
+    description: >
+      merge=true（feedback #14）：把每个产品的 intents/*.intent 合并成「整目录一个 program」
+      跑单次 intent check，消除跨文件 realized_by 的 W0010 噪音、获得整程序作用域验证。
+      由 popsicle CLI 拦截处理（非本 shell）；默认 per-file，行为不变。仅对产品 intents 目录生效。
     required: false
     default: ""
 

@@ -220,6 +220,9 @@ pub struct DocCreateResult {
     pub has_doc_id: bool,
     pub doc_id: String,
     pub file_path: String,
+    /// Project preferences for agent prompts when `inject_on_run` is enabled.
+    /// Surfaced in the CLI response, not the artifact frontmatter.
+    pub agent_context: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -931,6 +934,9 @@ pub fn run_command<D: CliDomain>(
                 result.document_row_exists.to_string(),
             );
             fields.insert("has_doc_id".into(), result.has_doc_id.to_string());
+            if !result.agent_context.is_empty() {
+                fields.insert("agent_context".into(), result.agent_context);
+            }
             let doc_id = result.doc_id;
             Ok(CommandResponse {
                 status: "ok",
@@ -1146,6 +1152,7 @@ pub fn create_document_artifact(
         has_doc_id: !id.is_empty(),
         doc_id: id.to_string(),
         file_path,
+        agent_context: String::new(),
     })
 }
 

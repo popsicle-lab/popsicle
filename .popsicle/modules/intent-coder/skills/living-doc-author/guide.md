@@ -11,7 +11,9 @@
 
 - 首个迁移切片完成、已有 PRD/PDR/intent 之后；
 - 任何时候上游变了（合并了新 task、intent 验证结果更新、PDR 落地）；
-- 多处模板挂钩：`popsicle skill start living-doc-author --target <target>`。
+- 多处模板挂钩：living-doc-author 作为 pipeline 阶段运行（`doc-sync-weekly` 或
+  `*-delivery` 的 `living-docs` 阶段）；下文 `--target` 指该阶段内部的目标选择，
+  self-host MVP 不通过 `skill start` 单独手启。
 
 **不是** CI 每次 PR 都跑的硬闸——它是周期性 / 触发式的保活工具。
 
@@ -71,4 +73,4 @@ PRODUCT 实质内容、intent 逻辑的改动都越界——发现了就记到 s
 
 ## Agent 观测
 
-doc-sync 阶段按 `popsicle tool run telemetry action=guide` 可选上报 stage score。
+doc-sync 阶段按 `popsicle tool run telemetry action=guide` 上报：`gen_ai.chat`（若用 LLM）+ **`popsicle.run.score`**（`doc check` 后 `telemetry_hint`）；重大 doc 变更可打 `popsicle.decision summary="…"`。

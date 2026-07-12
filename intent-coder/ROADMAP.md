@@ -279,3 +279,33 @@ git 集成——泛化成本低且已在用，拆它才是过早优化。`markdo
 > 链全程走通。**路径调整（2026-06-04，D4）**：放弃通用平台定位，popsicle 降级为
 > intent-coder 私有引擎，RFC D2 拆分作废，新支线改为「通用遗产瘦身」（§5）。
 > **剩余边界外项**：无约束 codegen、popsicle 通用遗产瘦身（D4/§5）、intent-lang 待补能力。
+
+---
+
+## 9. 迁移等价强化（提案，来自使用反馈 #11–#17）
+
+真实迁移（arrow-simple → astra-faber）跑通后暴露的方法论级缺口。**已落地**为脚手架/模板默认；
+**提案中**的项待专用 skill 后再固化。
+
+**已落地（模板 / 技能 / 脚手架默认）：**
+- **#11 结构化事实基**：`fact-extractor` 产 `facts.yaml`（`fact_id` + `kind` + `legacy@sha:path#L` 溯源 +
+  `evidence`，含 `behavior` 事实/收割 legacy 测试为 golden 候选）；5 份 markdown 降级为其渲染。
+- **#12 迁移第三轴**：task frontmatter 增 `migrates_from` + `equivalence{golden_id,status}`，
+  task ↔ legacy ↔ golden ↔ intent 覆盖矩阵可机器派生。
+- **#13 方法论**：`@asis 优先 → 逐条决定保留/改进 → @tobe`，intent 当等价 oracle，golden 骨架从
+  `facts.yaml` 派生，漂移检测（换 commit 重跑 diff facts）。写进 intent-spec-writer / fact-extractor guide。
+- **#15 RFC 持久归宿**：`rfc-writer` 落 `products/<p>/proposals/<lifecycle>/RFC-NNNN` + 双向回链 +
+  `legacy_pin`/`source_artifact`。
+- **#16 仓库级决策位**：`project-init` 铺 `docs/decisions/{adr,pdr,cadr}/`，`ADR-G-`/`PDR-G-`/`CADR-` 编号。
+- **#17 真相源**：Charter 明确 Accepted 后 decisions/ 为准、proposals 原地加状态标记不 move；迁移期 RFC 收敛。
+
+**已落地（本轮补全 #13 pipeline / #14 tool）：**
+- **`migration-preserve` 快车道 pipeline（#13）**：`intent-coder/pipelines/migration-preserve.pipeline.yaml`，
+  7 stage：facts → intent-spec(@asis) → intent-check → implement → equivalence → cutover → living-docs，
+  **复用现有 skill**、刻意跳过 debate→prd→arch→rfc→adr 重设计链。（未来若加 `@asis`-capture /
+  golden-skeleton 专用 skill 可进一步特化，但当前 DAG 已可跑：所有跨阶段 skill 输入依赖满足。）
+- **#14 整目录一个 program（opt-in）**：新增 `intent-validate merge=true`，把每个产品
+  `intents/*.intent` 合并成单 program 跑一次 `intent check`，跨文件 `realized_by` 同作用域解析、
+  **无 W0010**。⚠️ 这是**更严格**的整程序语义（合并后 `safety` 无条件应用到所有 intent，未约束后态的
+  操作 intent 会因自由变量 FAIL），是「有意识检查跨文件交互」的诊断模式，**非盲目消噪**。默认 per-file
+  行为不变；W0010 本身无害（合并 goal 追溯闸已权威校验 realized_by）。popsicle 侧实现，无需上游改动。

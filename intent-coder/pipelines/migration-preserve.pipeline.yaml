@@ -1,0 +1,71 @@
+name: migration-preserve
+description: >-
+  迁移域 · 「行为保留」快车道（feedback #13）：面向以**保留 legacy 行为**为主、无重设计
+  需求的切片。链路 facts → @asis 意图捕获 → Z3 一致性 → in-shadow 实现 → legacy↔new
+  golden 等价闸 → 冻结/切流 ADR → 活文档。**刻意跳过**为「重设计」准备的
+  debate → prd → arch → rfc → adr 链——那些是 migration-slice-spec / feature-arch-spec 的活。
+  前置：migration-bootstrap 已在仓库级跑过（products/ 骨架 + legacy submodule pin 就位）。
+scale: full
+keywords:
+  - migration
+  - preserve
+  - equivalence
+  - asis
+  - golden
+  - shadow
+  - cutover
+  - strangler-fig
+
+stages:
+  - name: facts
+    skill: fact-extractor
+    description: >-
+      在 pinned 的 legacy submodule 上抽结构化事实基 facts.yaml——重点收割 behavior 事实
+      （现有测试 / 可观测 I/O）作为 @asis 意图与 golden 骨架的原料，每条标 golden_candidate。
+    depends_on: []
+
+  - name: intent-spec
+    skill: intent-spec-writer
+    description: >-
+      @asis 优先：从 facts.yaml 的 behavior 事实**如实刻画 legacy 实然行为**（@asis intent，
+      默认 skip），再逐条决定「保留（→@tobe）还是改进（链 ADR）」。收紧成合法 intent-lang
+      并合并到 products/<slice>/intents/*。不发明新需求——preserve 的断言必须能追回 legacy 行为。
+    depends_on: [facts]
+
+  - name: intent-check
+    skill: intent-consistency-check
+    description: >-
+      对切片全量 .intent 跑 intent-lang + Z3 一致性验证 + 合并 goal 追溯闸
+      （经 intent-validate tool）。@tobe 意图作为等价 oracle 的逻辑闸。
+    depends_on: [intent-spec]
+
+  - name: implement
+    skill: shadow-implementer
+    description: >-
+      读 products/<slice>/intents/* + facts.yaml，实现/补齐 in-shadow 代码与 intent_properties
+      覆盖表。无 rfc/adr 输入时按 intent 范围编排（其上游输入均为 optional），不发明 scope 外 API。
+    depends_on: [intent-check]
+
+  - name: equivalence
+    skill: equivalence-baseline
+    description: >-
+      从 LEGACY_PIN + facts.yaml 的 api/behavior 事实生成/运行 golden 脚本（legacy 录制、new 回放），
+      产出 docs/baseline/<date>/ 与 migration/traceability.md 行；task.equivalence.golden_id 对齐
+      facts 的 golden_candidate。登记已知 divergence。是行为等价闸。
+    depends_on: [implement]
+
+  - name: cutover
+    skill: cutover-author
+    description: >-
+      门禁：intent gate_ready、golden pass（或 ADR 登记 divergence）、cargo test 全绿。
+      产出「冻结/切流」ADR(Accepted)（保留态决策：new 与 legacy 等价即切流），更新 migration/progress.md。
+    depends_on: [equivalence]
+    requires_approval: true
+
+  - name: living-docs
+    skill: living-doc-author
+    description: >-
+      刷新 implementation-status / architecture-manifest / product-header。
+      **不含** tasks-index / product-context（见 doc-sync-weekly pipeline）。
+    depends_on: [cutover]
+    requires_approval: true

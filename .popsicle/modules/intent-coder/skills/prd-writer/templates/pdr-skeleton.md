@@ -87,7 +87,7 @@
 ### Tasks Index Updates
 
 - [ ] `products/{target_product}/tasks/README.md` 重新生成
-       （`popsicle skill start living-doc-author --target tasks-index`）
+       （由 living-doc-author 阶段刷新：`doc-sync-weekly` 或 `*-delivery` 的 living-docs）
 
 ### Glossary Updates
 

@@ -33,15 +33,31 @@
 
 近似会剥夺下游 skill 量化范围所需的精度。
 
+## 结构化事实基 `facts.yaml` 是唯一真相源（feedback #11）
+
+**先写 `facts.yaml`，再把 5 份 markdown 当它的渲染写**。下游（debate/prd/rfc/intent-spec/golden）
+用 `fact_id` 精确引用，不再用「§ store」这类散文锚点。
+
+- 每条事实必带 `fact_id`（`F-<ABBREV>-<KIND>-NNN`）、`kind`（api/dep/risk/debt/behavior）、
+  `source`（`legacy@<pinned-sha>:<路径>#L<n>` 可复验溯源）、`evidence`。缺 `source` 就删该条。
+- **API 契约按签名结构化**（解析 `.proto`/trait/`pub fn`），同一份既喂 `contracts.intent`
+  也喂 golden 骨架——不要只写文字表。
+- **必须收割行为事实（`kind: behavior`）**：从 legacy 现有测试 / 可观测 I/O / 可推时序抽取，
+  尽量标 `golden_candidate`。静态结构（依赖 / LoC / unwrap 计数）不够——缺行为事实，
+  下游的 `@asis` intent 与 golden 对账都无从下手（见 intent-spec-writer @asis 方法论，#13）。
+- **漂移检测**：换 pinned commit 重跑 → diff `facts.yaml` 的 fact_id/source，即得过期的
+  intent/task/golden 清单。事实基因此从一次性快照变成**活契约**。
+
 ## 每个 artifact 的作用（决定你要写到什么深度）
 
 | Artifact | 谁消费 | 含义 |
 |---|---|---|
+| `facts.yaml` | **所有下游（机器）** | 唯一真相源；fact_id + file:line 溯源 + behavior 事实 |
 | `dependency-graph.md` | rfc-writer（设计新模块边界）| 必须**机器可读** —— 含邻接表，不只是图 |
 | `api-contracts.md` | prd-writer（写「这个 product 今天到底做什么」）| 必须按 bounded context 分组，不是按文件 |
 | `unsafe-risk-report.md` | safety-spec、invariant-spec | 每条目要有 file:line + 周围 1 行注释（如有）|
 | `tech-debt-inventory.md` | adr-writer（记录「为什么我们有这笔债」）、bug-tracker | 每条要有估计年龄（用 git blame）|
-| `fact-extraction-report.md` | 上面所有的入口点 | 交叉链接到 4 份详细 artifact；承载 executive summary |
+| `fact-extraction-report.md` | 上面所有的入口点 | 交叉链接到 facts.yaml + 4 份详细 artifact；承载 executive summary |
 
 ## 引用代码
 

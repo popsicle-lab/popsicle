@@ -94,6 +94,46 @@
 
 ---
 
+## RFC 持久归宿（feedback #15）
+
+RFC 是 Layer Map 的 **L4 一等层**，**不能**只活在 `.popsicle/artifacts/<run>/`（流水线临时产物）。spec 链跑完，RFC 必须落到产品树的持久位置，否则 ADR 的 `Related RFC` 会指向不存在的文件、活文档失去可发现性。
+
+规则：
+1. **落盘路径**：`rfc-writer` / spec 链收尾时把 RFC 落成
+   `products/<p>/proposals/<lifecycle>/RFC-NNNN-{slug}.md`——`proposed/` 阶段在 `proposed/`，
+   关联 ADR Accepted 后移到 `accepted/` **原地保留**（不再 move，避免破坏链接与 git 历史）。
+2. **编号**：`RFC-NNNN` 按 `products/<p>/proposals/` 现有最大号 +1，product 内递增。
+3. **双向回链**：RFC frontmatter `realized_by_adr` ↔ ADR 的 `Related RFC`，用**相对路径**互指
+   （链接修复属铁律 3 豁免）。
+4. **溯源**：RFC frontmatter 带 `source_artifact`（临时产物出处）与 `legacy_pin`（锚定的 legacy commit）。
+
+---
+
+## Decision 作用域：product 级 vs 仓库级（feedback #16）
+
+决策不都是 product-scoped。共享一个 legacy Cargo workspace 的 monorepo 里，"沿用包结构""gRPC 契约约定""共享 crate 归属"等是**仓库级**决策，塞进某个 product 是概念错位。
+
+| 作用域 | 路径 | 编号 | 用于 |
+|---|---|---|---|
+| **product 级** | `products/<p>/decisions/{adr,pdr}/` | `ADR-NNNN` / `PDR-NNNN`（各 product 从 1 起）| 单 product 的技术/产品决策 |
+| **仓库级/跨产品** | `docs/decisions/{adr,pdr}/` | `ADR-G-NNNN` / `PDR-G-NNNN` | 跨多个 product、共享基础设施的决策 |
+| **Charter 修订** | `docs/decisions/cadr/` | `CADR-NNNN` | 修改本 charter 自身 |
+
+> 跨产品决策的 `Consequences` **必须**逐一列出受影响的 product；各受影响 `PRODUCT.md` / `ARCHITECTURE.md` 反链回该 `ADR-G-`。
+
+---
+
+## proposals/ 与 decisions/ 的真相源（feedback #17）
+
+两个目录同时存在时，**谁是真相源**必须无歧义，否则跨目录 move 文件会破坏链接与 git 历史可读性。
+
+规则：
+1. **Accepted 后 `decisions/` 为准**。`proposals/` 里的对应项**原地加状态标记**（`Status: Accepted → 见 decisions/adr/ADR-NNNN`），**不 move、不删**——保留探索轨迹与 git 历史。
+2. **RFC 是唯一例外**：RFC 作为 L4 活的技术设计，`accepted/` 原地保留（见上一节），由 ADR 固化"决策"部分；RFC 记"怎么设计"，ADR 记"定了什么、为什么"。
+3. **迁移期收敛**：对"冻结 / 等价保留"这类无真实方案空间的决策，**直接写 ADR**，不走 RFC→ADR 双文档自我复述，避免 RFC↔ADR↔ARCHITECTURE 三处重复同一套模块边界导致 drift。
+
+---
+
 ## 活文档中的禁用短语
 
 如果某份活文档（`PRODUCT.md`、`ARCHITECTURE.md`）含有以下任一短语，PR 评审不通过：

@@ -76,6 +76,39 @@ fn golden_003_load_slice_delivery_pipeline() {
     );
 }
 
+/// G-003b: `migration-preserve` fast lane validates (7 stages, no debate/arch/rfc/adr).
+#[test]
+fn golden_003b_load_migration_preserve_pipeline() {
+    let path = intent_coder_pipelines_dir().join("migration-preserve.pipeline.yaml");
+    if !path.is_file() {
+        eprintln!("skip: {path:?} missing");
+        return;
+    }
+    let p = PipelineDef::load(&path).expect("load migration-preserve");
+    p.validate().expect("valid deps");
+    assert_eq!(p.name, "migration-preserve");
+    let names: Vec<_> = p.stages.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "facts",
+            "intent-spec",
+            "intent-check",
+            "implement",
+            "equivalence",
+            "cutover",
+            "living-docs"
+        ]
+    );
+    // The whole point of the fast lane: it skips the redesign chain.
+    for skipped in ["product-debate", "prd-writer", "arch-debate", "rfc-writer"] {
+        assert!(
+            !p.stages.iter().any(|s| s.skill.as_deref() == Some(skipped)),
+            "migration-preserve must skip {skipped}"
+        );
+    }
+}
+
 /// G-004: intent-coder module exposes 13 skills via registry scan.
 #[test]
 fn golden_004_skill_registry_count() {

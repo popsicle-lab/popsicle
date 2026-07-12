@@ -163,6 +163,12 @@ prompts:
 
     仓库级别还要：
     - `docs/CHARTER.md`（从下面的 artifact 2 落地）
+    - `docs/decisions/{adr,pdr,cadr}/.gitkeep`（**仓库级/跨产品决策位，feedback #16**）——
+      6 产品共享一个 legacy Cargo workspace，"沿用包结构""gRPC 契约约定""共享 crate
+      归属"是**仓库级**决策，塞进某 product 是概念错位。用 `ADR-G-NNNN` / `PDR-G-NNNN`
+      前缀与 product 级（`ADR-NNNN` 从 1 起）区分；`cadr/` 放 Charter 修订（CADR）。
+    - `docs/decisions/README.md`（编号规则：`ADR-G-`/`PDR-G-`=仓库级、`CADR-`=charter 修订；
+      跨产品决策的 Consequences 必须逐一列出受影响 product，各 `PRODUCT.md` 反链）
     - `docs/invariants/README.md`（空索引）
     - `docs/baseline/.gitkeep`
     - `docs/glossary.md`（骨架）
@@ -204,6 +210,9 @@ prompts:
     - **Per-Product 4-Piece Set**（PRODUCT.md / ARCHITECTURE.md / intents/ / decisions+proposals/ —— 每一件标注 audience、更新方式、**不准写什么**）
     - **Three-Layer Intent Hierarchy**（global / product / feature —— 什么放哪里）
     - **PRFC Lifecycle**（Exploring → Proposed → Accepted/Rejected → Superseded —— 解释为什么 product 侧有 Exploring 而技术侧没有）
+    - **RFC 持久归宿**（#15：RFC 落 `products/<p>/proposals/<lifecycle>/RFC-NNNN`，双向回链，不留临时 artifacts）
+    - **Decision 作用域**（#16：product 级 `ADR-NNNN` vs 仓库级 `ADR-G-NNNN`/`docs/decisions/` vs CADR）
+    - **proposals/ 与 decisions/ 真相源**（#17：Accepted 后 decisions/ 为准、proposals 原地加状态标记不 move；迁移期 RFC 收敛策略）
     - **Forbidden Phrases in Living Docs**（"曾经" / "originally" / "we used to" —— 这些属于 ADR/PDR 的叙述，永远不进活文档）
     - **Anti-Patterns**（来源讨论中的 5 个：living docs 当 wiki、ADR 当日记、每个微服务一个 product、roadmap 当愿望清单、doc-code drift）
 
@@ -215,6 +224,7 @@ prompts:
     - [ ] Layer Map 表 7 行齐全
     - [ ] Per-Product 4-Piece Set 章节存在，且显式列出每件「不准写什么」
     - [ ] PRFC Lifecycle 解释了 Exploring 状态的用途
+    - [ ] RFC 持久归宿 / Decision 作用域 / proposals↔decisions 真相源 三节齐全（#15/#16/#17）
     - [ ] Forbidden Phrases 章节存在
     - [ ] Anti-Patterns 章节列出来源讨论中的 5 个模式
 
@@ -259,6 +269,10 @@ prompts:
     - [ ] `popsicle doctor --format json` 的 `intent_coder_module` / `intent_coder_bundle`
           正常（module 已装；`module list` 在 self-host MVP 已 deferred）
     - [ ] `.gitattributes` 包含 `*.intent linguist-language=Scala`
+    - [ ] `docs/decisions/{adr,pdr,cadr}/` 已建 + `docs/decisions/README.md` 写明
+          `ADR-G-`/`PDR-G-`/`CADR-` 编号规则（仓库级决策位，#16）
+    - [ ] 每个 product 的 `proposals/{exploring,proposed,accepted,rejected}/` 已建
+          （RFC 持久归宿，#15）
     - [ ] 没有骨架文件含有「编造」内容 —— 每个值要么是模板默认，要么是
           `[TBD: needs archaeology]`
     - [ ] `git status` 显示的新文件符合预期；已跟踪文件没有被意外修改

@@ -104,6 +104,7 @@ The bundled pipeline templates are:
 | `migration-bootstrap` | first-time migration bootstrap | — |
 | `migration-slice-spec` | migration slice spec chain | — |
 | `migration-slice-delivery` | implement → equivalence → cutover → living-docs | — |
+| `migration-preserve` | 保留 legacy 行为快车道：facts → @asis intent → intent-check → implement → equivalence → cutover → living-docs（跳过 debate/arch/rfc） | — |
 | `product-greenfield-spec` | new product/module with no legacy code | `product` |
 | `feature-spec` | incremental capability spec (no legacy facts) | — |
 | `feature-arch-spec` | large incremental spec on existing product (PDR+ADR+task+intent) | — |

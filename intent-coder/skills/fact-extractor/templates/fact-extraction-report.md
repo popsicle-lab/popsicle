@@ -112,7 +112,10 @@
 
 ## Extraction Checklist
 
-- [ ] 5 个 artifact 都产出且交叉链接
+- [ ] `facts.yaml`（结构化真相源）已产出：每条事实带 `fact_id` + `kind` + `source`（legacy@sha:path#L）+ `evidence`
+- [ ] `facts.yaml` 含 `behavior` 事实（收割了 legacy 现有测试为 golden 候选，尽量标 `golden_candidate`）
+- [ ] API 契约按签名结构化（`.proto`/trait/`pub fn` → `api:` 记录），非仅文字表
+- [ ] 5 份 markdown 与 `facts.yaml` 的 fact_id 一致（markdown 是 facts.yaml 的渲染）
 - [ ] Summary 表中每个值都引用了详细 artifact
 - [ ] Bounded contexts 已列（或 `Unclassified` 已填）
 - [ ] Domain glossary 含 ≥10 个术语且都带置信度

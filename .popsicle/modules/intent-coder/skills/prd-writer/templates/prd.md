@@ -223,7 +223,8 @@ flowchart LR
 2. 把 §2 / §3 / §5 / §6 内容合并到 `products/{target_product}/PRODUCT.md` 对应段落
 3. 把每个新增 task 文件放到对应 `products/{target_product}/tasks/{journey_stage}/` 目录
 4. 把 `{slug}.acceptance.intent` 种子交给项目自带 intent spec writer 收紧后合并
-5. 跑 `popsicle skill start living-doc-author --target tasks-index` 刷新 `tasks/README.md`
+5. 用 living-doc-author 阶段刷新 `tasks/README.md`（`doc-sync-weekly` pipeline 或
+   `*-delivery` 的 `living-docs` 阶段，经 issue→run 承载）
 6. 跑 `intent-consistency-check`（上线后）—— Z3 闸放行
 7. PR 评审：CI 会强制检查每个修改文件都有 `Decision-Ref: PDR-{id}`
 

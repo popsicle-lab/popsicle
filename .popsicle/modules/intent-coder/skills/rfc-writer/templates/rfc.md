@@ -1,11 +1,15 @@
 ---
 artifact: rfc
+rfc_id: RFC-NNNN             # 落盘时分配：看 products/<p>/proposals/ 现有最大号 +1（#15）
 slug: {slug}
 title: "{RFC 标题}"
 target_product: {target_product}
 status: Proposed              # Proposed → Accepted（随关联 ADR）
 generated_by: rfc-writer
 date: {YYYY-MM-DD}
+source_artifact: ".popsicle/artifacts/<run_id>/doc-N.rfc.md"   # 流水线临时产物出处（#15 溯源）
+legacy_pin: "arrow-simple@<pinned-sha>"    # 迁移 RFC 必填：本设计所锚定的 legacy commit
+realized_by_adr: []          # 本 RFC 被哪个 ADR 固化（双向回链；ADR 侧回填 related_rfc）
 related_adrs: []             # 本 RFC 落地的 ADR ID
 related_prd: "{slug}.prd.md"
 quality_score: 0
@@ -19,6 +23,12 @@ query_anchors:
 
 > 正式技术设计文档。由 rfc-writer 从 arch-debate 的 rfc-draft 打磨而来，质量评分 ≥ 90。
 > 现在时书写——本文 § File Manifest 列出的段落可直接合并进 ARCHITECTURE.md。
+>
+> **持久归宿（#15）**：本 RFC 交付后**必须**落到
+> `products/<target_product>/proposals/<lifecycle>/RFC-NNNN-{slug}.md`
+> （`proposed/` 或 Accepted 后 `accepted/` 原地保留），并与关联 ADR 双向相对路径回链。
+> **不要**让它只停在 `.popsicle/artifacts/<run>/`——那样 spec 链跑完即丢、ADR 的
+> `Related RFC` 会指向不存在的文件。
 
 ## Context
 

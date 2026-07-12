@@ -1,6 +1,6 @@
 name: fact-extractor
-description: 对一份遗留代码库做逆向工程，产出结构化的事实基——dependency graph、public-API contracts、unsafe/risk 清单、tech-debt 清单——下游所有 IDD skill 都把它当作 ground truth 来引用
-version: "0.1.0"
+description: 对一份遗留代码库做逆向工程，产出机器可消费的结构化事实基 facts.yaml（每条带 fact_id + file:line 溯源 + evidence，含 behavior 事实/legacy 测试收割）+ 其人类渲染的 5 份 markdown（dependency graph、public-API contracts、unsafe/risk 清单、tech-debt 清单、汇总）——下游所有 IDD skill 都把 fact_id 当作 ground truth 来引用
+version: "0.2.0"
 
 # fact-extractor 没有上游——它是 IDD 适配旅程的入口点。它直接在遗留代码树
 # 上跑，产出下游每一个 PRD/RFC/spec writer（无论是谁出品的）都会引用的 artifact。
@@ -10,10 +10,15 @@ inputs: []
 # 下游 skill 能精准引用（例如 PRD 引用 api-contracts；RFC 引用 dependency-
 # graph；safety-spec 引用 unsafe-risk）。
 artifacts:
+  - type: facts-index
+    template: templates/facts.yaml
+    file_pattern: "{slug}.facts.yaml"
+    description: "结构化事实基（机器可消费的唯一真相源）：每条事实带 fact_id + kind + file:line 溯源 + evidence，含 behavior 事实（收割 legacy 测试为 golden 候选）。5 份 markdown 是它的渲染。feedback #11"
+
   - type: fact-extraction-report
     template: templates/fact-extraction-report.md
     file_pattern: "{slug}.fact-extraction-report.md"
-    description: "顶层摘要 + 四份详细 artifact 的索引"
+    description: "顶层摘要 + 四份详细 artifact 的索引（facts.yaml 的人类渲染入口）"
 
   - type: dependency-graph
     template: templates/dependency-graph.md
@@ -116,13 +121,26 @@ prompts:
     完整提示词：popsicle prompt fact-extractor --state scanning --run {run_id}
 
   drafting: |
-    你现在有了原始抽取数据。按以下顺序写 5 个 artifact：
+    你现在有了原始抽取数据。**先写结构化事实基 `facts.yaml`（唯一真相源），
+    再把 5 份 markdown 当它的渲染写出来**：
 
-      1. dependency-graph        —— 可视化 + 表格依赖
-      2. api-contracts           —— public 表面，按 bounded context 分组
-      3. unsafe-risk-report      —— 每个风险构造 + file:line + 原因
-      4. tech-debt-inventory     —— TODO/FIXME + file:line + 年龄（git blame）
-      5. fact-extraction-report  —— 顶层摘要，链接到上面 4 份
+      0. facts.yaml              —— 机器可消费真相源（#11）：api/dep/risk/debt/behavior
+                                    每条带 fact_id + kind + source(legacy@sha:path#L) + evidence
+      1. dependency-graph        —— 可视化 + 表格依赖（引用 F-*-DEP-* fact_id）
+      2. api-contracts           —— public 表面，按 bounded context 分组（引用 F-*-API-*）
+      3. unsafe-risk-report      —— 每个风险构造 + file:line + 原因（引用 F-*-RISK-*）
+      4. tech-debt-inventory     —— TODO/FIXME + file:line + 年龄（引用 F-*-DEBT-*）
+      5. fact-extraction-report  —— 顶层摘要，链接到 facts.yaml + 上面 4 份
+
+    ## facts.yaml 硬要求（#11，下游能否机器消费全看这里）
+    - 每条事实必带 `fact_id`（`F-<ABBREV>-<KIND>-NNN`）、`kind`、`source`
+      （`legacy@<pinned-sha>:<相对路径>#L<n>` —— 可复验溯源，缺 source 就删该条）、`evidence`。
+    - **API 契约按签名抽取**：解析 `.proto` / trait / `pub fn` 成结构化 rpc/函数记录，
+      同一份 `api:` 既喂 contracts.intent 也喂 golden 用例骨架——**不要**只写文字表。
+    - **必须收割行为事实（`kind: behavior`）**：从 legacy 现有测试 / 可观测 I/O /
+      可推时序抽取，每条尽量标 `golden_candidate`（与 task 的 `equivalence.golden_id`
+      呼应）。静态结构（依赖 / LoC / unwrap 计数）**不够**——缺行为事实，@asis intent
+      与 golden 对账都无从下手（#13）。
 
     关键规则：
 
@@ -131,7 +149,7 @@ prompts:
       (src/foo.rs:42)」。下游 skill（rfc-writer、adr-writer）会形成观点；
       你只提供事实。
 
-    - **每个声明都要 cite file:line**。没引用的声明，删掉。
+    - **每个声明都要 cite file:line，且在 facts.yaml 里有对应 fact_id**。没引用的声明，删掉。
 
     - **不要推断意图**。看到 `unsafe` 就记录它；除非上面注释明确这么说，
       否则不要声称「这个该做成 safe 的」。推断意图是 LLM 最稳定的失败模式，

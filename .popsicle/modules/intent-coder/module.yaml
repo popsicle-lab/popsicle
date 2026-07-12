@@ -1,5 +1,5 @@
 name: intent-coder
-version: "0.4.1"
+version: "0.5.0"
 description: "IDD（意图驱动开发）工作流工具箱——既支持遗留代码库迁移（骨架铺设、事实抽取、slice spec、in-shadow 实现、golden 对账、切流），也支持 greenfield 新产品/模块从 product brief 到 PRD 任务图、intent 闸门、活文档的规格链。v0.4 新增 slice-delivery 后半段与 greenfield-product-spec。"
 author: "popsicle-lab"
 license: "MIT"

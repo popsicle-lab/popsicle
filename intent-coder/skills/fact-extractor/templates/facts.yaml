@@ -1,0 +1,69 @@
+# ============================================================
+# 结构化事实基 — {project_name}   (feedback #11)
+# ============================================================
+# 机器可消费的**唯一真相源**。5 份 markdown 是本文件的**渲染**，不是反过来。
+# 下游（debate / prd / rfc / intent-spec / golden 骨架）用 fact_id 精确引用，
+# 不再用「§ store」这类散文锚点。
+#
+# 每条事实必带：
+#   - fact_id : 稳定 ID，格式 F-<ABBREV>-<KIND>-NNN（product 缩写 + 种类 + 序号）
+#   - kind    : api | dep | risk | debt | behavior
+#   - source  : legacy@<pinned-sha>:<相对路径>#L<n>[-L<m>]   ← 可复验溯源，缺则删
+#   - evidence: 原始证据（签名 / 计数 / 注释原文 / 测试名），不加评判
+# 换 pinned commit 重跑 fact-extractor → diff fact_id/source 即得漂移报告（#13）。
+
+meta:
+  project: "{project_name}"
+  legacy_pin: "arrow-simple@<pinned-sha>"   # 与 legacy submodule HEAD 一致
+  extracted_at: "{YYYY-MM-DD}"
+  extractor_version: "0.2.0"
+
+# ---- API 契约事实（按签名抽取，同一份喂 contracts.intent 与 golden 骨架）----
+# kind: api —— 解析 .proto / trait / pub fn，结构化记录每个 rpc / 函数签名。
+api:
+  - fact_id: F-ST-API-001
+    kind: api
+    context: store            # 归属 bounded context
+    symbol: "SchemaApi.CreateTable"
+    signature: "rpc CreateTable(CreateTableRequest) returns (CreateTableResponse)"
+    source: "legacy@<sha>:crates/store-engine/proto/schema.proto#L42-L58"
+    evidence: "proto service SchemaApi, 11 rpc 中的第 1 个"
+
+# ---- 依赖事实 ----
+dep:
+  - fact_id: F-ST-DEP-001
+    kind: dep
+    context: store
+    symbol: "store-engine -> arrow-buffer"
+    source: "legacy@<sha>:crates/store-engine/Cargo.toml#L14"
+    evidence: "arrow-buffer = \"53.0\"（直接依赖，版本约束）"
+
+# ---- 风险事实（带位置，形成债务台账供 ADR / cutover 挂载追踪）----
+risk:
+  - fact_id: F-ST-RISK-001
+    kind: risk
+    context: store
+    symbol: "StoreEngine::open"
+    source: "legacy@<sha>:crates/store-engine/src/lib.rs#L120"
+    evidence: ".unwrap() on Path::canonicalize —— 空/不存在路径上 panic"
+
+# ---- 技术债事实 ----
+debt:
+  - fact_id: F-ST-DEBT-001
+    kind: debt
+    context: store
+    symbol: "TODO: batch flush"
+    source: "legacy@<sha>:crates/store-engine/src/writer.rs#L88"
+    evidence: "// TODO: coalesce flushes（git blame: 2023-11, 14 个月）"
+
+# ---- 行为事实（#11 关键补强：不止静态结构，收割 legacy 现有测试为 golden 候选）----
+# kind: behavior —— 现有测试用例 / 可观测 I/O / 可推时序。它们是 @asis intent 与
+# golden 对账骨架的原料（见 intent-spec-writer @asis 方法论、#13）。
+behavior:
+  - fact_id: F-ST-BEH-001
+    kind: behavior
+    context: store
+    symbol: "create_then_get_roundtrip"
+    source: "legacy@<sha>:crates/store-engine/tests/roundtrip.rs#L10-L34"
+    evidence: "既有测试：CreateTable 后 GetTable 返回同名 schema；可直接升为 golden G-ST-API-001"
+    golden_candidate: G-ST-API-001    # 与 task.md 的 equivalence.golden_id 呼应

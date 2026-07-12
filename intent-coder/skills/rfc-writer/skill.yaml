@@ -31,7 +31,7 @@ artifacts:
   - type: rfc
     template: templates/rfc.md
     file_pattern: "{slug}.rfc.md"
-    description: "正式 RFC 技术设计文档 + ARCHITECTURE.md 顶层增量清单（File Manifest）。落地时按 Manifest 合并到 products/{p}/ARCHITECTURE.md。"
+    description: "正式 RFC 技术设计文档 + ARCHITECTURE.md 顶层增量清单（File Manifest）。落地时按 Manifest 合并到 products/{p}/ARCHITECTURE.md。**交付后必须落成 products/{p}/proposals/<lifecycle>/RFC-NNNN-{slug}.md 持久归宿并与 ADR 双向回链（#15）**，不可只停在流水线临时 artifacts。"
 
   - type: contracts-intent-seed
     template: templates/contracts-intent-seed.intent
@@ -171,6 +171,7 @@ prompts:
     - [ ] ADR 骨架 Status: Proposed，ID 不与现有冲突
     - [ ] CADR 候选（如有）已标明需先走 charter 修订
     - [ ] RFC 质量评分 ≥ 90（或 bypass 理由已记录）
+    - [ ] RFC `rfc_id` 已分配（proposals/ 现有最大号 +1）、`source_artifact` / `legacy_pin` 已填（#15）
     - [ ] **已向用户展示三件套完整产出**
 
 hooks:
@@ -178,10 +179,18 @@ hooks:
     - description: "落盘指引"
       message: |
         ✅ RFC 三件套已交付。建议下一步：
+        0. **RFC 持久归宿（#15，必做）**：把本 RFC 从 `.popsicle/artifacts/<run>/doc-N.rfc.md`
+           落成 `products/{p}/proposals/proposed/RFC-NNNN-{slug}.md`（号 = proposals/ 现有最大 +1），
+           frontmatter 填 `rfc_id` / `source_artifact` / `legacy_pin`。关联 ADR 固化后把该
+           RFC 移到 `proposals/accepted/` 原地保留，并与 ADR **双向相对路径回链**
+           （RFC.realized_by_adr ↔ ADR.related_rfc）。**不要**留在临时 artifacts 里当孤儿。
         1. **ADR 固化**：把 `ADR-{id}-{slug}.md` 交给 **adr-writer**，审批后 Status
            改 Accepted、移到 `products/{p}/decisions/adr/`——此后永不修改（charter 铁律）。
+           ADR 的 `Related RFC` 指向上一步的持久 `RFC-NNNN` 相对路径（非 doc-N）。
         2. **解锁 contracts 种子**：ADR Accepted 后，adr-writer 把 `{slug}.contracts.intent`
            的 `[Awaiting ADR-XXXX]` 解锁，交 **intent-spec-writer** 收紧成可验证 intent。
         3. **ARCHITECTURE.md 合并**：按 RFC § File Manifest 把增量合并进
            `products/{p}/ARCHITECTURE.md`，PR 必须 cite `ADR-{id}`。
-        4. **跑 intent-consistency-check**：contracts 收紧合并后过 Z3 闸。
+        4. **跨产品决策**：若本决策是仓库级（共享 crate 归属 / gRPC 契约约定 /
+           包结构沿用），落 `docs/decisions/{adr,pdr}/ADR-G-NNNN`（而非塞进某 product，#16）。
+        5. **跑 intent-consistency-check**：contracts 收紧合并后过 Z3 闸。

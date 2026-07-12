@@ -97,6 +97,11 @@ pub struct DocCreateRow {
     pub doc_id: String,
     pub file_path: String,
     pub artifact_file_exists: bool,
+    /// Project preferences surfaced in the CLI response when `inject_on_run` is
+    /// enabled. Delivered here (not in artifact frontmatter) because the block
+    /// is multi-line and may contain `---`, which would break the artifact's
+    /// line-oriented YAML frontmatter.
+    pub agent_context: String,
 }
 
 /// Result of `doc check` (PDR-001: the checklist replacement).

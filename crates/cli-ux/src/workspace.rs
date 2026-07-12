@@ -797,10 +797,12 @@ impl WorkspaceStore for LocalWorkspace {
         let mut doc = Document::new(&doc_id, skill, title);
         doc.extra_frontmatter
             .insert("pipeline_run_id".into(), run_id.to_string());
-        let ctx = crate::project_config::agent_prompt_context(&self.workspace.root);
-        if !ctx.is_empty() {
-            doc.extra_frontmatter.insert("agent_context".into(), ctx);
-        }
+        // Project preferences are returned in the CLI response (see the
+        // `agent_context` field), NOT written into the artifact. The block is
+        // multi-line and can contain `---` (from PROJECT_CONTEXT.md); injecting
+        // it into the line-oriented YAML frontmatter prematurely closes the
+        // frontmatter and makes `doc check` report frontmatter_complete:false.
+        let agent_context = crate::project_config::agent_prompt_context(&self.workspace.root);
         doc.body = format!("# {title}\n");
         let rel_path = format!(".popsicle/artifacts/{run_id}/{doc_id}.{skill}.md");
         let abs_path = self.workspace.root.join(&rel_path);
@@ -822,6 +824,7 @@ impl WorkspaceStore for LocalWorkspace {
             doc_id,
             file_path: rel_path,
             artifact_file_exists: abs_path.is_file(),
+            agent_context,
         })
     }
 
@@ -1203,11 +1206,29 @@ pub fn run_intent_validate(
     path: &str,
     format: &str,
 ) -> Result<i32, WorkspaceError> {
-    let mut args = BTreeMap::new();
-    args.insert("path".into(), path.to_string());
-    args.insert("format".into(), format.to_string());
-    args.insert("include_asis".into(), String::new());
-    let code = run_tool(workspace, "intent-validate", &args)?;
+    run_intent_validate_opts(workspace, path, format, false)
+}
+
+/// `merge=true` (feedback #14): instead of per-file `intent check` (which emits
+/// `W0010: realized_by references unknown declaration` for cross-file links),
+/// concatenate each product's `intents/*.intent` into one temp program and check
+/// it once — whole-program scope, no cross-file noise. Falls back to the normal
+/// per-file/dir behavior when the path implies no product `intents/` dir.
+pub fn run_intent_validate_opts(
+    workspace: &Workspace,
+    path: &str,
+    format: &str,
+    merge: bool,
+) -> Result<i32, WorkspaceError> {
+    let code = if merge {
+        run_intent_validate_merged(workspace, path, format)?
+    } else {
+        let mut args = BTreeMap::new();
+        args.insert("path".into(), path.to_string());
+        args.insert("format".into(), format.to_string());
+        args.insert("include_asis".into(), String::new());
+        run_tool(workspace, "intent-validate", &args)?
+    };
     if code != 0 {
         return Ok(code);
     }
@@ -1222,6 +1243,53 @@ pub fn run_intent_validate(
         crate::intent_goal_trace::print_goal_trace_text(&findings);
     }
     Ok(1)
+}
+
+/// Merged whole-program `intent check` per product (feedback #14). Returns the
+/// worst exit code across products; falls back to a plain per-file/dir check when
+/// the path implies no product `intents/` dir (e.g. a single `.intent` file).
+fn run_intent_validate_merged(
+    workspace: &Workspace,
+    path: &str,
+    format: &str,
+) -> Result<i32, WorkspaceError> {
+    let products = crate::intent_goal_trace::product_intent_dirs(&workspace.root, path)
+        .map_err(WorkspaceError::InvalidState)?;
+    if products.is_empty() {
+        let mut args = BTreeMap::new();
+        args.insert("path".into(), path.to_string());
+        args.insert("format".into(), format.to_string());
+        args.insert("include_asis".into(), String::new());
+        return run_tool(workspace, "intent-validate", &args);
+    }
+    let mut worst = 0;
+    for (product, intents_dir) in products {
+        let merged = crate::intent_goal_trace::merge_product_intents(&intents_dir)
+            .map_err(WorkspaceError::InvalidState)?;
+        if merged.trim().is_empty() {
+            continue;
+        }
+        let tmp = std::env::temp_dir().join(format!(
+            "popsicle-merged-{}-{}-{}.intent",
+            product,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::write(&tmp, &merged).map_err(io_err)?;
+        let mut args = BTreeMap::new();
+        args.insert("path".into(), tmp.to_string_lossy().into_owned());
+        args.insert("format".into(), format.to_string());
+        args.insert("include_asis".into(), String::new());
+        let code = run_tool(workspace, "intent-validate", &args);
+        let _ = fs::remove_file(&tmp);
+        if code? != 0 {
+            worst = 1;
+        }
+    }
+    Ok(worst)
 }
 
 /// One-time import when a workspace still has Phase 1 `state.tsv` but no `state.db`.
@@ -2109,6 +2177,7 @@ impl crate::CliDomain for WorkspaceDomain {
             has_doc_id: true,
             doc_id: doc.doc_id,
             file_path: doc.file_path,
+            agent_context: doc.agent_context,
         })
     }
 
@@ -2373,7 +2442,12 @@ impl crate::CliDomain for WorkspaceDomain {
         if tool == "intent-validate" {
             let path = args.get("path").map(String::as_str).unwrap_or("");
             let format = args.get("format").map(String::as_str).unwrap_or("json");
-            let code = run_intent_validate(&self.store.workspace, path, format).map_err(|e| match e {
+            let merge = matches!(
+                args.get("merge").map(String::as_str),
+                Some("true" | "1" | "yes")
+            );
+            let code = run_intent_validate_opts(&self.store.workspace, path, format, merge)
+                .map_err(|e| match e {
                 WorkspaceError::NotFound(name) => crate::CliError::actionable(
                     "not-found",
                     tool,

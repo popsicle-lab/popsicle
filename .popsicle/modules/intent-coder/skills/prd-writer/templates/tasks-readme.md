@@ -1,7 +1,8 @@
 # `{product_name}` Tasks Index
 
 > **本文件由 prd-writer / living-doc-author 自动维护，请勿手工编辑**。
-> 重新生成命令：`popsicle skill start living-doc-author --target tasks-index`
+> 重新生成：由 living-doc-author 阶段刷新（`doc-sync-weekly` pipeline 或 `*-delivery`
+> 的 `living-docs` 阶段，经 issue→run 承载）。
 > Last-Generated: {YYYY-MM-DD}
 
 本目录按**用户旅程阶段**组织 task 文件。`{product_name}` 的所有用户可见行为都

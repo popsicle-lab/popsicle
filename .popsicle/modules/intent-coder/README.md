@@ -78,56 +78,59 @@
 
 ## 使用
 
-在新项目里：
+> **心智模型（读之前先看）**：self-host MVP 里**没有** `popsicle skill start`，也**没有**
+> `popsicle pipeline run`——它们已 deferred（见 `AGENTS.md` 的 Deferred 列表）。**唯一**
+> 的入口是 **issue 驱动**：`issue create --pipeline <name>` → `issue start <key>`（这一步
+> 才创建 pipeline run 并返回 `run_id`）→ 循环 `pipeline next` / `doc create` / `doc check`
+> / `pipeline stage complete`。下面每个 skill 都是某个 pipeline 里的一个 **stage**，由
+> `pipeline next --run <run_id>` 按序提示，不用逐个手启。
+
+在新项目里安装模块：
 
 ```bash
 mkdir new-project && cd new-project && git init
-popsicle init   # installs pipelines + intent-coder module when intent-coder/ exists at repo root
-# Or refresh module after upstream updates:
-popsicle admin sync-intent-coder
-# Legacy / external checkout:
-popsicle module add /path/to/intent-coder   # deferred in self-host MVP; use sync-intent-coder in-repo
-
-# 1. 铺出文档骨架（交互式 —— 命名 products、挑首个迁移切片）
-popsicle skill start project-init
-
-# 2. 通过审批后，扫遗留 submodule 抽事实
-popsicle skill start fact-extractor --source legacy/<your-legacy-name>
-
-# 3. 对首切片 product 开一场多角色产品辩论
-popsicle skill start product-debate
-
-# 4. 把辩论产出打磨成 PRD 五件套（PRD + acceptance.intent 种子 + PDR）
-popsicle skill start prd-writer
-
-# 5-7.（技术侧支线，PRD 含跨模块契约 / [ADR 候选] 时才跑）
-popsicle skill start arch-debate      # 多角色技术辩论 → RFC 草稿
-popsicle skill start rfc-writer       # RFC + contracts 种子 + ADR 骨架
-popsicle skill start adr-writer       # 固化 ADR(Accepted) + 解锁 contracts
-
-# 8. 把 acceptance 种子 + 解锁的 contracts 收紧成合法 .intent 并合并
-popsicle skill start intent-spec-writer
-
-# 9. 过 intent 一致性闸（Z3 / observe）
-popsicle skill start intent-consistency-check
-
-# 10. 保活活文档（刷新 tasks 索引 / 健康度 / 反向引用）
-popsicle skill start living-doc-author --target all
-
-# —— 仓库级：一键 migration-bootstrap（10 stage，仅 Day-1 一次）——
-# popsicle pipeline run migration-bootstrap
-
-# —— 后续 slice：spec + delivery（同一 issue 可链式跑）——
-# popsicle issue create ... --pipeline migration-slice-spec
-# popsicle issue create ... --pipeline migration-slice-delivery   # 或 feature-delivery
-
-# —— 新产品 / 新模块：从 product brief 直接进入 spec 链 ——
-# popsicle issue create ... --pipeline product-greenfield-spec
-
-# delivery 末尾建议：
-# popsicle skill start living-doc-author \
-#   --target implementation-status,architecture-manifest,product-header
+popsicle init                    # 在仓库根存在 intent-coder/ 时安装 pipelines + 模块
+popsicle admin sync-intent-coder # 上游更新后刷新内置模块（module add 已 deferred）
 ```
+
+### 仓库级 Day-1：migration-bootstrap（10 stage，仅一次）
+
+```bash
+# 一次 issue 承载整条 bootstrap 链；issue start 产生 run_id。
+# migration-bootstrap 的 init 阶段负责*创建* products，因此 --product 可省略
+# （product 目录此刻尚不存在）；也可传首切片的预期名占位，init 再落地该目录。
+popsicle issue create --type technical --title "Bootstrap <repo> 迁移" \
+  --pipeline migration-bootstrap \
+  --description "初始化 IDD 骨架 + 首切片 spec 链" --format json
+popsicle issue start <ISSUE-KEY> --format json        # → run_id
+
+# 之后按 pipeline 提示逐个 stage 推进（每个 stage 对应下表一个 skill）：
+popsicle pipeline next --run <run_id> --format json
+popsicle doc create project-init --title "Init plan" --run <run_id>
+popsicle doc check <doc_id>
+popsicle pipeline stage complete init --run <run_id>  # 审批模式见 project.yaml
+# … facts → debate → prd → [arch-debate → rfc → adr] → intent-spec → intent-check → living-docs
+```
+
+> 💡 **仅 `migration-bootstrap` 允许省略 `--product`**（它的 `init` 阶段创建 products）。
+> 其它 pipeline 仍要求 `--product` 指向 `products/` 下已存在的目录。
+
+10 个 stage 依次对应下表 skill；技术侧支线（arch-debate → rfc → adr）在 PRD 无跨模块
+契约时可整段 skip，popsicle 把 skipped 视为依赖已满足，下游 `intent-spec` 照常 ready。
+
+### 后续 slice / 新产品
+
+```bash
+# 迁移 slice spec（无 init）：
+popsicle issue create ... --pipeline migration-slice-spec
+# 迁移 slice 交付（spec 完成后，同一或新 issue）：
+popsicle issue create ... --pipeline migration-slice-delivery   # 或 feature-delivery
+# 新产品 / 新模块（无 legacy facts）：
+popsicle issue create ... --pipeline product-greenfield-spec
+```
+
+delivery 末尾的 living-doc 保活由 `living-docs` stage 承担（`migration-slice-delivery` /
+`feature-delivery` 的最后一棒），无需单独手启 skill。
 
 ## 文档 / intent 各文件的归属
 

@@ -2,7 +2,9 @@
 # ============================================================
 # Task Frontmatter（必填字段不可省略；可选字段无内容时删除整行）
 # ============================================================
-task_id: T-0001                       # 必填 — product 内 4 位 0 填充递增，永不变
+task_id: T-CU-0001                    # 必填 — 格式 T-<ABBREV>-NNNN；ABBREV=product 缩写
+                                      #   （见 .popsicle/project.yaml › products.<slug>.abbrev），
+                                      #   NNNN 为 product 内 4 位 0 填充递增，永不变
 slug: first-time-verify               # 必填 — kebab-case，可改（不影响 task_id 引用）
 title: "我第一次跑 intent check 直到拿到 PASS"   # 必填 — 完整人话句子，第一人称
 journey_stage: onboarding             # 必填 — 5 选 1: onboarding / daily-ops / troubleshooting / admin / lifecycle
@@ -20,21 +22,30 @@ prerequisites:
 limits:
   - "免费额度 5 次 / 月"
 related_intents:
-  - "acceptance.intent#T-0001-response-under-5s"
+  - "acceptance.intent#T-CU-0001-response-under-5s"
   - "invariants.intent#no-concurrent-verification"
 related_next_tasks:
-  - T-0002
-  - T-0010
+  - T-CU-0002
+  - T-CU-0010
 fact_cite:
   - "fact-extraction-report § Bounded Contexts row 2 / Product Brief"
+# ---- 迁移第三轴（迁移 task 必填；greenfield task 删除整段）feedback #12 ----
+# 让 task ↔ legacy 源 ↔ golden 对账 成一等关系，traceability 从 task 自动派生。
+migrates_from:                        # 本 task 迁移了 legacy 的哪个 crate / rpc / 路径
+  - "legacy@<pinned-sha>:crates/store-engine/src/lib.rs#L1-L120"
+  - "rpc: SchemaApi.CreateTable"
+equivalence:                          # 与 legacy 的等价对账状态
+  golden_id: G-ST-API-001             # 对应 golden case（与 fact facts.yaml 的 fact_id 呼应）
+  status: pending                     # pending / recorded / equivalent / diverged(<原因>)
 last_verified: ~                      # 由 living-doc-author / CI 填；未验证时为 ~
 ---
 
 # {title}
 
 > ⚠️ 本 task 是 `products/<product>/PRODUCT.md` 的展开篇章。文件路径
-> `products/<product>/tasks/{journey_stage}/T-{nnnn}-{slug}.md` 是引用契约——
-> 引用本 task 时**必须用 `task_id`（T-{nnnn}）**，不要用 slug（slug 会改）。
+> `products/<product>/tasks/{journey_stage}/T-<ABBREV>-NNNN-{slug}.md` 是引用契约——
+> 引用本 task 时**必须用 `task_id`（`T-<ABBREV>-NNNN`）**，不要用 slug（slug 会改）。
+> `ABBREV` 是 product 缩写（见 `.popsicle/project.yaml › products.<slug>.abbrev`）。
 
 ---
 
@@ -150,7 +161,14 @@ flowchart TD
 - [ ] 「本 task 可解答」有 3-5 个用户原话问句
 - [ ] 完成路径无「如果……则……」分支（分支走另开 task）
 - [ ] Related Next Tasks ≥ 1 个（叶子 task 例外，需在 frontmatter 加 `is_leaf: true`）
+- [ ] 迁移 task：`migrates_from` 指向 pinned legacy 源、`equivalence.golden_id` 已分配
+      （greenfield task 则确认已删除迁移第三轴整段）
 - [ ] 文件末尾有 `Decision-Ref: {decision_ref}` 行
+
+> **覆盖矩阵（#12）**：`migrates_from` + `equivalence` + `related_intents` 三者齐全后，
+> `task ↔ legacy crate/rpc ↔ golden ↔ intent` 的覆盖关系即可被机器派生——
+> `migration/traceability.md` 应从各 task frontmatter 自动汇总，而非手工维护；
+> 缺 `related_intents` 的 rpc / 缺 `migrates_from` 的迁移 task 会在矩阵里暴露为缺口。
 
 ---
 

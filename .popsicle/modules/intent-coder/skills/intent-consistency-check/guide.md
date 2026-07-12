@@ -95,15 +95,19 @@ Z3 通过后，`popsicle tool run intent-validate path=products/...` 还会对**
 
 ## 写 .intent 的四条硬规则（来自 dogfood 发现）
 
-1. **后态用 primed 变量**：safety / invariant 子句要约束操作**之后**的状态，
+0. **关键字（别写错）**：不变量**子句**是 `invariant`（用在 intent {} 或
+   `safety {}` 内）；`safety` 是**顶层声明** `safety 名(参) { invariant ... }`，
+   不能当子句写进 intent。intent {} 内合法子句只有 `require` / `ensure` /
+   `invariant`（把 `safety` 写进去会报 expected require/ensure/invariant）。
+1. **后态用 primed 变量**：`invariant` 子句要约束操作**之后**的状态，
    必须显式写 `x'`。写成 unprimed 只验旧态，会假通过（vcgen 的真实行为）。
-2. **一个文件 = 一个验证作用域**：vcgen 把每条 `safety` 无条件合并进文件内
+2. **一个文件 = 一个验证作用域**：vcgen 把每条 `safety` 声明无条件合并进文件内
    所有 intent，且靠**参数名**绑定。所以一个 `.intent` 文件只放共享同一组
    不变量的操作；不相关操作放到各自的文件，否则自由变量会让无关 intent 误判 FAIL。
 3. **无 frame 假设**：intent-lang **不**默认「未提及字段不变」。要声明某操作不改
-   某字段，必须显式 `ensure x' == x`；否则该 primed 字段自由，一旦被 invariant /
-   safety 约束就会必然 FAIL。
-4. **纯 require+ensure = trivial verified**：只有 `invariant` / `safety` 子句产生
+   某字段，必须显式 `ensure x' == x`；否则该 primed 字段自由，一旦被
+   `invariant`（含 `safety` 声明内的）约束就会必然 FAIL。
+4. **纯 require+ensure = trivial verified**：只有 `invariant` 子句产生
    验证目标（goals），`ensure` 只是假设。所以孤立的「操作规约」（acceptance 那种）
-   不会被证伪——真正的一致性验证来自 invariants 里 safety + 完整 ensure 的组合。
+   不会被证伪——真正的一致性验证来自 invariants 里 `safety` 声明 + 完整 ensure 的组合。
    报告里要清楚区分「trivial verified（操作规约）」与「真正验证了不变量」。

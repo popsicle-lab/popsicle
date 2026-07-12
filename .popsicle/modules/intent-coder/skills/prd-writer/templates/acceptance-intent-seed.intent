@@ -24,15 +24,22 @@
 // 两条硬写法规则（违反就会假通过 / 误失败，来自 dogfood）
 // ============================================================
 //
+//   规则 0（关键字，别写错）：不变量**子句**的关键字是 `invariant`，**不是**
+//     `safety`。`safety` 是**顶层声明**：`safety 名(参) { invariant <expr> }`，
+//     只出现在 invariants.intent，不能写进 intent {} 内当子句。
+//       - intent {} 内合法子句：`require` / `ensure` / `invariant`
+//       - invariants.intent 顶层：`safety 名(参) { invariant ... }`
+//     （把 `safety` 当子句写进 intent 会被解析器拒绝：expected require/ensure/invariant）
+//
 //   规则 1（后态用 primed）：要约束操作**之后**的状态，必须写 primed 变量 `x'`。
 //     `ensure u.state' == Active`   ✅ 约束后态
 //     `ensure u.state == Active`    ❌ 这是在约束「输入」，不是结果
-//     safety/invariant 子句写 unprimed 只验旧态，会假通过。
+//     `invariant` 子句写 unprimed 只验旧态，会假通过。
 //
-//   规则 2（一文件 = 一作用域）：每条 `safety` 会被**无条件合并进本文件所有
+//   规则 2（一文件 = 一作用域）：每条 `safety` 声明会被**无条件合并进本文件所有
 //     intent** 的验证条件，且靠**参数名**绑定。所以：
 //       - acceptance.intent 里**只放操作 intent**（require/ensure），
-//         尽量不放 safety；保持型不变量请放 invariants.intent。
+//         尽量不放 safety 声明；保持型不变量请放 invariants.intent。
 //       - 真要放 safety，确保本文件每个 intent 都能满足它的后态，否则无关
 //         intent 会因自由变量被误判 FAIL。
 //

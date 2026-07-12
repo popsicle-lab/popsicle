@@ -30,6 +30,23 @@ pub fn check_products_goal_trace(
     Ok(findings)
 }
 
+/// Product `intents/` dirs implied by `validate_path` (empty for a single `.intent` file).
+/// Reused by the opt-in merged whole-program check (`intent-validate merge=true`, feedback #14).
+pub fn product_intent_dirs(
+    workspace_root: &Path,
+    validate_path: &str,
+) -> Result<Vec<(String, PathBuf)>, String> {
+    let target = resolve_validate_path(workspace_root, validate_path);
+    discover_product_intent_dirs(&target)
+}
+
+/// Concatenate a product's `intents/*.intent` into one whole-program source
+/// (sorted, deterministic) so a single `intent check` sees cross-file `realized_by`
+/// without the per-file `W0010` noise (feedback #14).
+pub fn merge_product_intents(intents_dir: &Path) -> Result<String, String> {
+    merge_intent_sources(intents_dir)
+}
+
 pub fn print_goal_trace_json(findings: &[GoalTraceFinding]) {
     for f in findings {
         let line = serde_json::json!({
