@@ -14,7 +14,7 @@
 |---|---|
 | 仓库名 | `{new-intent-lang}` |
 | 本地路径 | `{/Users/.../Workspace/github/new-intent-lang}` |
-| Issue key 前缀 | `{INTENT}`（用于 BUG-INTENT-1、TC-INTENT-1 ……）|
+| Issue key 前缀（仓库级、唯一）| `{INTENT}`（用于 `BUG-INTENT-1`、`TC-INTENT-1` ……）|
 | 默认 agent target | `{claude}`（claude / cursor / copilot / codex / opencode 之一）|
 | License | `{MIT}`（必须与 legacy 源码 license 兼容）|
 | 初始分支 | `main` |
@@ -24,18 +24,23 @@
 ## Product Inventory
 
 > 本计划中最重要的表。一旦批准，这些名字会成为 `products/<name>/` 目录路径，被所有下游文档引用。
+>
+> `abbrev` 列是 **task ID `T-<ABBREV>-NNNN` 的来源**（如 `verifier`→`VE`→`T-VE-0001`），
+> 与仓库级 issue-key 前缀是**两套不同的 ID**。`abbrev` 须 2-3 大写字母、仓库内唯一，
+> 并落到 `.popsicle/project.yaml` 的 `products.<slug>.abbrev`。
 
-| # | Product | 一行用途 | 估计 LoC | 来源（fact-ext §）| 状态 |
-|---|---|---|---|---|---|
-| 1 | `{syntax}` | IntentLang parser & AST | {1,200} | Bounded Contexts row 1 | scaffold-only |
-| 2 | `{verifier}` | Z3-backed 语义验证 | {2,400} | Bounded Contexts row 2 | **slice（首切片）** |
-| 3 | `{cli}` | `intent` 命令行入口 | {600} | Bounded Contexts row 3 | scaffold-only |
-| 4 | `{ui}` | Tauri 桌面可视化 | {1,800} | Bounded Contexts row 4 | scaffold-only |
+| # | Product | abbrev | 一行用途 | 估计 LoC | 来源（fact-ext §）| 状态 |
+|---|---|---|---|---|---|---|
+| 1 | `{syntax}` | `{SY}` | IntentLang parser & AST | {1,200} | Bounded Contexts row 1 | scaffold-only |
+| 2 | `{verifier}` | `{VE}` | Z3-backed 语义验证 | {2,400} | Bounded Contexts row 2 | **slice（首切片）** |
+| 3 | `{cli}` | `{CL}` | `intent` 命令行入口 | {600} | Bounded Contexts row 3 | scaffold-only |
+| 4 | `{ui}` | `{UI}` | Tauri 桌面可视化 | {1,800} | Bounded Contexts row 4 | scaffold-only |
 
 **对照硬规则的校验**：
 - [ ] 每个名字客户能识别（不是 `core` / `utils` / `common`）
 - [ ] 数量在 3-7 之间
 - [ ] 没有万能的 "shared" product
+- [ ] 每个 product 有唯一 `abbrev`（2-3 大写字母，大小写不敏感去重）
 - [ ] 如果 fact-extraction-report 存在，每个 Bounded Context 行都映射到正好一个 product（或显式合并并附理由）
 
 ---
@@ -97,7 +102,9 @@
 
 ```
 .gitattributes                              # 追加：*.intent linguist-language=Scala
-.gitmodules                                 # 由 `git submodule add` 自动管理
+                                            #   （仅 GitHub/linguist 高亮 trick；.intent 借 Scala 语法高亮，非 Scala）
+.gitmodules                                 # 由 `git submodule add` 自动管理（submodule 已存在则不新建）
+.popsicle/project.yaml                      # popsicle init 生成；填 products.<slug>.abbrev
 CONTRIBUTING.md                             # IDD 工作流规则（人 + AI agent 共读）
 ```
 
@@ -181,6 +188,7 @@ legacy/<legacy-name>/                       # 固定到 {commit-sha}
 
 - [ ] Repository Identity 表全填满（无占位符）
 - [ ] Product Inventory 有 3-7 条，每条客户能识别
+- [ ] 每个 product 有唯一 `abbrev`（2-3 大写字母），且已计划落到 `project.yaml`
 - [ ] 每个 product 条目有状态（slice / scaffold-only）和一行用途
 - [ ] 正好一个 product 标 **slice**
 - [ ] Legacy Source 章节有 URL + pinned SHA + license 检查

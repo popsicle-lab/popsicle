@@ -80,7 +80,14 @@ fn workspace_workflow_smoke_passes() {
         assert!(doctor.contains("\"current_workspace_binary_match\":\"true\""));
     }
     assert!(doctor.contains("storage_backend"));
-    assert!(doctor.contains("PROJ-11"));
+    assert!(doctor.contains("cli_version"));
+    // Tool-internal build provenance is gated behind a dev workspace so real
+    // projects don't see popsicle's own `PROJ-11` / `build_source` (feedback
+    // #7). This temp workspace has no `target/debug/popsicle`, so it must NOT
+    // leak those fields. The dev-workspace path is covered by the
+    // doctor-provenance golden script.
+    assert!(!doctor.contains("PROJ-11"));
+    assert!(!doctor.contains("build_source"));
 
     // `--type bug` exercises the bundled default pipeline mapping (D-101):
     // no --pipeline flag anywhere below.

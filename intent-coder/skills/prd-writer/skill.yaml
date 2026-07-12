@@ -334,8 +334,9 @@ hooks:
            合并到 `products/{target_product}/PRODUCT.md` 对应段落。PR 必须 cite
            `PDR-{id}`（charter 第 3 条铁律）。
 
-        4. **Tasks 索引刷新**：跑 `popsicle skill start living-doc-author --target tasks-index`
-           更新 `products/{target_product}/tasks/README.md` 的健康度统计。
+        4. **Tasks 索引刷新**：由 living-doc-author 阶段（`doc-sync-weekly` 或
+           `*-delivery` 的 `living-docs`）更新 `products/{target_product}/tasks/README.md`
+           的健康度统计。
 
         5. **Intent 种子收紧**：把 `{slug}.acceptance.intent` 种子交给项目自带
            intent spec writer 收紧，合并到 `products/{target_product}/intents/acceptance.intent`

@@ -101,6 +101,91 @@ fn golden_008_format_flag_is_global() {
 }
 
 #[test]
+fn golden_008b_help_flag_works_in_any_position() {
+    use cli_ux::Command;
+    // `--help` / `-h` must win over required-arg validation and subcommand
+    // routing so users can always discover usage (feedback #5).
+    for argv in [
+        vec!["issue", "create", "--help"],
+        vec!["issue", "start", "--help"],
+        vec!["issue", "--help"],
+        vec!["pipeline", "--help"],
+        vec!["doc", "-h"],
+    ] {
+        assert_eq!(
+            parse_args(argv.clone()).unwrap(),
+            Command::Help,
+            "{argv:?} should route to help"
+        );
+    }
+}
+
+#[test]
+fn golden_008c_version_flag_is_recognized() {
+    use cli_ux::Command;
+    for argv in [
+        vec!["--version"],
+        vec!["-V"],
+        vec!["version"],
+        vec!["issue", "--version"],
+    ] {
+        assert_eq!(
+            parse_args(argv.clone()).unwrap(),
+            Command::Version,
+            "{argv:?} should route to version"
+        );
+    }
+    let response = cli_ux::version_response();
+    assert_eq!(
+        response.fields.get("version").map(String::as_str),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+}
+
+#[test]
+fn golden_008d_migration_bootstrap_allows_missing_product() {
+    use cli_ux::Command;
+    // migration-bootstrap creates products in its init stage, so --product may
+    // be omitted (feedback #3).
+    match parse_args([
+        "issue",
+        "create",
+        "--type",
+        "technical",
+        "--title",
+        "Bootstrap repo",
+        "--pipeline",
+        "migration-bootstrap",
+    ])
+    .unwrap()
+    {
+        Command::IssueCreate {
+            product_id,
+            pipeline,
+            ..
+        } => {
+            assert_eq!(product_id, "");
+            assert_eq!(pipeline.as_deref(), Some("migration-bootstrap"));
+        }
+        other => panic!("expected IssueCreate, got {other:?}"),
+    }
+
+    // Any other pipeline still requires --product.
+    let err = parse_args([
+        "issue",
+        "create",
+        "--type",
+        "technical",
+        "--title",
+        "x",
+        "--pipeline",
+        "feature-spec",
+    ])
+    .unwrap_err();
+    assert_eq!(err.object_ref, "product");
+}
+
+#[test]
 fn golden_010_issue_type_default_pipelines_are_bundled() {
     use skill_runtime::IssueType;
     let bundled = cli_ux::bundled_pipeline_names();

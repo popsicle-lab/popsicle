@@ -29,6 +29,8 @@ fn ensure_writes_default_yaml_and_agents_md() {
     let agents = fs::read_to_string(root.join("AGENTS.md")).unwrap();
     assert!(agents.contains("popsicle:project-config:start"));
     assert!(agents.contains("products/"));
+    assert!(agents.contains("Command Reference"));
+    assert!(agents.contains("MANDATORY: Before Starting"));
     let localized = match cfg.agent.language {
         AgentLanguage::ZhCn => agents.contains("产品文档目录"),
         AgentLanguage::En => agents.contains("Products directory"),
@@ -37,11 +39,26 @@ fn ensure_writes_default_yaml_and_agents_md() {
 }
 
 #[test]
-fn sync_replaces_marker_block() {
+fn sync_upgrades_legacy_stub_agents_md() {
     let root = temp_workspace();
     fs::write(
         root.join("AGENTS.md"),
-        "# Existing\n\n<!-- popsicle:project-config:start -->\nold\n<!-- popsicle:project-config:end -->\n",
+        "# Agent Instructions\n\n<!-- popsicle:project-config:start -->\nold\n<!-- popsicle:project-config:end -->\n",
+    )
+    .unwrap();
+    let cfg = ProjectConfig::default();
+    sync_agents_md(&root, &cfg).unwrap();
+    let agents = fs::read_to_string(root.join("AGENTS.md")).unwrap();
+    assert!(agents.contains("Command Reference"));
+    assert!(!agents.contains("\nold\n"));
+}
+
+#[test]
+fn sync_replaces_marker_block_on_full_agents_md() {
+    let root = temp_workspace();
+    fs::write(
+        root.join("AGENTS.md"),
+        "# Existing\n\n## Command Reference (complete)\n\npopsicle issue list\n\n## ⛔ MANDATORY: Before Starting ANY Development Task\n\n<!-- popsicle:project-config:start -->\nold\n<!-- popsicle:project-config:end -->\n",
     )
     .unwrap();
     let mut cfg = ProjectConfig::default();

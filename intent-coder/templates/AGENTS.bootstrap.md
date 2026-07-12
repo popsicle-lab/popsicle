@@ -1,40 +1,17 @@
-# Popsicle — Agent Instructions
+# Agent Instructions
 
 This project uses Popsicle for spec-driven development orchestration.
 
-> **Scope note (PROJ-17)**: this document describes the **self-host MVP command
-> surface** actually implemented by `crates/cli-ux`. Legacy commands that are
-> not listed here do not exist in the binary — see §Deferred & Removed Commands.
-
 ## Binary Resolution
 
-When running `popsicle` commands, resolve the binary in this order:
+Use the `popsicle` CLI on your PATH (DMG / `Install CLI.command`, `scripts/install.sh`, or `cargo install`).
 
-1. `./popsicle` in the project root, if it exists
-2. `./target/debug/popsicle` (the self-host build), if it exists
-3. `popsicle` on the system PATH
+Optional when developing the Popsicle repo itself:
 
-```bash
-# Linux / macOS
-if [ -x "./popsicle" ]; then POPSICLE=./popsicle;
-elif [ -x "./target/debug/popsicle" ]; then POPSICLE=./target/debug/popsicle;
-else POPSICLE=popsicle; fi
-```
+1. `./popsicle` in the project root
+2. `./target/debug/popsicle`
 
-Then use `$POPSICLE` in place of `popsicle` for all commands. If no binary is
-found, build it first: `cargo build -p cli-ux`.
-
-Run `popsicle doctor --format json` before starting work. It must report
-`current_workspace_binary_match: true`; otherwise rebuild with
-`cargo build -p cli-ux` and use `./target/debug/popsicle`.
-
-## DevOps Entry Points (ADR-014)
-
-- `make check` — fmt + clippy + test, all `-Dwarnings` (CI runs the same trio)
-- `make golden` — full golden-baseline chain; `make intent` — Z3 intent validation
-- `make install-hooks` — install the pre-commit hook (fmt/clippy/test)
-- `scripts/install.sh [--prefix <dir>] [--uninstall]` — install the CLI (no UI, no completions — deferred)
-- Releases: push a `v*` tag → `.github/workflows/release.yml` builds 4 targets
+Run `popsicle doctor --format json` before starting work.
 
 ## Global Flags
 
@@ -292,16 +269,3 @@ names with `popsicle doc create <skill>`.
 | `project-init` | project-init-plan | fact-extractor | planning → surveying → scaffolding → completed |
 | `rfc-writer` | rfc | arch-debate, prd-writer, fact-extractor | review → completed → ingesting → scoring → drafting |
 | `shadow-implementer` | implementation-coverage | adr-writer, rfc-writer, intent-consistency-check | review → completed → verifying → implementing → scoping |
-<!-- popsicle:project-config:start -->
-## 本项目偏好
-
-- **界面 / Agent 语言**：简体中文
-- **产品文档目录**：`products/`
-- **决策记录**：`products/<product>/decisions/{adr,pdr}/`
-- **Pipeline 审批模式**：`delegate-dangerous`（危险操作需审批（其余代批））
-- **Issue / 文档文案**：创建或更新 Issue / 文档时，`--title` 与 `--description` 使用简体中文（除非用户明确要求英文）。
-
-### 阶段完成策略
-
-非危险 `requires_approval` 阶段可由 agent 代批完成；危险阶段（`cutover`、`living-docs`）仍需用户显式 `--confirm`。
-<!-- popsicle:project-config:end -->

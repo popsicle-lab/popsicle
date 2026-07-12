@@ -18,7 +18,7 @@ fn install_intent_coder_module_from_repo_root() {
         .intent_coder_module_dir()
         .join("skills/issue-author/guide.md")
         .is_file());
-    assert_eq!(result.version.as_deref(), Some("0.4.1"));
+    assert_eq!(result.version.as_deref(), Some("0.4.2"));
 }
 
 #[test]

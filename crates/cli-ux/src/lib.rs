@@ -68,6 +68,7 @@ pub const REMOVED_TOP_LEVEL_COMMANDS: &[&str] = &["checklist", "item", "sync"];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Help,
+    Version,
     Doctor {
         format: OutputFormat,
     },
@@ -472,6 +473,18 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
         return Ok(Command::Help);
     }
 
+    // `--version` / `-V` and `--help` / `-h` take precedence over required-arg
+    // validation and subcommand routing so they work in any position (e.g.
+    // `issue create --help`, `pipeline --help`, `issue --version`). Without
+    // this, `--help` is swallowed by the missing-argument check for the
+    // subcommand and never prints usage.
+    if args.iter().any(|a| a == "--version" || a == "-V") || args == ["version"] {
+        return Ok(Command::Version);
+    }
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        return Ok(Command::Help);
+    }
+
     if REMOVED_TOP_LEVEL_COMMANDS.contains(&args[0].as_str()) {
         return Err(CliError::actionable(
             "invalid-args",
@@ -494,19 +507,33 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
         "doctor" => Ok(Command::Doctor { format }),
         "init" if args.len() == 1 => Ok(Command::Init),
         "issue" if args.get(1).map(String::as_str) == Some("create") => {
+            let pipeline = optional_flag_value(args, "--pipeline");
             let product = optional_flag_value(args, "--product")
-                .or_else(|| optional_flag_value(args, "--spec"))
-                .ok_or_else(|| {
-                    missing(
+                .or_else(|| optional_flag_value(args, "--spec"));
+            // `migration-bootstrap` is the one pipeline whose first stage
+            // (project-init) *creates* the products, so at Day-1 there is no
+            // product to name yet. Accept a missing --product for it instead
+            // of blocking bootstrap on a chicken-and-egg error (feedback #3).
+            let product = match product {
+                Some(p) => p,
+                None if pipeline
+                    .as_deref()
+                    .is_some_and(pipeline_taxonomy::is_migration_bootstrap) =>
+                {
+                    String::new()
+                }
+                None => {
+                    return Err(missing(
                         "product",
-                        "issue create --product <products-dir-name> (or deprecated --spec)",
-                    )
-                })?;
+                        "issue create --product <products-dir-name> (omit only for --pipeline migration-bootstrap)",
+                    ))
+                }
+            };
             Ok(Command::IssueCreate {
                 issue_type: flag_value(args, "--type")?,
                 title: flag_value(args, "--title")?,
                 product_id: product,
-                pipeline: optional_flag_value(args, "--pipeline"),
+                pipeline,
                 priority: flag_value_or(args, "--priority", "medium"),
                 description: flag_value_or(args, "--description", ""),
                 epic_task_id: optional_flag_value(args, "--epic-task"),
@@ -701,6 +728,7 @@ fn parse_command(args: &[String], format: OutputFormat) -> Result<Command, CliEr
 /// Commands that do not require an open workspace (global project registry only).
 pub fn run_command_stateless(command: Command) -> Result<CommandResponse, CliError> {
     match command {
+        Command::Version => Ok(version_response()),
         Command::ProjectList => project_list_response(),
         Command::ProjectAdd { path, name } => project_add_response(&path, name.as_deref()),
         Command::ProjectUse { target } => project_use_response(&target),
@@ -768,6 +796,7 @@ pub fn run_command<D: CliDomain>(
 ) -> Result<CommandResponse, CliError> {
     match command {
         Command::Help => Ok(help_response()),
+        Command::Version => Ok(version_response()),
         Command::Doctor { format } => domain.doctor(format),
         Command::Init => {
             let result = domain.init_workspace()?;
@@ -1345,6 +1374,19 @@ pub const COMMAND_USAGE: &[&str] = &[
     "project current",
     "ui [--project <path>]",
 ];
+
+/// Report the CLI package version. Workspace-free so `popsicle --version`
+/// works from any directory (installed binary, no `.popsicle/` required).
+pub fn version_response() -> CommandResponse {
+    let mut fields = BTreeMap::new();
+    fields.insert("name".into(), "popsicle".into());
+    fields.insert("version".into(), env!("CARGO_PKG_VERSION").into());
+    CommandResponse {
+        status: "ok",
+        next_step: None,
+        fields,
+    }
+}
 
 pub fn help_response() -> CommandResponse {
     help_response_for(project_config::detect_default_language())

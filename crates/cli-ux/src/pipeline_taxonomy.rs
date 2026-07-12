@@ -38,6 +38,13 @@ pub fn is_fix_regression(pipeline: &str) -> bool {
     canonical_pipeline_name(pipeline) == "fix-regression"
 }
 
+/// Repository Day-1 bootstrap pipeline (project-init → … → living-docs). The
+/// `init` stage *creates* products, so a bootstrap issue is allowed to start
+/// without an existing (or any) product — see feedback #3.
+pub fn is_migration_bootstrap(pipeline: &str) -> bool {
+    canonical_pipeline_name(pipeline) == "migration-bootstrap"
+}
+
 /// UI / catalog grouping label.
 pub fn pipeline_domain(name: &str) -> &'static str {
     let name = canonical_pipeline_name(name);

@@ -521,15 +521,38 @@ pub fn agents_md_section(config: &ProjectConfig) -> String {
     }
 }
 
+/// True when `AGENTS.md` is missing or only contains the legacy init stub.
+pub fn agents_md_needs_bootstrap(content: &str) -> bool {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    !(trimmed.contains("Command Reference")
+        && trimmed.contains("MANDATORY: Before Starting")
+        && trimmed.contains("popsicle issue list"))
+}
+
+fn agents_md_bootstrap_body() -> String {
+    crate::intent_coder_bundle::embedded_agents_md_bootstrap()
+        .map(str::trim_end)
+        .map(str::to_string)
+        .unwrap_or_else(|| "# Agent Instructions\n".to_string())
+}
+
 pub fn sync_agents_md(workspace_root: &Path, config: &ProjectConfig) -> Result<(), WorkspaceError> {
     let agents_path = workspace_root.join(AGENTS_MD);
     let section = agents_md_section(config);
-    let content = if agents_path.is_file() {
-        let existing = fs::read_to_string(&agents_path).map_err(io_err)?;
-        upsert_marked_section(&existing, &section)
+    let existing = if agents_path.is_file() {
+        fs::read_to_string(&agents_path).map_err(io_err)?
     } else {
-        format!("# Agent Instructions\n\n{section}\n")
+        String::new()
     };
+    let base = if agents_md_needs_bootstrap(&existing) {
+        agents_md_bootstrap_body()
+    } else {
+        existing
+    };
+    let content = upsert_marked_section(&base, &section);
     fs::write(&agents_path, content).map_err(io_err)
 }
 
@@ -633,6 +656,13 @@ fn io_err(e: impl ToString) -> WorkspaceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agents_md_needs_bootstrap_detects_legacy_stub() {
+        let stub = "# Agent Instructions\n\n<!-- popsicle:project-config:start -->\nx\n<!-- popsicle:project-config:end -->\n";
+        assert!(super::agents_md_needs_bootstrap(stub));
+        assert!(super::agents_md_needs_bootstrap(""));
+    }
 
     #[test]
     fn upsert_replaces_existing_marker_block() {

@@ -73,7 +73,8 @@
 ## 当事情出错时
 
 - **submodule add 失败**（网络、鉴权）→ 在 project-init-plan 里记录失败，在仓库根放一份 `MIGRATION_TODO.md`，里面写明稍后要跑的精确命令，继续铺剩下的骨架
-- **某个 `popsicle module add` 失败** → 继续装其它的，把失败记下来
+- **内置模块同步失败**（`popsicle admin sync-intent-coder`；`module add` 已 deferred）
+  → 记录失败继续，事后重跑 sync；外部 writer 模块按其自身说明安装
 - **铺骨架到一半，用户对 product 清单不满** → **停**。回滚到 surveying 状态。**不要部分铺骨架。**
 
 ## 输出格式约定

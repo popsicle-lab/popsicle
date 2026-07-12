@@ -26,7 +26,9 @@ use crate::global_config::{
 use crate::intent_coder_resolve::{
     find_pipeline_path, list_pipeline_template_names, self_heal_pipeline,
 };
-use crate::pipeline_taxonomy::{canonical_pipeline_name, is_migration_slice_delivery};
+use crate::pipeline_taxonomy::{
+    canonical_pipeline_name, is_migration_bootstrap, is_migration_slice_delivery,
+};
 use crate::project_config::{
     ensure_project_config, load_project_config, project_config_path, stage_needs_explicit_confirm,
     sync_agents_md,
@@ -507,8 +509,15 @@ impl WorkspaceStore for LocalWorkspace {
         parse_issue_type(issue_type)?;
         crate::pipeline_gate::validate_slice_delivery_create(pipeline, proposed_tasks)?;
         crate::pipeline_gate::validate_bugfix_create(issue_type, pipeline, title, description)?;
-        let product_id =
-            crate::workspace_readers::resolve_product_id(&self.workspace.root, product_id)?;
+        // `migration-bootstrap` creates the products in its `init` stage, so
+        // the product dir doesn't exist yet. Accept the planned name (or an
+        // empty product) verbatim instead of requiring it to already resolve
+        // under `products/` (feedback #3).
+        let product_id = if pipeline.is_some_and(is_migration_bootstrap) {
+            product_id.trim().to_string()
+        } else {
+            crate::workspace_readers::resolve_product_id(&self.workspace.root, product_id)?
+        };
         let key = format!("PROJ-{}", self.state.next_issue_num);
         self.state.next_issue_num += 1;
 
@@ -2234,8 +2243,10 @@ impl crate::CliDomain for WorkspaceDomain {
         } else {
             "cargo build -p cli-ux && ./target/debug/popsicle doctor".to_string()
         };
+        // Project-facing diagnostics: shown in every workspace.
         let mut fields = BTreeMap::from([
             ("executable_path".into(), prov.executable_path),
+            ("cli_version".into(), env!("CARGO_PKG_VERSION").into()),
             ("workspace_root".into(), prov.workspace_root),
             ("workspace_source".into(), prov.workspace_source),
             ("global_config_path".into(), prov.global_config_path),
@@ -2243,21 +2254,7 @@ impl crate::CliDomain for WorkspaceDomain {
                 "registered_projects".into(),
                 prov.registered_projects.to_string(),
             ),
-            ("package".into(), prov.package),
-            ("build_source".into(), prov.build_source),
-            (
-                "expected_workspace_binary".into(),
-                prov.expected_workspace_binary,
-            ),
             ("dev_workspace".into(), prov.dev_workspace.to_string()),
-            (
-                "current_workspace_binary_match".into(),
-                prov.current_workspace_binary_match.to_string(),
-            ),
-            (
-                "used_parent_binary".into(),
-                prov.used_parent_binary.to_string(),
-            ),
             (
                 "used_system_binary".into(),
                 prov.used_system_binary.to_string(),
@@ -2267,7 +2264,6 @@ impl crate::CliDomain for WorkspaceDomain {
                 "storage_backend".into(),
                 self.store.backend().describe(&self.store.workspace),
             ),
-            ("phase_2_issue".into(), "PROJ-11".into()),
             (
                 "intent_coder_module".into(),
                 intent_coder_module_version(&self.store.workspace)
@@ -2288,6 +2284,27 @@ impl crate::CliDomain for WorkspaceDomain {
                 },
             ),
         ]);
+        // Tool-internal build provenance: only meaningful inside the popsicle
+        // dev repo (where the workspace builds its own `target/debug/popsicle`).
+        // Hiding it in real migration projects prevents `cli-ux` / `PROJ-11`
+        // from being mistaken for the user's own product/issue (feedback #7).
+        if prov.dev_workspace {
+            fields.insert("package".into(), prov.package);
+            fields.insert("build_source".into(), prov.build_source);
+            fields.insert(
+                "expected_workspace_binary".into(),
+                prov.expected_workspace_binary,
+            );
+            fields.insert(
+                "current_workspace_binary_match".into(),
+                prov.current_workspace_binary_match.to_string(),
+            );
+            fields.insert(
+                "used_parent_binary".into(),
+                prov.used_parent_binary.to_string(),
+            );
+            fields.insert("phase_2_issue".into(), "PROJ-11".into());
+        }
         if let Ok(cfg) = load_project_config(&self.store.workspace.root) {
             fields.insert(
                 "project_config_path".into(),

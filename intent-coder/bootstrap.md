@@ -2,6 +2,14 @@
 
 你正在把一份遗留代码库迁移进 Intent-Driven Development 工作流，或把一个全新产品 / 模块从 product brief 推进到可验证 spec。本模块提供**考古 + 闸门 + greenfield spec 链**的能力，把「裸 legacy 代码」或「自然语言产品想法」接到 IDD 管线里。
 
+> **执行模型：pipeline 由 issue 承载，run 由 `issue start` 产生。**
+> self-host MVP **没有** `popsicle skill start`，也**没有** `popsicle pipeline run`（均 deferred）。
+> 本文档里的每个 skill 都是某个 pipeline 的一个 **stage**：
+> `issue create --pipeline <name>` → `issue start <key>`（返回 `run_id`）→ 循环
+> `pipeline next --run <run_id>` / `doc create <skill>` / `doc check` /
+> `pipeline stage complete <stage>`。下方框图与表格描述的是 **stage 依赖顺序**，不是可直接
+> 敲的命令。完整命令面见仓库根 `AGENTS.md`。
+
 IDD 适配旅程（intent-coder 负责实心方框、外部 writer 负责虚线方框）：
 
 ```
@@ -142,7 +150,18 @@ greenfield 模式的前提是 product brief 足够明确，至少包含目标用
 
 ## Pipeline 选用指南
 
-当用户开始迁移一份遗留代码库时，用 **`migration-bootstrap`**（`pipelines/migration-bootstrap.pipeline.yaml`，10 stage DAG）：
+当用户开始迁移一份遗留代码库时，用 **`migration-bootstrap`**（`pipelines/migration-bootstrap.pipeline.yaml`，10 stage DAG）。用 issue 承载它：
+
+```bash
+# migration-bootstrap 的 init 阶段创建 products，故 --product 可省略（也可传
+# 首切片预期名占位，init 再落地目录）。
+popsicle issue create --type technical --title "Bootstrap <repo> 迁移" \
+  --pipeline migration-bootstrap --format json
+popsicle issue start <ISSUE-KEY> --format json    # → run_id
+popsicle pipeline next --run <run_id> --format json
+```
+
+stage 依赖顺序（由 `pipeline next` 逐个提示）：
 
 ```
 init (project-init)                （一次性、交互式）
@@ -157,15 +176,20 @@ init (project-init)                （一次性、交互式）
   → living-docs (living-doc-author)（活文档保活）
 ```
 
-全部 10 个 stage 都是 intent-coder 自带 skill——一键 `popsicle pipeline run migration-bootstrap`
-即可，不必逐个 `skill start`。技术侧支线（arch-debate → rfc → adr）在 PRD 不含跨模块契约
-时可整段 skip（popsicle 把 skipped 视为依赖已满足，下游 intent-spec 照常 ready）。
+全部 10 个 stage 都是 intent-coder 自带 skill——`issue start` 一次产生 run 后，用
+`pipeline next --run <run_id>` 顺着推进即可，不必逐个手启。技术侧支线（arch-debate →
+rfc → adr）在 PRD 不含跨模块契约时可整段 skip（popsicle 把 skipped 视为依赖已满足，
+下游 intent-spec 照常 ready）。
 
-如果用户手上已有 PRD/ADR/intent 三件套、只想跑 Z3 闸，单独调用 `intent-consistency-check`
-skill 即可。
+> 💡 **仅 `migration-bootstrap` 允许省略 `--product`**（它的 `init` 阶段创建 products）。
+> 也可传首切片的**预期 product 名**占位，`init` 阶段再把该目录落地。其它 pipeline 仍要求
+> `--product` 指向已存在的 `products/<name>/`。
+
+如果用户手上已有 PRD/ADR/intent 三件套、只想跑 Z3 闸，创建一个 `intent-consistency-check`
+起步的 spec issue（或直接 `popsicle tool run intent-validate path=products`）即可。
 
 当用户开始一个新产品 / 新模块，没有 legacy fact baseline 时，用
-**`greenfield-product-spec`**：
+**`product-greenfield-spec`**：
 
 ```
 debate (product-debate, greenfield-product-brief)
@@ -178,15 +202,15 @@ debate (product-debate, greenfield-product-brief)
 fact-extractor。product-debate 的依据是 Product Brief；prd-writer 负责把新
 target_product 的目录与文件清单显式落进 File Manifest。
 
-### slice-spec + slice-delivery（v0.4，每个 slice）
+### migration-slice-spec + migration-slice-delivery（v0.4，每个 slice）
 
-仓库已由 `migration-bootstrap` 铺好后：
+仓库已由 `migration-bootstrap` 铺好后（各起一个 issue，`issue start` 产生 run）：
 
 ```
-slice-spec（无 init，6～8 stage）
+migration-slice-spec（无 init，6～8 stage）
   facts → debate → prd → [arch-debate → rfc → adr] → intent-spec → intent-check
 
-slice-delivery（4 stage，同一 issue 链式跑）
+migration-slice-delivery（4 stage，同一 issue 链式跑）
   implement (shadow-implementer)
   → equivalence (equivalence-baseline)
   → cutover (cutover-author)          ← requires_approval
@@ -194,4 +218,5 @@ slice-delivery（4 stage，同一 issue 链式跑）
 ```
 
 **spec 已完成的 slice**（如 popsicle-new 的 skill-runtime / artifact-system）可
-**跳过 slice-spec，直接 `popsicle pipeline run slice-delivery`**。
+**跳过 spec 链**，直接开一个 `--pipeline migration-slice-delivery`（或 `feature-delivery`）
+的 issue 并 `issue start`。

@@ -74,6 +74,17 @@ prompts:
        - 坏 product 名：`core`、`utils`、`common`、`shared`、`lib`
        - 好 product 名：`database`、`network`、`simulation`、`viz`、`cli`、`web-ui`
        - 每个 product 记录：一行用途说明 + 估计 LoC（如果 fact-extraction-report 可用就从那里读）
+       - **每个 product 定一个缩写 `abbrev`**（task ID 用，见下）：2-3 个大写字母，
+         **仓库内唯一**（大小写不敏感去重）。例：`cli-ux`→`CU`、`astra`→`AS`。
+         这是**一等字段**：写进 Product Inventory 表，并落到 `.popsicle/project.yaml`
+         的 `products.<slug>.abbrev`。
+
+    2b. **两套 ID 体系（务必分清，feedback #8）**
+       - **Issue key = 仓库唯一前缀**：`<TYPE>-<PREFIX>-<n>`（如 `BUG-ASTRA-1`、
+         `TC-ASTRA-1`）。`PREFIX` 在第 4 步「仓库身份」里定，全仓库一个。
+       - **Task ID = 按 product 的缩写**：`T-<ABBREV>-NNNN`（如 `T-CU-0002`、
+         `T-AS-0002`）。`ABBREV` 就是上面每个 product 的 `abbrev`，**按 product 各一个**。
+       - 二者不要混用：issue-key 前缀是仓库级、task 缩写是 product 级。
 
     3. **首个迁移切片**
        - 按 doc-architecture 的原则：挑**高 churn + 相对独立（反向依赖少）**的 product
@@ -83,7 +94,9 @@ prompts:
 
     4. **仓库身份**
        - 新仓库名
-       - Issue key 前缀（popsicle 要求；如 INTENT、PROJ —— 用于 BUG-INTENT-1、TC-INTENT-1）
+       - **Issue key 前缀**（仓库级、唯一；如 INTENT、PROJ、ASTRA —— 用于
+         `BUG-INTENT-1`、`TC-INTENT-1`）。注意这与第 2 步 product 的 `abbrev` 是**两套
+         不同的 ID**（前缀=仓库级 issue-key，abbrev=product 级 task-id）。
        - 默认 agent target（claude / cursor / copilot / codex / opencode）
 
     5. **要装的模块依赖**
@@ -107,8 +120,9 @@ prompts:
     - [ ] License 兼容性已检查（或人类显式豁免并写明理由）
     - [ ] 3-7 个 product 命名完毕，每个有一行用途
     - [ ] 每个 product 名通过「客户可识别」测试
+    - [ ] 每个 product 都定了唯一的 `abbrev`（2-3 大写字母，仓库内不重复）
     - [ ] 首个迁移切片已选定，且至少考虑过一个替代
-    - [ ] 新仓库名 + issue key 前缀已定
+    - [ ] 新仓库名 + issue key 前缀已定（且与 product abbrev 区分清楚）
     - [ ] 用户**额外提供**的 writer 模块依赖路径（若有）已验证存在
     - [ ] 若 fact-extraction-report 缺失：人类已显式同意在没有它的情况下进行 survey
 
@@ -121,8 +135,11 @@ prompts:
     创建的每个文件/目录的扁平清单，便于人类在任何文件被写出来之前就签字。
 
     必填章节（workflow guard 会检查）：
-    - **Repository Identity** —— 名称、前缀、默认 agent、license
-    - **Product Inventory** —— 用途 + LoC + 状态（slice / scaffold-only）的表格
+    - **Repository Identity** —— 名称、**issue-key 前缀**、默认 agent、license
+      （前缀是仓库级、唯一，用于 issue key；不要与 product abbrev 混淆）
+    - **Product Inventory** —— 表格，列：`product` | `abbrev` | 用途 | LoC |
+      状态（slice / scaffold-only）。`abbrev` 是 task ID `T-<ABBREV>-NNNN` 的来源，
+      仓库内唯一。
     - **Legacy Source** —— URL、pinned commit、submodule 路径、license 检查
     - **First Migration Slice** —— 选中的 product + 理由 + 替代方案
     - **Scaffolding Manifest** —— 每个目录、每个文件，附用途
@@ -156,8 +173,12 @@ prompts:
     - `migration/slices/.gitkeep`
     - `migration/traceability.md`（骨架，含空映射表）
     - `migration/progress.md`（骨架，含空 kanban）
-    - `.gitattributes`（含 `*.intent linguist-language=Scala`）
-    - `.gitmodules`（由 `git submodule add` 自动管理）
+    - `.gitattributes`（含 `*.intent linguist-language=Scala` —— 见下方注释说明：
+      这是让 GitHub/linguist 把 `.intent` 文件按 Scala 高亮的 trick，`.intent` 语法与
+      Scala 的花括号 / 关键字接近，借它拿到可读高亮，**不代表** intent 是 Scala）
+    - `.gitmodules`（由 `git submodule add` 自动管理；submodule 已存在时不新建）
+    - `.popsicle/project.yaml`（由 `popsicle init` 生成；把每个 product 的
+      `abbrev` 落到 `products.<slug>.abbrev`，供 task ID 生成 / 校验使用）
     - `CONTRIBUTING.md`（IDD 工作流规则——人和 AI agent 都读）
 
     ## Artifact 2：`doc-architecture-charter.md`
@@ -200,14 +221,27 @@ prompts:
   scaffolding: |
     你拿到了已批准的计划。**严格按计划执行——不要即兴发挥。**
 
-    ## 操作顺序
+    ## 操作顺序（每一步都要幂等 —— 仓库可能已被部分初始化，feedback #4）
 
-    1. `popsicle init`（如果 `.popsicle/` 不存在）
-    2. 如果没有 `.gitattributes`，创建；追加 `*.intent linguist-language=Scala`
-    3. `git submodule add <legacy-url> legacy/<legacy-name>`，然后
-       `git -C legacy/<legacy-name> checkout <pinned-sha>`
-    4. 对计划中的每个模块依赖：`popsicle module add <path>`
-    5. 按 Scaffolding Manifest 创建目录树（用 `mkdir -p`）
+    1. **popsicle 工作区**：
+       - `.popsicle/` **不存在** → 跑 `popsicle init`（安装 pipelines + 内置模块）。
+       - `.popsicle/`（`state.db` / `pipelines` / `modules`）**已预置**（例如仓库模板
+         或 CI 已 init）→ **不要**重复 init；跑 `popsicle doctor --format json` 确认
+         `storage_backend` 与 `intent_coder_bundle` 正常即可。
+       - 需要刷新内置 intent-coder 模块时用 `popsicle admin sync-intent-coder`。
+    2. **`.gitattributes`**：没有就创建；确保包含
+       `*.intent linguist-language=Scala`（幂等：已存在该行则跳过）。加一行注释说明
+       它只是 GitHub/linguist 高亮 trick，`.intent` 并非 Scala。
+    3. **Legacy submodule**（幂等分支）：
+       - `legacy/<name>/.git` **不存在** → `git submodule add <legacy-url> legacy/<legacy-name>`，
+         再 `git -C legacy/<legacy-name> checkout <pinned-sha>`。
+       - submodule **已存在**（本项目已手工 pin）→ **不要**再 `submodule add`；只校验
+         `git -C legacy/<legacy-name> rev-parse HEAD` 是否等于计划中的 pinned SHA，
+         不一致才 checkout 修正。
+    4. **模块依赖**：内置的 intent-coder 用 `popsicle admin sync-intent-coder`
+       维护（`popsicle module add` 在 self-host MVP 已 deferred）。用户自带的外部
+       writer 模块按其自身安装说明处理。
+    5. 按 Scaffolding Manifest 创建目录树（用 `mkdir -p`；已存在的目录跳过）
     6. 写出每个骨架文件。骨架**必须**在任何本该填真实值的字段处放
        `[TBD: needs archaeology]` 标记——永远不要凭空造内容。
     7. 把 `doc-architecture-charter.md` 提升为 `docs/CHARTER.md`
@@ -222,7 +256,8 @@ prompts:
     - [ ] manifest 之外没有创建任何文件
     - [ ] `legacy/<name>/.git` 存在（submodule 正确 pin）
     - [ ] `git -C legacy/<name> rev-parse HEAD` 匹配计划中的 pinned SHA
-    - [ ] `popsicle module list` 列出计划中的每个模块
+    - [ ] `popsicle doctor --format json` 的 `intent_coder_module` / `intent_coder_bundle`
+          正常（module 已装；`module list` 在 self-host MVP 已 deferred）
     - [ ] `.gitattributes` 包含 `*.intent linguist-language=Scala`
     - [ ] 没有骨架文件含有「编造」内容 —— 每个值要么是模板默认，要么是
           `[TBD: needs archaeology]`

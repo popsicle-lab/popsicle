@@ -1,5 +1,5 @@
 name: living-doc-author
-description: 活文档保活 / 对账 skill。按 --target 分组：slice 交付（implementation-status 等）、intent-check 后（last-verified）、weekly（tasks-index + product-context §现在状态）。**不创作**工程画像正文。多处模板已挂钩 `popsicle skill start living-doc-author --target <target>`。
+description: 活文档保活 / 对账 skill。按 --target 分组：slice 交付（implementation-status 等）、intent-check 后（last-verified）、weekly（tasks-index + product-context §现在状态）。**不创作**工程画像正文。作为 pipeline 阶段运行（`doc-sync-weekly` 或 `*-delivery` 的 `living-docs`）；`--target` 是阶段内部目标选择，self-host MVP 不通过 `skill start` 单独手启。
 version: "0.1.0"
 
 # 主要消费**文件系统现状**（现有 tasks/*.md、intents/*.intent、PRODUCT.md、PDR），

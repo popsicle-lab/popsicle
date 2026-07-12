@@ -45,6 +45,13 @@ pub fn embedded_pipeline_content(name: &str) -> Option<&'static [u8]> {
         .map(|file| file.contents())
 }
 
+/// Bootstrap `AGENTS.md` for new workspaces (`intent-coder/templates/AGENTS.bootstrap.md`).
+pub fn embedded_agents_md_bootstrap() -> Option<&'static str> {
+    EMBEDDED_INTENT_CODER
+        .get_file("templates/AGENTS.bootstrap.md")
+        .and_then(|file| file.contents_utf8())
+}
+
 pub fn embedded_module_version() -> Option<String> {
     let content = EMBEDDED_INTENT_CODER
         .get_file("module.yaml")?

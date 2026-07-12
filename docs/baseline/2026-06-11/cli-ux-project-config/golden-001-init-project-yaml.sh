@@ -13,5 +13,7 @@ test -f .popsicle/project.yaml
 grep -q 'products_dir' .popsicle/project.yaml
 test -f AGENTS.md
 grep -q 'popsicle:project-config:start' AGENTS.md
+grep -q 'Command Reference' AGENTS.md
+grep -q 'MANDATORY: Before Starting' AGENTS.md
 
 echo "golden-001 ok (init writes project.yaml + AGENTS.md marker)"
