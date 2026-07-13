@@ -109,7 +109,7 @@ fn golden_003b_load_migration_preserve_pipeline() {
     }
 }
 
-/// G-004: intent-coder module exposes 13 skills via registry scan.
+/// G-004: intent-coder module exposes 19 skills via registry scan.
 #[test]
 fn golden_004_skill_registry_count() {
     let dir = intent_coder_skills_dir();
@@ -119,7 +119,10 @@ fn golden_004_skill_registry_count() {
     }
     let mut reg = SkillRegistry::new();
     let n = reg.load_dir(&dir).expect("scan skills");
-    assert_eq!(n, 14, "intent-coder expects 14 skills (incl. issue-author)");
+    assert_eq!(
+        n, 19,
+        "intent-coder expects 19 skills (incl. issue-author + 迁移 skill: port/golden-capture/traceability-gen/verifier/drift-detector)"
+    );
     assert!(reg.get("issue-author").is_some());
     assert!(reg.get("shadow-implementer").is_some());
     assert!(reg.get("equivalence-baseline").is_some());
